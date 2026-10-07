@@ -1,0 +1,17 @@
+# Apache 2.4 (XAMPP / most hosting)
+Options -Indexes
+
+# Never serve secrets / source-type files
+<FilesMatch "^\.(env|git)">
+    Require all denied
+</FilesMatch>
+<FilesMatch "\.(sql|md|log|bak|ini|example)$">
+    Require all denied
+</FilesMatch>
+
+# Basic security headers (also sent from PHP)
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
