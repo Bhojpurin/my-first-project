@@ -4,3 +4,4 @@ storage/logs/*
 uploads/*
 !uploads/.htaccess
 !uploads/.gitkeep
+storage/app.key
