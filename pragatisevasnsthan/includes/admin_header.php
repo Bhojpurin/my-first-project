@@ -26,14 +26,14 @@ $menu = [
     ['Legal documents',     'legal_docs.php',     'legal_docs.manage',     false],
     'Donations',
     ['Campaigns',        'campaigns.php', 'campaigns.manage', true],
-    ['Donations',        'donations.php', 'donations.view',   false],
+    ['Donations',        'donations.php', 'donations.view',   true],
     'Requests',
     ['Offer applications', 'applications.php', 'offer_applications.manage', false],
     ['Enquiries',        'enquiries.php',  'enquiries.manage',  false],
     ['Volunteers',       'volunteers.php', 'volunteers.manage', false],
     'System',
     ['Admin users',      'users.php',    'users.manage',    false],
-    ['Settings',         'settings.php', 'settings.manage', false],
+    ['Settings',         'settings.php', 'settings.manage', true],
     ['Activity log',     'audit.php',    'audit.view',      false],
 ];
 ?><!doctype html>

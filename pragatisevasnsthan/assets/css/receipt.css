@@ -1,0 +1,13 @@
+body { font-family: Arial, 'Noto Sans Devanagari', sans-serif; background: #eee; margin: 0; color: #111; }
+.bar { text-align: center; padding: 12px; } .bar button { padding: 10px 20px; font-size: 15px; cursor: pointer; }
+.rcpt { position: relative; background: #fff; max-width: 780px; margin: 0 auto 30px; padding: 36px; border: 2px solid #0f2a21; }
+.rcpt-head { text-align: center; border-bottom: 2px solid #e8891c; padding-bottom: 12px; margin-bottom: 12px; }
+.rcpt-head h1 { margin: 0; font-size: 26px; color: #0f2a21; }
+.rcpt h2 { text-align: center; font-size: 18px; letter-spacing: .08em; margin: 14px 0; }
+.sm { font-size: 12px; color: #444; margin: 4px 0; }
+.rcpt-t { width: 100%; border-collapse: collapse; }
+.rcpt-t th, .rcpt-t td { text-align: left; padding: 8px 10px; border: 1px solid #ccc; font-size: 14px; vertical-align: top; }
+.rcpt-t th { width: 34%; background: #f6f3ea; }
+.rcpt-sign { text-align: right; margin-top: 50px; }
+.rcpt-void { position: absolute; top: 40%; left: 15%; font-size: 90px; color: rgba(179,38,30,.25); transform: rotate(-20deg); font-weight: 700; }
+@media print { body { background: #fff; } .no-print { display: none; } .rcpt { border: 1px solid #000; margin: 0; max-width: none; } }

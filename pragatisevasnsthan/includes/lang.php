@@ -67,3 +67,9 @@ function t(string $key): string
     $i = lang() === 'hi' ? 0 : 1;
     return $d[$key][$i] ?? $key;
 }
+
+/** Inline bilingual text: tx('हिंदी', 'English') */
+function tx(string $hi, string $en): string
+{
+    return lang() === 'hi' ? $hi : $en;
+}

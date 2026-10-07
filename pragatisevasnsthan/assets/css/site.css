@@ -65,3 +65,14 @@
   .s-nav .btn { margin: 8px 0 0; }
   .hero { padding: 48px 0; }
 }
+
+/* donation form */
+.dform label.lbl { display: block; font-weight: 600; font-size: 14px; margin: 14px 0 6px; color: var(--green-900); }
+.dform input:not([type=radio]):not([type=checkbox]), .dform select { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; font: 15px var(--font-body); background: #fff; }
+.dform .two { display: grid; gap: 0 14px; grid-template-columns: 1fr 1fr; } .dform .three { grid-template-columns: 1fr 1fr 1fr; }
+.dform .chip { cursor: pointer; } .dform .chip input { position: absolute; opacity: 0; }
+.dform .chip span { display: inline-block; border: 1px solid var(--line); border-radius: 10px; padding: 9px 18px; font-weight: 600; background: var(--cream); }
+.dform .chip input:checked + span { background: var(--green-800); color: #fff; border-color: var(--green-800); }
+.dform .ck { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; font-size: 14px; }
+.alert-err { background: var(--danger-bg); color: var(--danger); padding: 10px 14px; border-radius: 10px; margin: 8px 0; }
+@media (max-width: 640px) { .dform .two, .dform .three { grid-template-columns: 1fr; } }

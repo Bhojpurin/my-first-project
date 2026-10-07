@@ -59,3 +59,20 @@ New: `includes/crud.php` (one engine for list/add/edit/delete + image upload + a
 `admin/pages.php`, `admin/sliders.php`, `admin/campaigns.php` (each ~30 lines: only describes its fields).
 `admin_header.php` menu: these 3 are now ON. New simple modules (notices, trustees, offers...) = copy a module file, change table/perm/fields.
 To make the public Contact link work: Admin > Pages > Add, slug `contact`, status Published (About / Privacy / Refund / Terms already exist as drafts).
+
+## Step 6 - Online donation (Razorpay), receipts, e-mail, Settings panel
+**Credentials are entered by Super Admin in Admin > Settings** (Razorpay Key ID / Key Secret / Webhook Secret, SMTP). Secrets are
+AES-256-GCM encrypted in the DB, never shown again (blank field = keep saved). Key file: `storage/app.key` (back it up with the DB!).
+
+Setup order:
+1. Admin > Settings > Trust profile: name, address, 80G no., receipt prefix, signatory.
+2. Admin > Settings > Razorpay: paste Key ID + Secret (start with `rzp_test_`), Save, press "Test Razorpay connection".
+3. Razorpay Dashboard > Webhooks: URL `https://YOURSITE/razorpay_webhook.php`, make a secret, tick payment.captured, payment.failed, order.paid, refund.processed; paste the same secret in Settings.
+4. Admin > Settings > Email: SMTP host/port/user/password (Gmail: App Password), Save, send test email.
+5. Live server cron (retries failed e-mails): `* * * * * php /path/cli/queue_worker.php`
+6. Switching to live: replace test keys with `rzp_live_` keys + live webhook secret.
+
+Flow: donate.php -> pay.php (Razorpay Checkout) -> payment_verify.php (signature check) -> thank_you.php; razorpay_webhook.php confirms
+independently (idempotent). Receipt no. = PREFIX/FY/0001 (gapless per financial year), printable at receipt.php?c=CODE (Print -> Save as PDF).
+Admin > Donations: filters, CSV export, offline (cash/cheque/bank) entry with receipt, resend receipt.
+Not in this step: monthly recurring donations, donor OTP login, refunds from admin, SMS.
