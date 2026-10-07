@@ -29,7 +29,12 @@ function crud_run(array $cfg): void
     $page_title = $cfg['title'];
     $active     = $cfg['file'];
     $noun       = $cfg['noun'];
-    $imgDir     = $cfg['image_dir'] ?? null;
+    // one optional file column: image (default col `image`) or document (e.g. PDF in `file_path`)
+    $up = $cfg['upload'] ?? (isset($cfg['image_dir']) ? ['dir' => $cfg['image_dir'], 'col' => $cfg['image_col'] ?? 'image', 'required' => !empty($cfg['image_required'])] : null);
+    if ($up) $up += ['col' => 'image', 'required' => false, 'exts' => ['jpg', 'jpeg', 'png', 'webp'], 'label' => 'Image (JPG / PNG / WebP, max 3 MB)'];
+    $imgDir     = $up['dir'] ?? null;
+    $upCol      = $up['col'] ?? 'image';
+    $isImg      = $up && (bool) array_intersect($up['exts'], ['jpg', 'png', 'webp']);
     $slugFrom   = $cfg['slug_from'] ?? null;
     $errors     = [];
     $form       = null;
@@ -37,7 +42,7 @@ function crud_run(array $cfg): void
 
     $cols = array_map(fn($f) => $f[0], $cfg['fields']);
     if ($slugFrom) array_unshift($cols, 'slug');
-    if ($imgDir)   $cols[] = 'image';
+    if ($imgDir)   $cols[] = $upCol;
 
     // ---------- POST ----------
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -49,7 +54,7 @@ function crud_run(array $cfg): void
 
         if ($do === 'delete' && $old) {
             db_query("DELETE FROM `$table` WHERE id = ?", [$id]);
-            if ($imgDir) delete_upload($old['image']);
+            if ($imgDir) delete_upload($old[$upCol]);
             audit('delete', $table, $id, $old, null);
             flash('success', "$noun delete ho gaya.");
             redirect('admin/' . $cfg['file']);
@@ -72,15 +77,15 @@ function crud_run(array $cfg): void
                 if (!empty($o['required']) && ($v === '' || $v === null)) $errors[] = "$label zaruri hai.";
                 if (isset($o['check']) && ($err = $o['check']($v))) $errors[] = $err;
             }
-            $form['image'] = $old['image'] ?? null;
+            $form[$upCol] = $old[$upCol] ?? null;
 
             $newImage = null;
             if ($imgDir) {
-                $up = save_upload('image', $imgDir);
-                if (!$up['ok']) $errors[] = $up['error'];
-                else $newImage = $up['path'];
-                if (!$errors && !empty($cfg['image_required']) && !$newImage && (!$form['image'] || !empty($_POST['remove_image']))) {
-                    $errors[] = 'Image zaruri hai.';
+                $res = save_upload('image', $imgDir, $up['exts'], $up['maxbytes'] ?? 3145728);
+                if (!$res['ok']) $errors[] = $res['error'];
+                else $newImage = $res['path'];
+                if (!$errors && $up['required'] && !$newImage && (!$form[$upCol] || !empty($_POST['remove_image']))) {
+                    $errors[] = ($isImg ? 'Image' : 'File') . ' zaruri hai.';
                 }
             }
 
@@ -90,16 +95,16 @@ function crud_run(array $cfg): void
                     if ($slug === '') $slug = $table . '-' . date('Ymd-His');
                     $form['slug'] = unique_slug($table, $slug, $id);
                 }
-                $oldImage = $old['image'] ?? null;
+                $oldImage = $old[$upCol] ?? null;
                 if ($imgDir) {
-                    if ($newImage)                          $form['image'] = $newImage;
-                    elseif (!empty($_POST['remove_image'])) $form['image'] = null;
+                    if ($newImage)                          $form[$upCol] = $newImage;
+                    elseif (!empty($_POST['remove_image'])) $form[$upCol] = null;
                 }
                 $vals = array_map(fn($c) => $form[$c], $cols);
                 if ($id) {
                     $set = implode(', ', array_map(fn($c) => "`$c` = ?", $cols));
                     db_query("UPDATE `$table` SET $set WHERE id = ?", array_merge($vals, [$id]));
-                    if ($imgDir && $form['image'] !== $oldImage) delete_upload($oldImage);
+                    if ($imgDir && $form[$upCol] !== $oldImage) delete_upload($oldImage);
                     audit('update', $table, $id, array_intersect_key($old, array_flip($cols)), array_intersect_key($form, array_flip($cols)));
                     flash('success', "$noun update ho gaya.");
                 } else {
@@ -118,7 +123,7 @@ function crud_run(array $cfg): void
 
     // ---------- GET ----------
     if ($action === 'new' && $form === null) {
-        $form = ['id' => 0, 'image' => null, 'slug' => ''];
+        $form = ['id' => 0, $upCol => null, 'slug' => ''];
         foreach ($cfg['fields'] as $f) {
             $form[$f[0]] = $f[3]['default'] ?? ($f[2] === 'number' || $f[2] === 'checkbox' ? 0 : ($f[2] === 'select' ? array_key_first($f[3]['options']) : ''));
         }
@@ -141,11 +146,11 @@ function crud_run(array $cfg): void
       <?php if (!$rows): ?><p class="muted">Abhi kuch nahi hai. "+ Add" se pehla record banayein.</p>
       <?php else: ?>
         <table class="t">
-          <tr><?php if ($imgDir): ?><th style="width:64px"></th><?php endif; ?>
+          <tr><?php if ($isImg): ?><th style="width:64px"></th><?php endif; ?>
             <?php foreach ($cfg['list'] as $col): ?><th><?= e($col[0]) ?></th><?php endforeach; ?><th style="width:150px">Actions</th></tr>
           <?php foreach ($rows as $r): ?>
             <tr>
-              <?php if ($imgDir): ?><td><?php if ($r['image']): ?><img class="thumb" src="<?= e(upload_url($r['image'])) ?>" alt=""><?php endif; ?></td><?php endif; ?>
+              <?php if ($isImg): ?><td><?php if ($r[$upCol]): ?><img class="thumb" src="<?= e(upload_url($r[$upCol])) ?>" alt=""><?php endif; ?></td><?php endif; ?>
               <?php foreach ($cfg['list'] as $col): ?><td><?= $col[1]($r) ?></td><?php endforeach; ?>
               <td class="actions">
                 <a class="btn btn-ghost sm" href="?action=edit&id=<?= (int) $r['id'] ?>">Edit</a>
@@ -191,10 +196,11 @@ function crud_run(array $cfg): void
           <div class="field"><label>URL slug</label><input name="slug" value="<?= e($form['slug'] ?? '') ?>" maxlength="200" placeholder="khali chhodo to title se ban jayega"></div>
         <?php endif; ?>
         <?php if ($imgDir): ?>
-          <div class="field"><label>Image (JPG / PNG / WebP, max 3 MB)<?= !empty($cfg['image_required']) ? ' *' : '' ?></label>
-            <input type="file" name="image" accept="image/jpeg,image/png,image/webp">
-            <?php if (!empty($form['image'])): ?><div class="preview"><img src="<?= e(upload_url($form['image'])) ?>" alt="">
-              <label class="check"><input type="checkbox" name="remove_image" value="1"> Image hata do</label></div><?php endif; ?></div>
+          <div class="field"><label><?= e($up['label']) ?><?= $up['required'] ? ' *' : '' ?></label>
+            <input type="file" name="image" accept="<?= $isImg ? 'image/jpeg,image/png,image/webp' : '.pdf,application/pdf' ?>">
+            <?php if (!empty($form[$upCol])): ?><div class="preview">
+              <?php if ($isImg): ?><img src="<?= e(upload_url($form[$upCol])) ?>" alt=""><?php else: ?><a target="_blank" href="<?= e(upload_url($form[$upCol])) ?>">Current file dekhein</a><?php endif; ?>
+              <label class="check"><input type="checkbox" name="remove_image" value="1"> File hata do</label></div><?php endif; ?></div>
         <?php endif; ?>
         </div>
         <div class="form-actions"><button class="btn btn-amber" type="submit">Save</button> <a class="btn btn-ghost" href="<?= e($self) ?>">Cancel</a></div>

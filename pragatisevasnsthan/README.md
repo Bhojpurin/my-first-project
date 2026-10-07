@@ -76,3 +76,10 @@ Flow: donate.php -> pay.php (Razorpay Checkout) -> payment_verify.php (signature
 independently (idempotent). Receipt no. = PREFIX/FY/0001 (gapless per financial year), printable at receipt.php?c=CODE (Print -> Save as PDF).
 Admin > Donations: filters, CSV export, offline (cash/cheque/bank) entry with receipt, resend receipt.
 Not in this step: monthly recurring donations, donor OTP login, refunds from admin, SMS.
+
+## Step 7 - Team, Transparency, Notices, Videos, Contact, Volunteers
+Admin (all via `includes/crud.php`, new `includes/inbox.php` for incoming forms): `trustees.php`, `financial_docs.php` (PDF), `legal_docs.php`,
+`notices.php` (PDF), `video.php` (YouTube ID), `enquiries.php`, `volunteers.php`. crud now supports a PDF/document upload column (`'upload' => [...]`).
+Public: `team.php`, `transparency.php` (legal registrations + financial reports by year), `notices.php`, `videos.php`, `contact.php` (-> enquiries),
+`volunteer.php` (-> volunteers). Header menu now has Transparency + Contact; footer lists Team/Notices/Videos/Volunteer and legal numbers marked "show in footer".
+Still to build: Gallery, Audio, Trust Offers (+ applications), Admin users, Activity log pages, monthly donations, donor login.

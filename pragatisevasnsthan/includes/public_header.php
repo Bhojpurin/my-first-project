@@ -17,7 +17,8 @@ $nav = [
     'about'     => ['page.php?slug=about', t('about')],
     'campaigns' => ['campaigns.php', t('campaigns')],
     'news'      => ['news.php',      t('news')],
-    'contact'   => ['page.php?slug=contact', t('contact')],
+    'transparency' => ['transparency.php', tx('पारदर्शिता', 'Transparency')],
+    'contact'   => ['contact.php',   t('contact')],
 ];
 // language switch keeps the same page: ?lang= is added to the current query
 $other  = $lang === 'hi' ? 'en' : 'hi';

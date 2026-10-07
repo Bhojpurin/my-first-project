@@ -76,3 +76,10 @@
 .dform .ck { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; font-size: 14px; }
 .alert-err { background: var(--danger-bg); color: var(--danger); padding: 10px 14px; border-radius: 10px; margin: 8px 0; }
 @media (max-width: 640px) { .dform .two, .dform .three { grid-template-columns: 1fr; } }
+
+/* step 7 */
+.tbl { width: 100%; border-collapse: collapse; } .tbl th, .tbl td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.tbl th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.doclist { list-style: none; padding: 0; margin: 0 0 24px; } .doclist li { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.two-col { display: grid; gap: 20px; grid-template-columns: 1fr 1.4fr; align-items: start; }
+@media (max-width: 760px) { .two-col { grid-template-columns: 1fr; } }
