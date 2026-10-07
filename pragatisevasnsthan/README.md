@@ -53,3 +53,9 @@ New files: `index.php` (Home), `campaigns.php`, `news.php`, `news_view.php`, `pa
 `includes/lang.php`, `public_header.php`, `public_footer.php`, `campaign_card.php`, `news_card.php`, `assets/css/site.css`.
 Language switch: `?lang=hi|en` (cookie). Only `published` news (publish date reached) and pages are public.
 `donate.php` shows presets + bank/UPI details for now; Razorpay online payment comes in the next step.
+
+## Step 5 - Admin: Pages, Home slider, Campaigns
+New: `includes/crud.php` (one engine for list/add/edit/delete + image upload + audit) and
+`admin/pages.php`, `admin/sliders.php`, `admin/campaigns.php` (each ~30 lines: only describes its fields).
+`admin_header.php` menu: these 3 are now ON. New simple modules (notices, trustees, offers...) = copy a module file, change table/perm/fields.
+To make the public Contact link work: Admin > Pages > Add, slug `contact`, status Published (About / Privacy / Refund / Terms already exist as drafts).
