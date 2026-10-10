@@ -6,9 +6,8 @@
 //
 // Runs from:  tools/bus_watchdog_cron.php (every minute, works with nobody logged in)
 //             and, throttled, from the admin live map (bus_actions.php) as a free backup.
-// Notification: always error_log + the alert shows as a red banner on the admin map.
-//               Define BUS_WATCHDOG_WEBHOOK in config/constants.php (any URL that accepts a JSON POST
-//               {"text": "..."} — Telegram/WhatsApp/Slack relay, n8n, Zapier ...) for instant messages.
+// Notification: the school's own admin alert feed (Live Map, with sound) — via includes/bus_notify.php.
+//               No external webhook: in a multi-school panel a shared URL would mix every school's alerts.
 
 const BUS_WATCHDOG_TZ        = 'Asia/Kolkata';
 const BUS_WATCHDOG_STALE_SEC = 300;   // no fix for 5 min while expected to run
@@ -39,18 +38,6 @@ function busWatchdogExpected(array $a, ?DateTime $now = null): bool
         }
     }
     return false;   // no times configured → the watchdog stays quiet (cannot know when it should run)
-}
-
-function busWatchdogNotify(string $text): void
-{
-    error_log('bus_watchdog: ' . $text);
-    if (!defined('BUS_WATCHDOG_WEBHOOK') || !BUS_WATCHDOG_WEBHOOK) return;
-    $ctx = stream_context_create(['http' => [
-        'method' => 'POST', 'timeout' => 5, 'ignore_errors' => true,
-        'header' => "Content-Type: application/json\r\n",
-        'content' => json_encode(['text' => $text]),
-    ]]);
-    @file_get_contents(BUS_WATCHDOG_WEBHOOK, false, $ctx);
 }
 
 /**
@@ -92,8 +79,10 @@ function runBusWatchdog(PDO $pdo, int $schoolId = 0): array
                 $pdo->prepare("INSERT INTO bus_watchdog_alerts (school_id, bus_id, opened_at, last_seen_at) VALUES (?,?,NOW(),?)")
                     ->execute([(int)$b['school_id'], $id, $b['last_seen']]);
                 $mins = $b['age'] === null ? null : (int)round($b['age'] / 60);
-                busWatchdogNotify('🚌 ' . $b['bus_name'] . ' (' . $b['bus_number'] . ') is running but has sent no location '
-                    . ($mins === null ? 'yet' : 'for ' . $mins . ' min') . '. Check the driver phone / GPS device.');
+                require_once __DIR__ . '/bus_notify.php';
+                busAdminAlert($pdo, (int)$b['school_id'], $id, null, 'silent',
+                    '🚌 ' . $b['bus_name'] . ' (' . $b['bus_number'] . ') chalni chahiye par ' . ($mins === null ? 'abhi tak' : $mins . ' min se')
+                    . ' location nahi aa rahi — driver ka phone / GPS device check karein.');
                 $res['opened']++;
             } elseif ($openId && (!$stale || !$b['expected'])) {
                 $why = !$stale ? 'bus_back' : 'window_ended';

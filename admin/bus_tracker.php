@@ -66,6 +66,10 @@ $pageExtraHead = <<<HTML
 .bd-kpi   { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin:6px 0; }
 .bd-kpi div { background:#f8fafc; border-radius:8px; padding:6px; text-align:center; }
 .bd-kpi b { display:block; font-size:1.05rem; }
+.al-row  { display:flex; gap:8px; align-items:center; padding:4px 2px; cursor:pointer; border-radius:6px; }
+.al-row:hover { background:#fef3c7; }
+.al-row.new b { color:#b91c1c; }
+.al-time { color:#92400e; font-size:.74rem; white-space:nowrap; }
 .bus-list-panel { background:#fff; border-radius:12px; border:1.5px solid #e5e7eb; padding:12px;
                   height:520px; overflow-y:auto; }
 .bus-list-item  { display:flex; align-items:center; gap:10px; padding:10px 8px; border-radius:10px;
@@ -321,7 +325,9 @@ try {
     <span id="mapRefreshStatus" style="font-size:.77rem;color:#94a3b8;"></span>
     <button class="edu-btn edu-btn-sm edu-btn-secondary" onclick="fitAll()"><i class="bi bi-arrows-fullscreen"></i> Fit all</button>
     <button class="edu-btn edu-btn-sm edu-btn-secondary" onclick="refreshMap()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+    <button class="edu-btn edu-btn-sm edu-btn-secondary" onclick="openAlertSettings()"><i class="bi bi-shield-exclamation"></i> Alert settings</button>
   </div>
+ <div id="alertFeed" style="display:none;margin:0 0 10px;border:1.5px solid #fde68a;background:#fffbeb;border-radius:12px;padding:10px 12px;font-size:.82rem;"></div>
   <div id="watchdogBanner" style="display:none;margin:0 0 10px;padding:10px 14px;border-radius:10px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;font-size:.85rem;"></div>
   <div class="map-layout">
     <div class="bus-list-panel" id="mapBusList">
@@ -433,8 +439,8 @@ try {
 
         <div style="margin-top:14px;border-top:1px dashed #e2e8f0;padding-top:12px;">
           <div style="font-size:.8rem;font-weight:600;color:#374151;margin-bottom:4px;"><i class="bi bi-phone-vibrate"></i> Driver Link — no app needed</div>
-          <div style="font-size:.76rem;color:#6b7280;margin-bottom:6px;">Open this link in Chrome on the driver's phone and tap Start. Keep the screen on while driving.</div>
-          <div class="key-box" id="driverLinkBox" style="color:#93c5fd;">—<button class="key-copy" onclick="copyDriverLink()">Copy</button></div>
+          <div style="font-size:.76rem;color:#6b7280;margin-bottom:6px;">Driver ka phone ek baar <strong>pair</strong> hota hai (ek baar chalne wala link, 24 ghante). Link mein koi key nahi hoti, aur phone ko kabhi bhi hataya ja sakta hai.</div>
+          <button type="button" class="edu-btn edu-btn-sm edu-btn-primary" onclick="closeBusModal();openLinksModal()"><i class="bi bi-link-45deg"></i> Driver Links kholein</button>
         </div>
 
         <div style="margin-top:14px;border-top:1px dashed #e2e8f0;padding-top:12px;">
@@ -567,6 +573,44 @@ try {
   </div>
 </div>
 
+<!-- Alert settings (per school) -->
+<div class="modal-ov" id="alertSetModal" onclick="if(event.target===this)closeAlertSettings()">
+  <div class="modal-box" style="max-width:520px;" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <div class="modal-title"><i class="bi bi-shield-exclamation"></i> Bus safety alerts</div>
+      <button class="m-close" onclick="closeAlertSettings()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="alertSetMsg" style="display:none;padding:10px 14px;border-radius:8px;font-size:.83rem;margin-bottom:14px;"></div>
+      <div style="font-size:.8rem;font-weight:700;color:#374151;margin-bottom:6px;">🚀 Overspeed</div>
+      <div class="fld-row">
+        <div class="fld"><label>Speed limit (km/h)</label><input type="number" id="asSpeed" min="20" max="120"></div>
+        <div class="fld"><label>Kitni der tak (sec)</label><input type="number" id="asSpeedSec" min="5" max="300"></div>
+      </div>
+      <div style="font-size:.8rem;font-weight:700;color:#374151;margin:6px 0;">🏫 School gate (bus pahunchi / nikli)</div>
+      <div class="fld-row">
+        <div class="fld"><label>Latitude</label><input id="asLat" placeholder="e.g. 26.8467"></div>
+        <div class="fld"><label>Longitude</label><input id="asLng" placeholder="e.g. 80.9462"></div>
+      </div>
+      <div class="fld-row">
+        <div class="fld"><label>Radius (m)</label><input type="number" id="asRadius" min="50" max="1000"></div>
+        <div class="fld" style="display:flex;align-items:flex-end;"><button type="button" class="edu-btn edu-btn-sm edu-btn-secondary" onclick="alertUseMapCenter()">📍 Live Map ke beech wali jagah lein</button></div>
+      </div>
+      <label style="display:flex;gap:8px;align-items:center;font-size:.82rem;margin:4px 0 12px;"><input type="checkbox" id="asParents"> Parents ko bhi batayein (subah "school pahunchi", dopahar "school se nikli")</label>
+      <div style="font-size:.8rem;font-weight:700;color:#374151;margin-bottom:6px;">🧭 Raaste se hatna (roz ke seekhe hue raaste se)</div>
+      <div class="fld-row">
+        <div class="fld"><label>Kitna door (m)</label><input type="number" id="asDev" min="150" max="3000"></div>
+        <div class="fld"><label>Kitni der tak (sec)</label><input type="number" id="asDevSec" min="30" max="900"></div>
+      </div>
+      <div class="info-box">Alerts sirf aapke school ke admin panel aur aapke school ke parents ko jaate hain — kisi bahari service (WhatsApp/SMS) ko nahi.</div>
+    </div>
+    <div class="modal-foot">
+      <button class="edu-btn edu-btn-secondary" onclick="closeAlertSettings()">Cancel</button>
+      <button class="edu-btn edu-btn-primary" onclick="saveAlertSettings()"><i class="bi bi-check2"></i> Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Confirm Modal (replaces raw browser confirm()) -->
 <div class="modal-ov" id="confirmModal" onclick="if(event.target===this)closeConfirmModal()">
   <div class="modal-box" style="max-width:420px;" onclick="event.stopPropagation()">
@@ -595,6 +639,7 @@ const API     = <?= json_encode(BASE_URL . '/api/bus_actions.php') ?>;
 const GPS_URL = <?= json_encode(BASE_URL . '/api/gps_update.php') ?>;
 const DRIVER_URL = <?= json_encode(BASE_URL . '/api/driver_tracker.php') ?>;
 const SCHOOL  = <?= $schoolId ?>;
+const IS_ADMIN = <?= ($_SESSION['role'] ?? '') === ROLE_SCHOOL_ADMIN ? 'true' : 'false' ?>;   // UI only — the API checks again
 
 // ── Tab Switching ─────────────────────────────────────────────────────────────
 function switchTab(name, btn) {
@@ -871,23 +916,16 @@ function absUrl(u) {
 function phoneGpsUrl(key) {
   return absUrl(GPS_URL) + '?key=' + key + '&lat=%LAT&lng=%LON&speed=%SPD&heading=%DIR&acc=%ACC&su=ms';
 }
-function driverLink(key) {
-  return absUrl(DRIVER_URL) + '?key=' + key;
-}
+// (Old "?key=" driver links were removed: they exposed the bus key. Drivers pair their phone with a one-time link.)
 function setPhoneGpsKey(key) {
   const box = document.getElementById('phoneGpsUrlBox');
   if (box) box.childNodes[0].textContent = key ? phoneGpsUrl(key) : '—';
-  const db = document.getElementById('driverLinkBox');
-  if (db) db.childNodes[0].textContent = key ? driverLink(key) : '—';
   const ep = document.getElementById('gpsEndpoint');
   if (ep) ep.textContent = absUrl(GPS_URL) + '?key=API_KEY&lat=XX&lng=YY&speed=SS';
   const lw = document.getElementById('gpsLocalWarn');
   if (lw) lw.style.display = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? 'block' : 'none';
 }
-function copyDriverLink() {
-  const url = document.getElementById('driverLinkBox').childNodes[0].textContent;
-  copyTextWithFallback(url, document.querySelector('#driverLinkBox .key-copy'));
-}
+
 
 // Live "is this bus sending GPS?" line inside the bus modal
 let _gpsStatusTimer = null;
@@ -931,54 +969,72 @@ async function openLinksModal() {
 }
 function closeLinksModal() { document.getElementById('linksModal').classList.remove('show'); }
 
-function renderLinks() {
+// Driver links are ONE-TIME pairing links (24 h): the phone that opens it first gets its own token, then the
+// link is dead. No bus key is ever put in a link. Paired phones are listed per bus and can be removed.
+let _pairLinks = {}, _devices = [];
+function pairUrl(code) { return absUrl(DRIVER_URL) + '#p=' + code; }
+async function renderLinks() {
   const el = document.getElementById('linksList');
   if (!_buses.length) { el.innerHTML = '<div style="color:#94a3b8;font-size:.85rem;">No buses yet. Add a bus first.</div>'; return; }
+  const dv = await api('driver_devices');
+  _devices = dv.devices || [];
   const badge = {live:['#dcfce7','#166534','GPS Live'], recent:['#fef9c3','#854d0e','Recent'], offline:['#fee2e2','#991b1b','Offline'], never:['#f1f5f9','#475569','No GPS yet']};
   el.innerHTML = _buses.map(b => {
     const bd = badge[b.gps_status] || badge.never;
-    const head = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    const phones = _devices.filter(d => d.bus_id == b.id);
+    const ago = m => m < 2 ? 'abhi' : m < 60 ? m + ' min pehle' : m < 2880 ? Math.round(m / 60) + ' ghante pehle' : Math.round(m / 1440) + ' din pehle';
+    const phoneHtml = phones.length ? phones.map(d => `<div style="display:flex;align-items:center;gap:8px;font-size:.76rem;padding:4px 0;">
+        📱 <span style="flex:1">${esc(d.label || 'Phone')} · jode ${esc(String(d.created_at).slice(0, 10))} · last ${ago(+d.idle_min)}</span>
+        ${IS_ADMIN ? `<button class="edu-btn edu-btn-sm" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;padding:2px 8px;" onclick="revokeDevice(${d.id})">Hatayein</button>` : ''}</div>`).join('')
+      : '<div style="font-size:.76rem;color:#94a3b8;padding:4px 0;">Abhi koi phone juda nahi hai.</div>';
+    const pl = _pairLinks[b.id];
+    const linkHtml = pl ? `<div style="margin-top:8px;font-family:monospace;font-size:.72rem;background:#0f172a;color:#93c5fd;border-radius:8px;padding:8px 10px;word-break:break-all;">${esc(pairUrl(pl))}</div>
+      <div style="font-size:.72rem;color:#b45309;margin-top:4px;">⏱ 24 ghante tak · sirf ek phone par chalega · sirf driver ko bhejein</div>
+      <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="edu-btn edu-btn-sm edu-btn-secondary" onclick="copyPairLink(${b.id}, this)"><i class="bi bi-clipboard"></i> Copy</button>
+        <button class="edu-btn edu-btn-sm edu-btn-secondary" onclick="sharePairLink(${b.id})" style="color:#16a34a;"><i class="bi bi-whatsapp"></i> WhatsApp</button>
+        <button class="edu-btn edu-btn-sm edu-btn-secondary" onclick="toggleBusQr(${b.id}, this)"><i class="bi bi-qr-code"></i> QR</button>
+      </div><div id="qr_${b.id}" style="display:none;margin-top:10px;text-align:center;"></div>` : '';
+    return `<div style="border:1.5px solid #e5e7eb;border-radius:12px;padding:12px;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <strong>${esc(b.bus_name)}</strong><span style="color:#94a3b8;font-size:.8rem;">${esc(b.bus_number)}</span>
         <span style="margin-left:auto;background:${bd[0]};color:${bd[1]};font-size:.7rem;font-weight:600;padding:2px 8px;border-radius:99px;">${bd[2]}</span>
         ${b.status !== 'active' ? '<span style="background:#fee2e2;color:#991b1b;font-size:.7rem;padding:2px 8px;border-radius:99px;">Inactive bus</span>' : ''}
-      </div>`;
-    if (!b.gps_api_key) {
-      return `<div style="border:1.5px solid #e5e7eb;border-radius:12px;padding:12px;">${head}
-        <div style="margin-top:8px;font-size:.78rem;color:#6b7280;">No tracker key yet.
-        <button class="edu-btn edu-btn-sm edu-btn-secondary" onclick="makeKeyForBus(${b.id})">Generate link</button></div></div>`;
-    }
-    const link = driverLink(b.gps_api_key);
-    return `<div style="border:1.5px solid #e5e7eb;border-radius:12px;padding:12px;">${head}
-      <div style="margin-top:8px;font-family:monospace;font-size:.72rem;background:#0f172a;color:#93c5fd;border-radius:8px;padding:8px 10px;word-break:break-all;">${esc(link)}</div>
-      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
-        <button class="edu-btn edu-btn-sm edu-btn-secondary" onclick="copyBusLink(${b.id}, this)"><i class="bi bi-clipboard"></i> Copy</button>
-        <button class="edu-btn edu-btn-sm edu-btn-secondary" onclick="shareBusLink(${b.id})" style="color:#16a34a;"><i class="bi bi-whatsapp"></i> WhatsApp</button>
-        <a class="edu-btn edu-btn-sm edu-btn-secondary" href="${esc(link)}" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right"></i> Open</a>
-        <button class="edu-btn edu-btn-sm edu-btn-secondary" onclick="toggleBusQr(${b.id}, this)"><i class="bi bi-qr-code"></i> QR</button>
       </div>
-      <div id="qr_${b.id}" style="display:none;margin-top:10px;text-align:center;"></div></div>`;
+      <div style="margin-top:6px;">${phoneHtml}</div>
+      ${IS_ADMIN && b.status === 'active' ? `<button class="edu-btn edu-btn-sm edu-btn-primary" style="margin-top:6px;" onclick="makePairLink(${b.id})"><i class="bi bi-link-45deg"></i> ${pl ? 'Naya link banayein' : 'Driver phone jodne ka link banayein'}</button>` : ''}
+      ${linkHtml}</div>`;
   }).join('');
 }
-
-function busLinkText(b) {
-  return 'Bus ' + b.bus_name + ' (' + b.bus_number + ') — GPS Tracker link:\n' + driverLink(b.gps_api_key) +
-         '\n\nIs link ko Chrome mein kholein, Location Allow karein aur "Tracking Chalu Karein" dabayein. Tracking ke dauran screen ON rakhein.';
+async function makePairLink(busId) {
+  const r = await api('driver_pair_link', {bus_id: busId});
+  if (!r.success) { showToast(r.message || 'Link nahi bana.', false); return; }
+  _pairLinks[busId] = r.code;
+  renderLinks();
 }
-function copyBusLink(id, btn) {
-  const b = _buses.find(x => x.id == id); if (!b || !b.gps_api_key) return;
+function pairText(b) {
+  return '🚌 ' + b.bus_name + ' (' + b.bus_number + ') — driver phone jodne ka link (sirf ek baar, 24 ghante tak; kisi ko forward na karein):\n'
+    + pairUrl(_pairLinks[b.id]) + '\n\nChrome mein kholein → Location Allow → shift tick → "Trip Shuru Karein". Agli baar se seedha page khulega.';
+}
+function copyPairLink(id, btn) {
+  if (!_pairLinks[id]) return;
   const orig = btn.innerHTML;
-  copyTextWithFallback(driverLink(b.gps_api_key), null);
+  copyTextWithFallback(pairUrl(_pairLinks[id]), null);
   btn.textContent = 'Copied!'; setTimeout(() => { btn.innerHTML = orig; }, 1800);
 }
-function shareBusLink(id) {
-  const b = _buses.find(x => x.id == id); if (!b || !b.gps_api_key) return;
-  window.open('https://wa.me/?text=' + encodeURIComponent(busLinkText(b)), '_blank', 'noopener');
+function sharePairLink(id) {
+  const b = _buses.find(x => x.id == id); if (!b || !_pairLinks[id]) return;
+  window.open('https://wa.me/?text=' + encodeURIComponent(pairText(b)), '_blank', 'noopener');
 }
 function copyAllLinks(btn) {
-  const lines = _buses.filter(b => b.gps_api_key).map(b => b.bus_name + ' (' + b.bus_number + '): ' + driverLink(b.gps_api_key));
-  if (!lines.length) { showToast('No links to copy.', false); return; }
-  copyTextWithFallback(lines.join('\n'), null);
-  const orig = btn.innerHTML; btn.textContent = 'Copied ' + lines.length + ' links'; setTimeout(() => { btn.innerHTML = orig; }, 2000);
+  showToast('Suraksha ke liye har bus ka link alag se banayein aur sirf us bus ke driver ko bhejein.', false);
+}
+function revokeDevice(id) {
+  showConfirm('Phone hatayein?', 'Is phone se ab is bus ki location ya students nahi dikhenge. Dobara jodne ke liye naya link lagega.', async () => {
+    const r = await api('driver_revoke', {id});
+    showToast(r.message, r.success);
+    renderLinks();
+  }, 'Hatayein');
 }
 async function makeKeyForBus(id) {
   const r = await api('regen_key', {id});
@@ -995,12 +1051,13 @@ function loadQrLib(cb) {
 }
 function toggleBusQr(id, btn) {
   const box = document.getElementById('qr_' + id);
+  if (!box) return;
   if (box.style.display === 'block') { box.style.display = 'none'; return; }
-  const b = _buses.find(x => x.id == id); if (!b || !b.gps_api_key) return;
+  if (!_pairLinks[id]) return;
   loadQrLib(ok => {
     if (!ok) { showToast('QR library could not load (check internet). Use Copy / WhatsApp instead.', false); return; }
-    const qr = window.qrcode(0, 'M'); qr.addData(driverLink(b.gps_api_key)); qr.make();
-    box.innerHTML = qr.createSvgTag(5, 2) + '<div style="font-size:.72rem;color:#6b7280;margin-top:4px;">Scan with the driver\'s phone camera</div>';
+    const qr = window.qrcode(0, 'M'); qr.addData(pairUrl(_pairLinks[id])); qr.make();
+    box.innerHTML = qr.createSvgTag(5, 2) + '<div style="font-size:.72rem;color:#6b7280;margin-top:4px;">Driver ke phone ke camera se scan karein (ek hi baar chalega)</div>';
     box.style.display = 'block';
   });
 }
@@ -1182,6 +1239,7 @@ function initMap() {
     attribution: '© OpenStreetMap contributors', maxZoom:19,
   }).addTo(_map);
   // Polling interval is owned by switchTab() so it only runs while the Map tab is active.
+  drawSchoolCircle();
 }
 
 // Pause polling while the browser tab is hidden; refresh immediately when it comes back.
@@ -1214,6 +1272,7 @@ async function refreshMap() {
     window._lastBuses = buses;
     statusEl.textContent = 'Updated ' + new Date().toLocaleTimeString();
 
+    renderAlertFeed(r.alerts || []);
     const wd = document.getElementById('watchdogBanner'), alerts = r.watchdog || [];
     wd.style.display = alerts.length ? 'block' : 'none';
     wd.innerHTML = alerts.map(a => '⚠️ <strong>' + esc(a.bus_name) + '</strong> (' + esc(a.bus_number) + ') chalni chahiye par ' +
@@ -1305,6 +1364,80 @@ function focusBus(id) {
   if (!_map || !m) { showToast('No GPS location for this bus yet.', false); return; }
   _map.setView(m.getLatLng(), 15);
   m.openPopup();
+}
+
+// ── Safety alert feed (overspeed / school gate / off route / silent) ─────────
+let _lastAlertId = null, _alertMk = null, _schoolCircle = null;
+const AL_ICON = {overspeed:'🚀', school_arrive:'🏫', school_leave:'🚌', deviation:'🧭', silent:'📵'};
+function renderAlertFeed(list) {
+  const box = document.getElementById('alertFeed');
+  if (!list.length) { box.style.display = 'none'; return; }
+  const maxId = Math.max(...list.map(a => +a.id));
+  const fresh = _lastAlertId !== null ? list.filter(a => +a.id > _lastAlertId && a.type !== 'school_arrive' && a.type !== 'school_leave') : [];
+  if (fresh.length) {
+    try { playAlertTone(); } catch (e) {}
+    if ('Notification' in window && Notification.permission === 'granted') fresh.slice(0, 3).forEach(a => new Notification('Bus alert', {body: a.message, tag: 'busalert' + a.id}));
+  }
+  _lastAlertId = maxId;
+  const unseen = list.filter(a => !a.seen_at).length;
+  box.style.display = 'block';
+  box.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><b>🚨 Alerts (12 ghante)</b>
+      ${unseen ? `<span style="background:#dc2626;color:#fff;border-radius:99px;padding:1px 8px;font-size:.72rem;">${unseen} naye</span>` : ''}
+      <span style="flex:1"></span>
+      ${'Notification' in window && Notification.permission === 'default' ? '<button class="edu-btn edu-btn-sm edu-btn-secondary" onclick="Notification.requestPermission()">🔔 Desktop alert ON</button>' : ''}
+      ${unseen ? `<button class="edu-btn edu-btn-sm edu-btn-secondary" onclick="alertsSeen(${maxId})">✓ Sab dekh liya</button>` : ''}</div>`
+    + list.slice(0, 8).map(a => `<div class="al-row${a.seen_at ? '' : ' new'}" onclick="showAlertOnMap(${+a.lat || 0},${+a.lng || 0})">
+        <span>${AL_ICON[a.type] || '⚠️'}</span><b style="flex:1;font-weight:${a.seen_at ? 500 : 700}">${esc(a.message)}</b>
+        <span class="al-time">${esc(String(a.created_at).slice(11, 16))}</span></div>`).join('');
+}
+function playAlertTone() {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)(), t = ctx.currentTime;
+  [0, .25].forEach(o => { const os = ctx.createOscillator(), g = ctx.createGain(); os.connect(g); g.connect(ctx.destination);
+    os.frequency.value = 880; g.gain.setValueAtTime(.3, t + o); g.gain.exponentialRampToValueAtTime(.001, t + o + .2); os.start(t + o); os.stop(t + o + .2); });
+  setTimeout(() => ctx.close(), 800);
+}
+async function alertsSeen(upto) { await api('alerts_seen', {upto}); refreshMap(); }
+function showAlertOnMap(lat, lng) {
+  if (!_map || !lat) return;
+  if (_alertMk) _map.removeLayer(_alertMk);
+  _alertMk = L.circleMarker([lat, lng], {radius: 12, color:'#dc2626', weight:3, fillOpacity:.15}).addTo(_map);
+  _map.setView([lat, lng], 16);
+}
+async function openAlertSettings() {
+  const r = await api('get_alert_settings');
+  const s = r.settings || {};
+  document.getElementById('asSpeed').value = s.overspeed_kmh ?? 50;
+  document.getElementById('asSpeedSec').value = s.overspeed_sec ?? 20;
+  document.getElementById('asLat').value = s.school_lat ?? '';
+  document.getElementById('asLng').value = s.school_lng ?? '';
+  document.getElementById('asRadius').value = s.school_radius_m ?? 150;
+  document.getElementById('asDev').value = s.deviation_m ?? 400;
+  document.getElementById('asDevSec').value = s.deviation_sec ?? 90;
+  document.getElementById('asParents').checked = !!+(s.notify_parents ?? 1);
+  document.getElementById('alertSetMsg').style.display = 'none';
+  document.getElementById('alertSetModal').classList.add('show');
+}
+function closeAlertSettings() { document.getElementById('alertSetModal').classList.remove('show'); }
+function alertUseMapCenter() {
+  if (!_map) { showToast('Pehle Live Map kholein aur school par zoom karein.', false); return; }
+  const c = _map.getCenter();
+  document.getElementById('asLat').value = c.lat.toFixed(6);
+  document.getElementById('asLng').value = c.lng.toFixed(6);
+}
+async function saveAlertSettings() {
+  const v = id => document.getElementById(id).value.trim();
+  const r = await api('save_alert_settings', {overspeed_kmh: v('asSpeed'), overspeed_sec: v('asSpeedSec'), school_lat: v('asLat'), school_lng: v('asLng'),
+    school_radius_m: v('asRadius'), deviation_m: v('asDev'), deviation_sec: v('asDevSec'), notify_parents: document.getElementById('asParents').checked ? 1 : 0});
+  showMsg(document.getElementById('alertSetMsg'), r.success, r.message);
+  if (r.success) { drawSchoolCircle(); setTimeout(closeAlertSettings, 900); }
+}
+async function drawSchoolCircle() {
+  if (!_map) return;
+  const r = await api('get_alert_settings'), s = r.settings || {};
+  if (_schoolCircle) { _map.removeLayer(_schoolCircle); _schoolCircle = null; }
+  if (s.school_lat != null && s.school_lng != null)
+    _schoolCircle = L.circle([s.school_lat, s.school_lng], {radius: +s.school_radius_m || 150, color:'#7c3aed', weight:2, fillOpacity:.06, dashArray:'5 6'})
+      .bindTooltip('🏫 School gate').addTo(_map);
 }
 
 // ── Selected bus: students of the running shift, halts, path, learned route ──

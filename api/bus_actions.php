@@ -14,6 +14,7 @@ if (empty($_SESSION['logged_in']) || !in_array($_SESSION['role'], [ROLE_SCHOOL_A
 ob_end_clean();
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
+header('X-Content-Type-Options: nosniff');
 
 $action   = $_REQUEST['action'] ?? '';
 $schoolId = (int)$_SESSION['school_id'];
@@ -173,6 +174,10 @@ if ($action === 'delete_bus') {
 
     $pdo->prepare("DELETE FROM bus_gps_locations WHERE bus_id=? AND school_id=?")->execute([$id, $schoolId]);
     try { $pdo->prepare("DELETE FROM bus_live WHERE bus_id=? AND school_id=?")->execute([$id, $schoolId]); } catch (\Throwable $e) {}
+    try {   // a deleted bus must not leave working phones or links behind
+        $pdo->prepare("UPDATE bus_driver_devices SET revoked_at=NOW() WHERE bus_id=? AND school_id=? AND revoked_at IS NULL")->execute([$id, $schoolId]);
+        $pdo->prepare("UPDATE bus_pair_codes SET used_at=NOW() WHERE bus_id=? AND school_id=? AND used_at IS NULL")->execute([$id, $schoolId]);
+    } catch (\Throwable $e) {}
     $pdo->prepare("DELETE FROM school_buses WHERE id=? AND school_id=?")->execute([$id, $schoolId]);
     _slog("Bus deleted: ID #$id", 'delete');
     jBus(true, 'Bus deleted.');
@@ -190,6 +195,49 @@ if ($action === 'regen_key') {
     $pdo->prepare("UPDATE school_buses SET gps_api_key=? WHERE id=? AND school_id=?")->execute([$newKey, $id, $schoolId]);
     _slog("GPS API key regenerated for bus #$id", 'update');
     jBus(true, 'API key regenerated.', ['gps_api_key'=>$newKey]);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DRIVER PHONES (one-time pairing links, paired devices, revoke)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── driver_pair_link: new ONE-TIME link for a bus of this school (24 h). Older unused links stop working. ──
+if ($action === 'driver_pair_link') {
+    if (!$isAdmin) jBus(false, 'Admin only.');
+    csrfBus();
+    require_once __DIR__ . '/../includes/bus_security.php';
+    $busId = (int)($_POST['bus_id'] ?? 0);
+    $chk = $pdo->prepare("SELECT id FROM school_buses WHERE id=? AND school_id=? AND status='active'");
+    $chk->execute([$busId, $schoolId]);
+    if (!$chk->fetch()) jBus(false, 'Bus not found or inactive.');
+    if (!busRateHit($pdo, 'pairmk:' . $schoolId, 60, 3600)) jBus(false, 'Too many links created. Try again later.');
+    try { $code = busCreatePairCode($pdo, $schoolId, $busId, $userId); }
+    catch (\Throwable $e) { jBus(false, 'Security tables missing — run tools/migrate.php.'); }
+    _slog("Driver pairing link created for bus #$busId", 'update');
+    jBus(true, '', ['code' => $code, 'valid_hours' => (int)(BUS_PAIR_TTL_SEC / 3600)]);
+}
+
+// ── driver_devices: paired phones of this school ─────────────────────────────
+if ($action === 'driver_devices') {
+    try {
+        $st = $pdo->prepare("SELECT d.id, d.bus_id, d.label, d.created_at, d.last_seen_at,
+                                    TIMESTAMPDIFF(MINUTE, d.last_seen_at, NOW()) AS idle_min
+                             FROM bus_driver_devices d WHERE d.school_id=? AND d.revoked_at IS NULL ORDER BY d.bus_id, d.last_seen_at DESC");
+        $st->execute([$schoolId]);
+        jBus(true, '', ['devices' => $st->fetchAll()]);
+    } catch (\Throwable $e) { jBus(true, '', ['devices' => []]); }
+}
+
+// ── driver_revoke: unpair one phone (or all phones of a bus with bus_id) ─────
+if ($action === 'driver_revoke') {
+    if (!$isAdmin) jBus(false, 'Admin only.');
+    csrfBus();
+    $id = (int)($_POST['id'] ?? 0); $busId = (int)($_POST['bus_id'] ?? 0);
+    if ($id) $pdo->prepare("UPDATE bus_driver_devices SET revoked_at=NOW() WHERE id=? AND school_id=? AND revoked_at IS NULL")->execute([$id, $schoolId]);
+    elseif ($busId) $pdo->prepare("UPDATE bus_driver_devices SET revoked_at=NOW() WHERE bus_id=? AND school_id=? AND revoked_at IS NULL")->execute([$busId, $schoolId]);
+    else jBus(false, 'Invalid request.');
+    _slog($id ? "Driver phone #$id unpaired" : "All driver phones of bus #$busId unpaired", 'update');
+    jBus(true, 'Phone hata diya gaya. Ab wo is bus ka data nahi dekh sakta.');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -363,7 +411,14 @@ if ($action === 'get_live_locations') {
         $_SESSION['bus_wd_last'] = time();
         runBusWatchdog($pdo, $schoolId);
     }
-    jBus(true, '', ['buses' => $rows, 'watchdog' => busWatchdogOpenAlerts($pdo, $schoolId)]);
+    $alerts = [];
+    try {   // newest alerts of the last 12 h for the live feed (this school only)
+        $al = $pdo->prepare("SELECT a.id, a.bus_id, a.type, a.lat, a.lng, a.value, a.message, a.created_at, a.seen_at
+                             FROM bus_alerts a WHERE a.school_id=? AND a.created_at > (NOW() - INTERVAL 12 HOUR) ORDER BY a.id DESC LIMIT 30");
+        $al->execute([$schoolId]);
+        $alerts = $al->fetchAll();
+    } catch (\Throwable $e) {}
+    jBus(true, '', ['buses' => $rows, 'watchdog' => busWatchdogOpenAlerts($pdo, $schoolId), 'alerts' => $alerts]);
 }
 
 // Running trip of one bus with pickup progress: {id, shift, started_at, total, done, absent, pending, missing, next}
@@ -429,6 +484,61 @@ if ($action === 'learn_reset') {
     $pdo->prepare("DELETE FROM bus_route_learn WHERE bus_id=? AND shift_no=? AND kind=? AND school_id=?")->execute([$busId, $shift, $kind, $schoolId]);
     _slog("Learned route reset for bus #$busId shift $shift ($kind)", 'update');
     jBus(true, 'Seekha hua raasta hata diya. Agli trips se phir seekhega.');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SAFETY ALERTS (per-school settings + alert feed)
+// ─────────────────────────────────────────────────────────────────────────────
+
+if ($action === 'get_alert_settings') {
+    require_once __DIR__ . '/../includes/bus_alerts.php';
+    jBus(true, '', ['settings' => busAlertSettings($pdo, $schoolId)]);
+}
+
+if ($action === 'save_alert_settings') {
+    if (!$isAdmin) jBus(false, 'Admin only.');
+    csrfBus();
+    $n = function ($k, $min, $max, $def) { $v = (int)($_POST[$k] ?? $def); return max($min, min($max, $v)); };
+    $lat = trim((string)($_POST['school_lat'] ?? '')); $lng = trim((string)($_POST['school_lng'] ?? ''));
+    if ($lat !== '' || $lng !== '') {
+        if (!is_numeric($lat) || !is_numeric($lng) || abs((float)$lat) > 90 || abs((float)$lng) > 180 || ((float)$lat == 0 && (float)$lng == 0))
+            jBus(false, 'School location galat hai.');
+        $lat = (float)$lat; $lng = (float)$lng;
+    } else { $lat = null; $lng = null; }
+    try {
+        $pdo->prepare("INSERT INTO bus_alert_settings (school_id, overspeed_kmh, overspeed_sec, school_lat, school_lng, school_radius_m, deviation_m, deviation_sec, notify_parents, updated_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,NOW())
+                       ON DUPLICATE KEY UPDATE overspeed_kmh=VALUES(overspeed_kmh), overspeed_sec=VALUES(overspeed_sec), school_lat=VALUES(school_lat),
+                         school_lng=VALUES(school_lng), school_radius_m=VALUES(school_radius_m), deviation_m=VALUES(deviation_m),
+                         deviation_sec=VALUES(deviation_sec), notify_parents=VALUES(notify_parents), updated_at=NOW()")
+            ->execute([$schoolId, $n('overspeed_kmh', 20, 120, 50), $n('overspeed_sec', 5, 300, 20), $lat, $lng,
+                       $n('school_radius_m', 50, 1000, 150), $n('deviation_m', 150, 3000, 400), $n('deviation_sec', 30, 900, 90),
+                       !empty($_POST['notify_parents']) ? 1 : 0]);
+    } catch (\Throwable $e) { jBus(false, 'Alert tables missing — run tools/migrate.php.'); }
+    _slog('Bus alert settings updated', 'update');
+    jBus(true, 'Alert settings save ho gayi.');
+}
+
+// ── get_alerts: recent alerts of this school (newest first) ─────────────────
+if ($action === 'get_alerts') {
+    $hours = max(1, min(720, (int)($_REQUEST['hours'] ?? 24)));
+    try {
+        $st = $pdo->prepare("SELECT a.id, a.bus_id, b.bus_name, a.type, a.lat, a.lng, a.value, a.message, a.created_at, a.seen_at
+                             FROM bus_alerts a JOIN school_buses b ON b.id=a.bus_id AND b.school_id=a.school_id
+                             WHERE a.school_id=? AND a.created_at > (NOW() - INTERVAL $hours HOUR)
+                             ORDER BY a.id DESC LIMIT 200");
+        $st->execute([$schoolId]);
+        jBus(true, '', ['alerts' => $st->fetchAll()]);
+    } catch (\Throwable $e) { jBus(true, '', ['alerts' => []]); }
+}
+
+// ── alerts_seen: mark all alerts up to an id as seen ─────────────────────────
+if ($action === 'alerts_seen') {
+    csrfBus();
+    try {
+        $pdo->prepare("UPDATE bus_alerts SET seen_at=NOW() WHERE school_id=? AND id<=? AND seen_at IS NULL")->execute([$schoolId, (int)($_POST['upto'] ?? 0)]);
+    } catch (\Throwable $e) {}
+    jBus(true, '');
 }
 
 // ── get_bus_trail ─────────────────────────────────────────────────────────────

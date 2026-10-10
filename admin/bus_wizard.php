@@ -1,7 +1,7 @@
 <?php
 // admin/bus_wizard.php — Bus Setup Wizard (included by bus_tracker.php, before the footer).
 // Steps: 1 Bus → 2 Tracking method → 3 Live test → 4 Route/driver/shifts → 5 Health check.
-// Re-uses helpers of bus_tracker.php: api(), esc(), showToast(), absUrl(), driverLink(), phoneGpsUrl(),
+// Re-uses helpers of bus_tracker.php: api(), esc(), showToast(), absUrl(), pairUrl(), phoneGpsUrl(),
 // copyTextWithFallback(), loadFleet(), loadRoutes(), switchTab(), _buses, BASE_URL constants.
 // Needs: bus_actions.php (save_bus, save_assignment, get_unassigned_routes, get_drivers, wizard_check, wizard_status).
 ?>
@@ -181,16 +181,13 @@ async function wzNext() {
 function wzMethod(m) {
   wz.method = m;
   document.querySelectorAll('.wz-opt').forEach(o => o.classList.toggle('sel', o.dataset.m === m));
-  const link = driverLink(wz.key), logger = phoneGpsUrl(wz.key), busName = wz.bus ? wz.bus.bus_name : 'bus';
+  const logger = phoneGpsUrl(wz.key), busName = wz.bus ? wz.bus.bus_name : 'bus';
   const copyBtn = (id, txt) => '<div class="key-box" style="color:#86efac;" id="' + id + '">' + esc(txt) + '<button class="key-copy" onclick="copyTextWithFallback(document.getElementById(\'' + id + '\').childNodes[0].textContent,this)">Copy</button></div>';
   let h = '';
   if (m === 'browser') {
-    const wa = 'https://wa.me/?text=' + encodeURIComponent('🚌 ' + busName + ' ka GPS link (sirf driver ke liye, kisi ko forward na karein):\n' + link + '\n\nChrome mein kholein → Location Allow → "Trip Shuru Karein".');
-    h = copyBtn('wzLink', link)
-      + '<div style="display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap;"><div id="wzQr" style="width:132px;height:132px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:4px;"></div>'
-      + '<div style="flex:1;min-width:180px;font-size:.8rem;color:#475569;line-height:1.6;">Driver ke phone ka camera is <strong>QR</strong> par rakhein, ya link WhatsApp karein.<br>'
-      + '<a class="edu-btn edu-btn-sm edu-btn-primary" style="margin-top:6px;display:inline-flex;" target="_blank" rel="noopener" href="' + wa + '"><i class="bi bi-whatsapp"></i> WhatsApp par bhejein</a></div></div>'
-      + '<div class="info-box" style="margin-top:12px;">🔒 Ye link is bus ki "chaabi" hai — sirf driver ko dein.</div>';
+    h = '<div style="font-size:.82rem;line-height:1.6;color:#374151;">Driver ka phone ek baar <strong>pair</strong> hota hai: ek baar chalne wala link (24 ghante). Link mein koi key nahi hoti — forward ho jaaye to bhi doosre phone par nahi chalega.</div>'
+      + '<button type="button" class="edu-btn edu-btn-primary" style="margin-top:10px;" onclick="wzMakePair()"><i class="bi bi-link-45deg"></i> Pairing link banayein</button>'
+      + '<div id="wzPair" style="margin-top:12px;"></div>';
   } else if (m === 'logger') {
     h = '<div style="font-size:.82rem;line-height:1.7;color:#374151;">1. GPSLogger app install karein: <a href="' + <?= json_encode(BASE_URL . '/apps/GPSLogger.apk') ?> + '" download>APK download</a><br>'
       + '2. ≡ Menu → <strong>Log to Custom URL</strong> → ON → neeche wala URL paste karein:</div>' + copyBtn('wzLogger', logger)
@@ -201,10 +198,18 @@ function wzMethod(m) {
       + '<div style="font-size:.78rem;color:#64748b;margin-top:8px;line-height:1.6;">• Device agar header support kare to URL se key hata kar header <code>X-API-Key</code> mein daalein — key logs mein nahi dikhegi.<br>• Speed m/s mein ho to URL ke aakhir mein <code>&amp;su=ms</code> jodein. Update interval 10–30 sec rakhein.</div>';
   }
   document.getElementById('wzHow').innerHTML = h;
-  if (m === 'browser') {
-    try { const q = qrcode(0, 'M'); q.addData(link); q.make(); document.getElementById('wzQr').innerHTML = q.createSvgTag({cellSize: 4, margin: 0, scalable: true}); }
-    catch (e) { document.getElementById('wzQr').innerHTML = '<div style="font-size:.7rem;color:#94a3b8;padding:8px;">QR load nahi hua — link copy karein</div>'; }
-  }
+}
+async function wzMakePair() {
+  const r = await api('driver_pair_link', {bus_id: wz.bus.id});
+  if (!r.success) { wzMsg(false, r.message); return; }
+  const link = pairUrl(r.code), busName = wz.bus.bus_name;
+  const wa = 'https://wa.me/?text=' + encodeURIComponent('🚌 ' + busName + ' — driver phone jodne ka link (sirf ek baar, 24 ghante; forward na karein):\n' + link + '\n\nChrome mein kholein → Location Allow → shift tick → "Trip Shuru Karein".');
+  document.getElementById('wzPair').innerHTML = '<div class="key-box" style="color:#86efac;" id="wzLink">' + esc(link) + '<button class="key-copy" onclick="copyTextWithFallback(document.getElementById(\'wzLink\').childNodes[0].textContent,this)">Copy</button></div>'
+    + '<div style="display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap;"><div id="wzQr" style="width:132px;height:132px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:4px;"></div>'
+    + '<div style="flex:1;min-width:180px;font-size:.8rem;color:#475569;line-height:1.6;">Driver ke phone ka camera is <strong>QR</strong> par rakhein, ya link WhatsApp karein.<br>'
+    + '<a class="edu-btn edu-btn-sm edu-btn-primary" style="margin-top:6px;display:inline-flex;" target="_blank" rel="noopener" href="' + wa + '"><i class="bi bi-whatsapp"></i> WhatsApp par bhejein</a></div></div>';
+  try { const q = qrcode(0, 'M'); q.addData(link); q.make(); document.getElementById('wzQr').innerHTML = q.createSvgTag({cellSize: 4, margin: 0, scalable: true}); }
+  catch (e) { document.getElementById('wzQr').innerHTML = '<div style="font-size:.7rem;color:#94a3b8;padding:8px;">QR load nahi hua — link copy karein</div>'; }
 }
 
 // ── step 3: live test ─────────────────────────────────────────────────────────

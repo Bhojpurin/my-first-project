@@ -1,0 +1,17 @@
+<?php
+// includes/bus_message_hook.php — connects bus notifications to the panel's OWN messaging (student portal → Messages).
+// Copy this file to includes/bus_message_hook.php and fill in the INSERT for your messages table
+// (the one api/student_message_actions.php reads: it shows rows with is_auto / auto_event as "Auto: …").
+//
+// Rules: insert ONLY for the given $schoolId and $studentId (both already verified by bus_notify.php);
+// never echo anything; return true when the message was stored.
+
+function bus_send_school_message(PDO $pdo, int $schoolId, int $studentId, string $body, string $event): bool
+{
+    // EXAMPLE — adjust table / column names to your messaging schema:
+    // $pdo->prepare("INSERT INTO student_messages (school_id, student_id, sender, body, is_auto, auto_event, created_at)
+    //                VALUES (?, ?, 'school', ?, 1, ?, NOW())")
+    //     ->execute([$schoolId, $studentId, $body, $event]);
+    // return true;
+    return false;
+}

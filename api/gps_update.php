@@ -6,11 +6,14 @@
 //   heading  0-360 ("dir" also accepted)              acc     accuracy in metres (fixes worse than 150 m are ignored)
 //   age      seconds since the fix was taken — used to back-fill points buffered while the phone had no internet
 //   info=1   only validate the key and return the bus name (no location needed)
-// GPS hardware authenticates via per-bus API key — no user session needed.
+// Auth: GPS hardware / GPSLogger use the per-bus API key (write-only: it can only add positions).
+//       A paired driver phone sends its device token in the "X-Device-Token" header instead (no key in any URL).
+// Abuse protection: wrong keys/tokens are rate-limited per IP (20 per 10 min), so keys cannot be guessed.
 
 ob_start();
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../config/constants.php';
+require_once __DIR__ . '/../includes/bus_security.php';
 ob_end_clean();
 
 const GPS_KEEP_HOURS        = 48;      // how long location history is kept
@@ -22,11 +25,10 @@ const GPS_MAX_JUMP_MS       = 70.0;    // m/s (~250 km/h): faster than this betw
 
 ignore_user_abort(true); // finish background work even if the device hangs up
 
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store');
-header('Access-Control-Allow-Origin: *'); // GPS device may call from any IP
+busApiHeaders();
+header('Access-Control-Allow-Origin: *'); // GPS devices post from anywhere; there are no cookies, so this exposes nothing
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, X-API-Key');
+header('Access-Control-Allow-Headers: Content-Type, X-API-Key, X-Device-Token');
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') { http_response_code(204); exit; } // CORS preflight
 
@@ -97,20 +99,30 @@ function upsertLive(PDO $pdo, int $busId, int $schoolId, float $lat, float $lng,
     } catch (\Throwable $e) { error_log('gps_update bus_live: ' . $e->getMessage()); }
 }
 
-$key = trim((string)($_SERVER['HTTP_X_API_KEY'] ?? ($_REQUEST['key'] ?? '')));
+$key   = trim((string)($_SERVER['HTTP_X_API_KEY'] ?? ($_REQUEST['key'] ?? '')));
+$token = busDeviceTokenFromRequest();
 $lat = numOrNull($_REQUEST['lat'] ?? null);
 $lng = numOrNull($_REQUEST['lng'] ?? ($_REQUEST['lon'] ?? null)); // GPS apps use 'lon' or 'lng'
 
-if ($key === '' || strlen($key) > 128)  jOut(['ok'=>false,'msg'=>'API key required']);
+if ($key === '' && $token === '') jOut(['ok'=>false,'msg'=>'API key required']);
 
-// ?info=1&key=... : validate a key and return the bus name (used by driver_tracker.php). Stores nothing.
+// Resolve the bus (and its school) from the credential. Wrong credentials are rate-limited per IP.
+function gpsAuth(PDO $pdo, string $key, string $token): array {
+    $ip = busClientIp();
+    if (busRateBlocked($pdo, 'gpsfail:' . $ip, 20, 600)) busTooMany();
+    $bus = $token !== '' ? busByDeviceToken($pdo, $token) : busByApiKey($pdo, $key);
+    if (!$bus) {
+        busRateHit($pdo, 'gpsfail:' . $ip, 20, 600);
+        if ($token !== '') { http_response_code(401); jOut(['ok'=>false,'code'=>'unpaired','msg'=>'Phone not paired']); }
+        jOut(['ok'=>false,'msg'=>'Invalid or inactive bus key']);
+    }
+    return $bus;
+}
+
+// ?info=1 : validate the credential and return the bus name. Stores nothing.
 if (($_REQUEST['info'] ?? '') === '1') {
     try {
-        $pdo = Database::connect();
-        $q = $pdo->prepare("SELECT bus_name, bus_number FROM school_buses WHERE gps_api_key=? AND status='active' LIMIT 1");
-        $q->execute([$key]);
-        $b = $q->fetch();
-        if (!$b) jOut(['ok'=>false,'msg'=>'Invalid or inactive bus key']);
+        $b = gpsAuth(Database::connect(), $key, $token);
         jOut(['ok'=>true,'bus_name'=>$b['bus_name'],'bus_number'=>$b['bus_number']]);
     } catch (\Throwable $e) {
         error_log('gps_update info: '.$e->getMessage());
@@ -145,11 +157,9 @@ if ($ageSec !== null && $ageSec >= GPS_BACKFILL_MIN_SEC) {
 try {
     $pdo = Database::connect();
 
-    // Find active bus by API key
-    $s = $pdo->prepare("SELECT id, school_id FROM school_buses WHERE gps_api_key=? AND status='active' LIMIT 1");
-    $s->execute([$key]);
-    $bus = $s->fetch();
-    if (!$bus) jOut(['ok'=>false,'msg'=>'Invalid or inactive bus key']);
+    $bus = gpsAuth($pdo, $key, $token);
+    // Per-bus flood guard (a stolen key cannot fill the database): 60 requests a minute is plenty
+    if (!busRateHit($pdo, 'gpsbus:' . $bus['id'], 60, 60)) busTooMany();
     $busId    = (int)$bus['id'];
     $schoolId = (int)$bus['school_id'];
 
@@ -208,6 +218,14 @@ try {
     checkBusProximityPush($pdo, $busId, $schoolId, $lat, $lng, $speed, $acc);
 } catch (\Throwable $e) {
     error_log('gps_update proximity: ' . $e->getMessage());
+}
+
+// Safety alerts: overspeed, school gate in/out, leaving the everyday road (per-school settings)
+try {
+    require_once __DIR__ . '/../includes/bus_alerts.php';
+    busAlertCheck($pdo, $busId, $schoolId, $lat, $lng, $speed, $acc);
+} catch (\Throwable $e) {
+    error_log('gps_update alerts: ' . $e->getMessage());
 }
 
 // Retention: delete history older than GPS_KEEP_HOURS. Runs on ~1 in 50 requests,

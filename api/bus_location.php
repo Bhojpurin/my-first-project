@@ -15,6 +15,7 @@ const BUS_LOCATION_REQUIRE_LOGIN = true;
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
+header('X-Content-Type-Options: nosniff');
 
 $busId    = (int)($_GET['bus_id']    ?? 0);
 $schoolId = (int)($_GET['school_id'] ?? 0);
@@ -110,6 +111,26 @@ try {
                         $bq = $pdo->prepare("SELECT COUNT(*) FROM bus_trip_stops WHERE trip_id=? AND status='pending' AND seq IS NOT NULL AND seq < ?");
                         $bq->execute([(int)$t['id'], (int)$me['seq']]);
                         $trip['before'] = (int)$bq->fetchColumn();
+                    }
+                    // ETA: the driver phone's estimate (road distance, planned order) while it is fresh,
+                    // else a rough one from here: straight distance × 1.35 at 20 km/h + 1 min per stop before.
+                    $trip['eta_min'] = null;
+                    if ($trip['status'] === 'pending') {
+                        try {
+                            $eq = $pdo->prepare("SELECT TIMESTAMPDIFF(SECOND, NOW(), eta_at) FROM bus_trip_stops WHERE trip_id=? AND student_id=? AND eta_at > NOW() - INTERVAL 3 MINUTE");
+                            $eq->execute([(int)$t['id'], $stuId]);
+                            $sec = $eq->fetchColumn();
+                            if ($sec !== false && $sec !== null) $trip['eta_min'] = max(0, (int)round($sec / 60));
+                        } catch (\Throwable $e) {}
+                        if ($trip['eta_min'] === null && $age < 300) {
+                            $hq = $pdo->prepare("SELECT lat, lng FROM student_home_locations WHERE student_id=? AND school_id=?");
+                            $hq->execute([$stuId, $schoolId]);
+                            if ($h = $hq->fetch()) {
+                                $d = busTripDist((float)$loc['lat'], (float)$loc['lng'], (float)$h['lat'], (float)$h['lng']) * 1.35;
+                                $trip['eta_min'] = (int)round($d / (20000 / 60) + (int)($trip['before'] ?? 0));
+                                $trip['eta_rough'] = true;
+                            }
+                        }
                     }
                 }
             }

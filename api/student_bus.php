@@ -4,6 +4,7 @@
 
 header('Content-Type: application/json; charset=utf-8'); // set first, so even the "not logged in" reply is JSON
 header('Cache-Control: no-store');
+header('X-Content-Type-Options: nosniff');
 
 require_once __DIR__ . '/../student/stu_guard.php';
 
@@ -54,10 +55,40 @@ if ($action === 'set_home') {
     echo json_encode(['success'=>true,'message'=>'Home location saved.']); exit;
 }
 
+// Landmark note for the driver ("mandir ke saamne, neela gate"): plain text, one line, max 120 chars.
+function cleanHomeNote($v): string {
+    $v = strip_tags((string)$v);
+    $v = preg_replace('/[\x00-\x1F\x7F]+/u', ' ', $v);
+    $v = trim(preg_replace('/\s+/u', ' ', $v));
+    return mb_substr($v, 0, 120);
+}
+
+// ── set_note ──────────────────────────────────────────────────────────────────
+if ($action === 'set_note') {
+    $note = cleanHomeNote($_POST['note'] ?? '');
+    try {
+        $u = $pdo->prepare("UPDATE student_home_locations SET note=?, updated_at=NOW() WHERE student_id=? AND school_id=?");
+        $u->execute([$note !== '' ? $note : null, $stuId, $schoolId]);
+        if (!$u->rowCount()) {
+            $c = $pdo->prepare("SELECT 1 FROM student_home_locations WHERE student_id=? AND school_id=?");
+            $c->execute([$stuId, $schoolId]);
+            if (!$c->fetchColumn()) { echo json_encode(['success'=>false,'message'=>'Please set your home location first.']); exit; }
+        }
+    } catch (\Throwable $e) {
+        echo json_encode(['success'=>false,'message'=>'Note feature is not installed yet.']); exit;
+    }
+    echo json_encode(['success'=>true,'message'=>'Note saved — the driver will see it.','note'=>$note]); exit;
+}
+
 // ── get_home ──────────────────────────────────────────────────────────────────
 if ($action === 'get_home') {
-    $s = $pdo->prepare("SELECT lat, lng, alert_radius, push_enabled, updated_at FROM student_home_locations WHERE student_id=? AND school_id=?");
-    $s->execute([$stuId, $schoolId]);
+    try {
+        $s = $pdo->prepare("SELECT lat, lng, alert_radius, push_enabled, updated_at, note FROM student_home_locations WHERE student_id=? AND school_id=?");
+        $s->execute([$stuId, $schoolId]);
+    } catch (\Throwable $e) {   // note column not migrated yet
+        $s = $pdo->prepare("SELECT lat, lng, alert_radius, push_enabled, updated_at, NULL AS note FROM student_home_locations WHERE student_id=? AND school_id=?");
+        $s->execute([$stuId, $schoolId]);
+    }
     $row = $s->fetch();
     if ($row) {
         echo json_encode([
@@ -66,6 +97,7 @@ if ($action === 'get_home') {
             'lng'          => (float)$row['lng'],
             'radius'       => (int)$row['alert_radius'],
             'push_enabled' => (bool)$row['push_enabled'],
+            'note'         => (string)($row['note'] ?? ''),
             'updated'      => $row['updated_at'],
         ]);
     } else {

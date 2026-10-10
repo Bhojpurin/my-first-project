@@ -1,7 +1,9 @@
 <?php
 // api/driver_tracker.php — browser-based GPS sender + stop map for ONE bus (no app install needed).
-// Open on the driver's phone (Chrome):  https://YOUR-DOMAIN/api/driver_tracker.php?key=BUS_API_KEY
-// Each bus has its own key → its own link. No login: the per-bus key is the auth.
+// Pairing: the admin creates a ONE-TIME link  …/api/driver_tracker.php#p=CODE  (valid 24 h). The code sits after
+// "#", so it never reaches server logs or referrers. The phone redeems it once for its own device token (kept in
+// this phone's storage, sent as the X-Device-Token header). The link is dead afterwards; the admin can unpair
+// the phone at any time. No bus key is ever in this page's URL.
 //
 // GPS:   warm-up for a good first fix · Kalman smoothing (speed-adaptive) · glitch/outlier rejection ·
 //        parked-position hold (no GPS drift) · computed speed & heading · adaptive send rate + extra send on
@@ -13,8 +15,10 @@
 //        marks survive offline and reloads, and reach the admin report and the student portal.
 header('Cache-Control: no-store');
 header('X-Robots-Tag: noindex, nofollow');
-header('Referrer-Policy: no-referrer');   // the key is in the URL: never leak it to map tiles / Google Maps
-$key = preg_replace('/[^A-Za-z0-9_\-]/', '', (string)($_GET['key'] ?? ''));
+header('Referrer-Policy: no-referrer');
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: DENY');
+$legacyLink = isset($_GET['key']);   // old "?key=" links no longer work (they exposed the bus key)
 
 // Road routing (real roads, best stop order). Public OSRM demo server by default — fine for a few buses; for
 // many buses define BUS_ROUTER_URL in config/constants.php (your own OSRM server), or '' to switch it off.
@@ -23,6 +27,12 @@ if (is_file(__DIR__ . '/../config/constants.php')) {
     ob_start(); require_once __DIR__ . '/../config/constants.php'; ob_end_clean();
     if (defined('BUS_ROUTER_URL')) $router = rtrim((string)BUS_ROUTER_URL, '/');
 }
+if (!preg_match('#^https://[A-Za-z0-9.\-]+(:\d+)?(/[A-Za-z0-9._~/\-]*)?$#', $router)) $router = '';
+// Content-Security-Policy: only our own scripts + Leaflet; data may only go to this site and the router.
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+     . "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https://*.tile.openstreetmap.org; "
+     . "connect-src 'self'" . ($router ? ' ' . preg_replace('#^(https://[^/]+).*$#', '$1', $router) : '') . "; "
+     . "worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
 ?><!DOCTYPE html>
 <html lang="hi">
 <head>
@@ -155,6 +165,7 @@ if (is_file(__DIR__ . '/../config/constants.php')) {
     <div class="box"><small>Battery</small><b id="batt">—</b></div>
   </div>
   <button id="dimBtn" type="button">🌙 Screen dim karein (battery bachao)</button>
+  <button id="unpairBtn" type="button" style="width:100%;margin-top:8px;padding:10px;border:1px solid #7f1d1d;border-radius:12px;background:transparent;color:#fca5a5;font-size:.82rem;cursor:pointer">🔓 Is phone ko bus se hatayein</button>
 
   <div class="note">
     <strong>Kaise chalayein:</strong><br>
@@ -170,7 +181,10 @@ if (is_file(__DIR__ . '/../config/constants.php')) {
 
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
-const KEY = <?= json_encode($key) ?>;
+const KEY = 'drv';                          // storage namespace on this phone (one bus per phone)
+const LEGACY_LINK = <?= $legacyLink ? 'true' : 'false' ?>;
+let TOKEN = load('drv_token') || '';        // this phone's device token (from pairing)
+function authHeaders() { return {'X-Device-Token': TOKEN}; }
 const ENDPOINT = 'gps_update.php';
 const TRIP = 'bus_trip.php';
 const ROUTER = <?= json_encode($router) ?>;
@@ -295,7 +309,6 @@ function enqueue(p) {
 // returns 'ok' | 'drop' (server said no, don't retry) | 'fail' (network problem, retry later)
 async function post(p, ageSec) {
   const body = new URLSearchParams({
-    key: KEY,
     lat: p.lat.toFixed(6), lng: p.lng.toFixed(6),
     speed: p.speed.toFixed(2), heading: p.heading.toFixed(1),
     acc: Math.round(p.acc || 0), su: 'ms'
@@ -304,7 +317,8 @@ async function post(p, ageSec) {
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), 12000);
   try {
-    const r = await fetch(ENDPOINT, {method: 'POST', body, signal: ctrl.signal, cache: 'no-store'});
+    const r = await fetch(ENDPOINT, {method: 'POST', body, headers: authHeaders(), signal: ctrl.signal, cache: 'no-store'});
+    if (r.status === 401) { unpaired(); return 'drop'; }
     if (!r.ok) return 'fail';
     const j = await r.json();
     if (j.ok) return 'ok';
@@ -463,6 +477,7 @@ function loop() {
   if (marks.length && now % 15000 < 1000) flushMarks();
   if (shifts.length && now - stopsLoadedAt > CFG.STOPS_REFRESH_MS) loadStops();   // students may move their pin
   if (road.cached && now % 30000 < 1000) requestRoute(true);                        // offline route → refresh when net is back
+  postEtas(false);                                                                  // parents' ETA, once a minute
   render();
 }
 
@@ -533,12 +548,13 @@ async function checkPermission() {
 const CACHEABLE = {status: 1, stops: 1};
 function cacheKey(action, extra) { return 'trk_c_' + KEY + '_' + action + (action === 'stops' ? '_' + ((extra && extra.shift) || 1) : ''); }
 async function tripCall(action, extra) {
-  const body = new URLSearchParams(Object.assign({key: KEY, action}, extra || {}));
+  const body = new URLSearchParams(Object.assign({action}, extra || {}));
   const ck = cacheKey(action, extra);
   const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), 12000);
   try {
-    const r = await fetch(TRIP, {method: 'POST', body, cache: 'no-store', signal: ctrl.signal});
+    const r = await fetch(TRIP, {method: 'POST', body, headers: authHeaders(), cache: 'no-store', signal: ctrl.signal});
     const j = await r.json();
+    if (r.status === 401 && j && j.code === 'unpaired') { unpaired(); return null; }
     if (CACHEABLE[action] && j && j.ok) store(ck, JSON.stringify(j));
     return j;
   } catch (e) {
@@ -826,6 +842,28 @@ function roadDistTo(s) {
   const segLen = i0 + 1 < c.length ? road.cum[i0 + 1] - road.cum[i0] : 0;
   return Math.max(0, road.cum[bj] - (road.cum[i0] + road.t * segLen)) + bd;
 }
+// Seconds until the bus reaches every pending home, in planned order: road distance where known, else the
+// straight chain × 1.3, at the bus's typical speed, plus ~40 s per earlier stop. Sent to the server for parents.
+function computeEtas() {
+  if (!accepted) return '';
+  const v = Math.max(4, Math.min(14, spdEma || 6.5));
+  let chain = 0, prev = accepted;
+  return orderedStops().filter(s => s.status === 'pending').map((s, i) => {
+    chain += dist(prev.lat, prev.lng, s.lat, s.lng) * 1.3; prev = s;
+    const rd = roadDistTo(s);
+    const d = rd != null ? Math.max(rd, 0) : chain;
+    return s.id + ':' + Math.round(d / v + i * 40);
+  }).slice(0, 300).join(',');
+}
+let lastEtaAt = 0;
+function postEtas(force) {
+  if (!tripOpen || !accepted || !navigator.onLine) return;
+  const now = Date.now();
+  if (!force && now - lastEtaAt < 60000) return;
+  lastEtaAt = now;
+  const etas = computeEtas();
+  if (etas) tripCall('eta', {etas});
+}
 function etaMin(m) { const v = Math.max(4, Math.min(14, spdEma || 6.5)); return Math.max(1, Math.round(m / v / 60)); }
 
 // Arrival / auto-done detection. Runs on every accepted GPS fix.
@@ -841,7 +879,7 @@ function checkStops(dt) {
     }
     if (d <= arriveR) {
       st.in = true;
-      if (!st.annArr) { st.annArr = true; vibe(true); speak(s.name + ' ka stop aa gaya'); }
+      if (!st.annArr) { st.annArr = true; vibe(true); speak(s.name + ' ka stop aa gaya' + (s.note ? '. ' + s.note : '')); }
       if (accepted.speed < 2.5) st.dwell += Math.min(dt, 5); else st.dwell = Math.max(0, st.dwell - dt);
       if (st.dwell >= CFG.DWELL_S) st.stopped = true;
     } else if (st.in && d > arriveR + CFG.LEAVE_M) {
@@ -868,6 +906,7 @@ function markStop(id, status, by) {
   if (map) map.closePopup();
   // The plan stays (done stops just drop out); an undone stop is re-inserted where it fits best.
   if (status === 'pending') planOrder(true); else { pushOrder(); requestRoute(false); }
+  setTimeout(() => postEtas(true), 2500);   // the remaining parents get fresh ETAs right away
   drawStops(false); renderStops(); render();
   flushMarks();
 }
@@ -945,7 +984,9 @@ function popupHtml(s) {
   const rd = s.status === 'pending' ? roadDistTo(s) : null, d = rd != null ? rd : distTo(s), can = canMark();
   const nav = 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + s.lat + ',' + s.lng;
   const st = s.status === 'done' ? '<span style="color:#16a34a">✔ ho gaya' + (s.by === 'auto' ? ' (auto)' : '') + '</span>' : s.status === 'absent' ? '<span style="color:#64748b">✖ nahi aaya</span>' : '';
-  return '<div class="pp"><b>' + esc(s.name) + '</b> ' + esc(s.cls) + '<br>' + fmtDist(d) + (rd != null ? ' (sadak se)' : '') + ' door ' + st
+  return '<div class="pp"><b>' + esc(s.name) + '</b> ' + esc(s.cls)
+    + (s.note ? '<div style="margin:4px 0;padding:5px 7px;background:#fef9c3;color:#713f12;border-radius:6px;font-size:.8rem">📌 ' + esc(s.note) + '</div>' : '<br>')
+    + fmtDist(d) + (rd != null ? ' (sadak se)' : '') + ' door ' + st
     + '<div class="acts">' + (s.status === 'pending'
       ? '<button class="b-done"' + (can ? '' : ' disabled') + ' onclick="markStop(' + s.id + ',\'done\')">✔ Ho gaya</button><button class="b-abs"' + (can ? '' : ' disabled') + ' onclick="markStop(' + s.id + ',\'absent\')">✖ Nahi aaya</button>'
       : '<button class="b-undo" onclick="markStop(' + s.id + ',\'pending\')">↺ Wapas</button>')
@@ -997,6 +1038,7 @@ function renderStops() {
     card.className = 'next' + (here ? ' here' : '');
     card.innerHTML = '<div class="lbl">' + (here ? '📍 Stop aa gaya' : 'Agla stop #' + pos) + '</div>'
       + '<div class="nm">' + esc(nx.name) + ' <span style="font-size:.85rem;color:#94a3b8;font-weight:600">' + esc(nx.cls) + '</span></div>'
+      + (nx.note ? '<div style="margin:2px 0 6px;font-size:.95rem;color:#fde68a;font-weight:600">📌 ' + esc(nx.note) + '</div>' : '')
       + '<div class="meta">' + (d == null ? 'GPS ka intezaar…' : fmtDist(d) + (rd != null ? ' sadak se' : ' door') + ' · ~' + etaMin(d) + ' min') + ' · ' + dn + '/' + stops.length + ' ✔' + (ab ? ' · ' + ab + ' ✖' : '') + '</div>'
       + '<div class="acts"><button class="b-done"' + (can ? '' : ' disabled') + ' onclick="markStop(' + nx.id + ',\'done\')">✔ Ho gaya</button>'
       + '<button class="b-abs"' + (can ? '' : ' disabled') + ' onclick="markStop(' + nx.id + ',\'absent\')">✖ Nahi aaya</button>'
@@ -1091,18 +1133,58 @@ if (navigator.getBattery) {
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────
+// ── Pairing ───────────────────────────────────────────────────────────────
+function showPairScreen(title, text) {
+  stop();
+  $('go').disabled = true;
+  setState('err', title);
+  $('permBox').innerHTML = '<b>🔗 ' + esc(title) + '</b>' + text;
+  $('permBox').style.display = 'block';
+  ['shiftWrap', 'mapBox', 'nextCard', 'listWrap', 'tripBox'].forEach(id => { $(id).style.display = 'none'; });
+}
+function forgetBusData() {   // another bus / unpaired: nothing of the old bus may stay on this phone
+  try { Object.keys(localStorage).filter(k => k.startsWith('trk_') || k === 'drv_token').forEach(k => localStorage.removeItem(k)); } catch (e) {}
+  TOKEN = ''; queue = []; marks = []; stops = []; order = [];
+}
+function unpaired() {
+  forgetBusData();
+  showPairScreen('Ye phone kisi bus se juda nahi hai', 'School admin se <strong>naya pairing link / QR</strong> lein (Bus Tracker → Driver Links). Link sirf ek baar chalta hai.');
+}
+async function pairFromHash() {
+  const code = new URLSearchParams(location.hash.slice(1)).get('p');
+  if (!code) return;
+  history.replaceState(null, '', location.pathname);   // the code leaves the address bar / history immediately
+  try {
+    const r = await fetch(TRIP, {method: 'POST', body: new URLSearchParams({action: 'pair', code}), cache: 'no-store'});
+    const j = await r.json();
+    if (!j.ok) { if (!TOKEN) showPairScreen('Link kaam nahi kar raha', esc(j.msg || '')); else say(j.msg || '', 15000); return; }
+    if (TOKEN) forgetBusData();                         // re-paired (maybe to another bus): start clean
+    TOKEN = j.token; store('drv_token', TOKEN);
+    say('✅ Ye phone ab ' + (j.bus_name || 'bus') + ' se jud gaya. Agli baar seedha ye page kholein — link ki zaroorat nahi.', 20000);
+  } catch (e) {
+    showPairScreen('Internet nahi hai', 'Pairing ke liye ek baar internet chahiye. Net on karke link dobara kholein.');
+  }
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────
 async function loadInfo() {
-  if (!KEY) { setState('err', 'Link galat hai'); say('Is link mein bus ki key nahi hai. School admin se naya link lein.'); return 'bad'; }
+  if (!TOKEN) {
+    if (LEGACY_LINK) showPairScreen('Ye purana link band ho chuka hai', 'Suraksha ke liye ab har phone ko ek baar <strong>pair</strong> karna hota hai. School admin se naya pairing link / QR lein.');
+    else unpaired();
+    return 'bad';
+  }
   let j = null;
   try {
     const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), 10000);
-    const r = await fetch(ENDPOINT + '?info=1&key=' + encodeURIComponent(KEY), {cache: 'no-store', signal: ctrl.signal});
+    const r = await fetch(ENDPOINT + '?info=1', {cache: 'no-store', headers: authHeaders(), signal: ctrl.signal});
     clearTimeout(to);
     j = await r.json();
+    if (r.status === 401) { unpaired(); return 'bad'; }
   } catch (e) { j = null; }
-  if (j && !j.ok) { setState('err', 'Key galat ya bus inactive'); say(j.msg || ''); $('busName').textContent = 'Bus nahi mili'; return 'bad'; }
+  if (j && !j.ok) { setState('err', 'Bus inactive'); say(j.msg || ''); $('busName').textContent = 'Bus nahi mili'; return 'bad'; }
   // Offline: tripCall('status') answers from the phone's copy, so the page still works without internet
   const t = await tripCall('status');
+  if (!TOKEN) return 'bad';                             // turned out to be unpaired
   $('busName').textContent = (j && j.bus_name) || (t && t.bus_name) || 'Bus';
   $('busNum').textContent = (j && j.bus_number) || (t && t.bus_number) || '';
   if (t && t.ok) {
@@ -1116,6 +1198,12 @@ async function loadInfo() {
   if (!j || (t && t.cached)) { say('📦 Internet nahi — pichhli baar ka data dikha rahe hain. Tracking phir bhi chalegi.', 12000); return 'net'; }
   return 'ok';
 }
+$('unpairBtn').addEventListener('click', async () => {
+  if (!confirm('Is phone ko bus se hatayein? Dobara jodne ke liye admin se naya link lena hoga.')) return;
+  if (running) { await tripStopNow(); stop(); }
+  await tripCall('unpair');
+  unpaired();
+});
 
 (async () => {
   try { const k = JSON.parse(load('trk_km_' + KEY) || 'null'); if (k && k.d === new Date().toDateString()) km = +k.km || 0; } catch (e) {}
@@ -1125,6 +1213,7 @@ async function loadInfo() {
   checkPermission();
   // Offline support: the page, map library and viewed map tiles are kept on the phone by a service worker
   if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('driver_sw.js').catch(() => {});
+  await pairFromHash();
   const st = await loadInfo();
   if (st !== 'bad') {
     $('go').disabled = false;

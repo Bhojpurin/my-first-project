@@ -91,44 +91,31 @@ function busTripStart(PDO $pdo, int $busId, int $schoolId, int $shift): array
     }
     if ($open) busTripFinish($pdo, (int)$open['id'], 'auto_old');
 
-    $pdo->prepare("INSERT INTO bus_trips (school_id, bus_id, shift_no, started_at) VALUES (?,?,?,NOW())")
-        ->execute([$schoolId, $busId, $shift]);
+    $kind = busTripKind($pdo, $busId, $schoolId, $shift, (string)$pdo->query("SELECT NOW()")->fetchColumn());
+    try {
+        $pdo->prepare("INSERT INTO bus_trips (school_id, bus_id, shift_no, kind, started_at) VALUES (?,?,?,?,NOW())")
+            ->execute([$schoolId, $busId, $shift, $kind]);
+    } catch (\PDOException $e) {
+        if ((int)($e->errorInfo[1] ?? 0) !== 1054) throw $e;    // "kind" column not migrated yet
+        $pdo->prepare("INSERT INTO bus_trips (school_id, bus_id, shift_no, started_at) VALUES (?,?,?,NOW())")
+            ->execute([$schoolId, $busId, $shift]);
+    }
     $trip = busTripGetOpen($pdo, $busId);
     return ['trip' => $trip, 'already' => false, 'notified' => busTripNotifyStart($pdo, $busId, $schoolId, $shift)];
 }
 
-/** Push to every subscribed student of this bus (and, when shifts are used, of this shift). */
+/** "Bus has left" to every student of this bus + shift — push and the panel's own Messages (bus_notify.php). */
 function busTripNotifyStart(PDO $pdo, int $busId, int $schoolId, int $shift): int
 {
-    $sent = 0;
     try {
-        $bn = $pdo->prepare("SELECT bus_name FROM school_buses WHERE id=?");
-        $bn->execute([$busId]);
+        require_once __DIR__ . '/bus_notify.php';
+        $bn = $pdo->prepare("SELECT bus_name FROM school_buses WHERE id=? AND school_id=?");
+        $bn->execute([$busId, $schoolId]);
         $name = $bn->fetchColumn() ?: 'Bus';
-
-        $st = $pdo->prepare("
-            SELECT DISTINCT ps.id, ps.endpoint, ps.p256dh, ps.auth
-            FROM bus_route_assignments bra
-            JOIN student_van_assignments sva ON sva.van_route_id=bra.route_id AND sva.school_id=bra.school_id
-            LEFT JOIN bus_student_shifts bss ON bss.student_id=sva.student_id AND bss.route_id=sva.van_route_id AND bss.school_id=sva.school_id
-            JOIN push_subscriptions ps ON ps.student_id=sva.student_id AND ps.school_id=sva.school_id
-            WHERE bra.bus_id=? AND bra.school_id=? AND bra.status='active' AND COALESCE(bss.shift_no,1)=?");
-        $st->execute([$busId, $schoolId, $shift]);
-
-        require_once __DIR__ . '/push_sender.php';
-        foreach ($st->fetchAll() as $sub) {
-            try {
-                $res = sendProximityPush(
-                    ['endpoint' => $sub['endpoint'], 'p256dh' => $sub['p256dh'], 'auth' => $sub['auth']],
-                    ['title' => 'Bus nikal gayi 🚌', 'body' => $name . ' ki trip shuru ho gayi hai. Live location dekhne ke liye kholein.',
-                     'url' => (defined('BASE_URL') ? BASE_URL : '') . '/student/index.php#bus']
-                );
-                if (!empty($res['expired'])) $pdo->prepare("DELETE FROM push_subscriptions WHERE id=?")->execute([$sub['id']]);
-                else $sent++;
-            } catch (\Throwable $e) { error_log('bus_trip push: ' . $e->getMessage()); }
-        }
-    } catch (\Throwable $e) { error_log('bus_trip notify: ' . $e->getMessage()); }
-    return $sent;
+        $ids = array_merge(array_column(($l = busStopsForShift($pdo, $busId, $schoolId, $shift))['stops'], 'id'), array_column($l['missing'], 'id'));
+        return busNotifyStudents($pdo, $schoolId, $ids, 'Bus nikal gayi 🚌',
+            $name . ' ki trip shuru ho gayi hai. Live location aur ETA ke liye Bus tab kholein.', 'Bus trip shuru');
+    } catch (\Throwable $e) { error_log('bus_trip notify: ' . $e->getMessage()); return 0; }
 }
 
 /** Close trips that were forgotten open (driver never pressed stop / phone died). Cron + watchdog call this. */
@@ -211,8 +198,8 @@ function busShiftList(PDO $pdo, int $busId, int $schoolId): array
  */
 function busStopsForShift(PDO $pdo, int $busId, int $schoolId, int $shift, ?int $tripId = null, bool $fullNames = false): array
 {
-    $st = $pdo->prepare("
-        SELECT s.id, s.name, c.class_name, sec.section_name, hl.lat, hl.lng
+    $sql = "
+        SELECT s.id, s.name, c.class_name, sec.section_name, hl.lat, hl.lng, hl.note
         FROM bus_route_assignments bra
         JOIN student_van_assignments sva ON sva.van_route_id=bra.route_id AND sva.school_id=bra.school_id
         JOIN students s ON s.id=sva.student_id AND s.status='active'
@@ -221,8 +208,15 @@ function busStopsForShift(PDO $pdo, int $busId, int $schoolId, int $shift, ?int 
         LEFT JOIN bus_student_shifts bss ON bss.student_id=sva.student_id AND bss.route_id=sva.van_route_id AND bss.school_id=sva.school_id
         LEFT JOIN student_home_locations hl ON hl.student_id=s.id AND hl.school_id=sva.school_id
         WHERE bra.bus_id=? AND bra.school_id=? AND bra.status='active' AND " . BUS_EFFECTIVE_SHIFT_SQL . " = ?
-        ORDER BY s.name");
-    $st->execute([$busId, $schoolId, $shift]);
+        ORDER BY s.name";
+    try {
+        $st = $pdo->prepare($sql);
+        $st->execute([$busId, $schoolId, $shift]);
+    } catch (\PDOException $e) {
+        if ((int)($e->errorInfo[1] ?? 0) !== 1054) throw $e;          // "note" column not migrated yet
+        $st = $pdo->prepare(str_replace('hl.note', 'NULL AS note', $sql));
+        $st->execute([$busId, $schoolId, $shift]);
+    }
 
     $marks = [];
     if ($tripId) {
@@ -243,6 +237,7 @@ function busStopsForShift(PDO $pdo, int $busId, int $schoolId, int $shift, ?int 
         $mk = $marks[$id] ?? null;
         $stops[] = ['id' => $id, 'name' => $nm, 'cls' => $cls,
                     'lat' => round($lat, 6), 'lng' => round($lng, 6),
+                    'note' => trim((string)($r['note'] ?? '')),
                     'status' => $mk['status'] ?? 'pending', 'seq' => isset($mk['seq']) ? (int)$mk['seq'] : null,
                     'by' => $mk['marked_by'] ?? null, 'at' => $mk['marked_at'] ?? null];
     }
@@ -265,6 +260,50 @@ function busTripMarkStop(PDO $pdo, array $trip, int $studentId, string $status, 
                    ON DUPLICATE KEY UPDATE status=VALUES(status), marked_by=VALUES(marked_by), marked_at=VALUES(marked_at)")
         ->execute([(int)$trip['id'], $studentId, $status, $status === 'pending' ? null : $by, $status, $trip['started_at'], $agoSec]);
     return true;
+}
+
+/** Store the driver phone's ETA (seconds from now) per student of the open trip. Unknown ids are ignored. */
+function busTripSetEtas(PDO $pdo, array $trip, array $etas): int
+{
+    if (!$etas) return 0;
+    $list  = busStopsForShift($pdo, (int)$trip['bus_id'], (int)$trip['school_id'], (int)$trip['shift_no']);
+    $valid = array_flip(array_column($list['stops'], 'id'));
+    $up = $pdo->prepare("INSERT INTO bus_trip_stops (trip_id, student_id, eta_at) VALUES (?,?, NOW() + INTERVAL ? SECOND)
+                         ON DUPLICATE KEY UPDATE eta_at=VALUES(eta_at)");
+    $n = 0;
+    foreach ($etas as $id => $sec) {
+        if (!isset($valid[(int)$id])) continue;
+        try { $up->execute([(int)$trip['id'], (int)$id, max(0, min(7200, (int)$sec))]); $n++; }
+        catch (\PDOException $e) { if ((int)($e->errorInfo[1] ?? 0) === 1054) return 0; throw $e; }   // eta_at not migrated
+    }
+    busEtaNotify($pdo, $trip);
+    return $n;
+}
+
+const BUS_ETA_NOTIFY_SEC = 300;   // "bus ~5 min mein aapke ghar" — once per student per trip
+
+/** Parents whose bus is now about BUS_ETA_NOTIFY_SEC away get one push + auto message. */
+function busEtaNotify(PDO $pdo, array $trip): void
+{
+    try {
+        $q = $pdo->prepare("SELECT student_id, GREATEST(0, TIMESTAMPDIFF(SECOND, NOW(), eta_at)) AS s FROM bus_trip_stops
+                            WHERE trip_id=? AND status='pending' AND eta_notified=0 AND eta_at IS NOT NULL
+                              AND eta_at <= NOW() + INTERVAL " . (int)BUS_ETA_NOTIFY_SEC . " SECOND");
+        $q->execute([(int)$trip['id']]);
+        $rows = $q->fetchAll();
+        if (!$rows) return;
+        require_once __DIR__ . '/bus_notify.php';
+        $bn = $pdo->prepare("SELECT bus_name FROM school_buses WHERE id=? AND school_id=?");
+        $bn->execute([(int)$trip['bus_id'], (int)$trip['school_id']]);
+        $name = $bn->fetchColumn() ?: 'Bus';
+        $mark = $pdo->prepare("UPDATE bus_trip_stops SET eta_notified=1 WHERE trip_id=? AND student_id=?");
+        foreach ($rows as $r) {
+            $mark->execute([(int)$trip['id'], (int)$r['student_id']]);   // mark first: never send twice
+            $min = max(1, (int)round($r['s'] / 60));
+            busNotifyStudents($pdo, (int)$trip['school_id'], [(int)$r['student_id']], 'Bus aa rahi hai 🚌',
+                $name . ' lagbhag ' . $min . ' min mein aapke ghar pahunchegi. Tayyar rahein.', 'Bus ETA');
+        }
+    } catch (\Throwable $e) { error_log('bus_eta_notify: ' . $e->getMessage()); }
 }
 
 /** Store the driver's planned order (list of student ids, first = next). Unknown ids are ignored. */
@@ -338,7 +377,7 @@ function busTripKind(PDO $pdo, int $busId, int $schoolId, int $shift, string $at
 /** Called when a trip ends: add its real visit order (and road path) to the bus+shift+direction profile. */
 function busLearnFromTrip(PDO $pdo, array $trip, array $path): void
 {
-    $kind = busTripKind($pdo, (int)$trip['bus_id'], (int)$trip['school_id'], (int)$trip['shift_no'], (string)$trip['started_at']);
+    $kind = !empty($trip['kind']) ? (string)$trip['kind'] : busTripKind($pdo, (int)$trip['bus_id'], (int)$trip['school_id'], (int)$trip['shift_no'], (string)$trip['started_at']);
     $q = $pdo->prepare("SELECT student_id FROM bus_trip_stops WHERE trip_id=? AND status='done' AND marked_at IS NOT NULL ORDER BY marked_at, seq, student_id");
     $q->execute([(int)$trip['id']]);
     $order = array_map('intval', $q->fetchAll(PDO::FETCH_COLUMN));

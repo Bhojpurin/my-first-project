@@ -2289,6 +2289,15 @@ select.fld-input{appearance:auto;}
         <div id="homeLocStatus" style="margin-top:10px;font-size:.8rem;color:var(--green);display:none;align-items:center;gap:6px;">
           <i class="bi bi-check-circle-fill"></i> <span id="homeLocStatusText"></span>
         </div>
+        <!-- Landmark note for the driver -->
+        <div id="homeNoteBox" style="margin-top:12px;<?= $hasHome ? '' : 'display:none;' ?>">
+          <label for="homeNote" style="font-size:.78rem;font-weight:600;color:var(--text);">Driver ke liye pehchaan (optional)</label>
+          <div style="display:flex;gap:6px;margin-top:4px;">
+            <input id="homeNote" maxlength="120" placeholder="jaise: mandir ke saamne, neela gate" style="flex:1;min-width:0;padding:9px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.82rem;">
+            <button onclick="saveHomeNote()" style="padding:9px 12px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:.8rem;font-weight:700;cursor:pointer;">Save</button>
+          </div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:3px;">Ye sirf aapki bus ke driver ko stop par dikhega.</div>
+        </div>
       </div>
     </div>
 
@@ -2688,6 +2697,9 @@ function renderBusTrip(t) {
   } else {
     txt = '🚌 Your shift\'s trip has started' + (t.started_at ? ' (' + hm(t.started_at) + ')' : '') + '.';
   }
+  if (t.mine && t.status === 'pending' && t.eta_min != null) {
+    txt += t.eta_min <= 1 ? ' Bus is arriving now!' : ' Bus will reach your home in about ' + t.eta_min + ' min' + (t.eta_rough ? ' (approx.)' : '') + '.';
+  }
   body.textContent = txt; box.style.background = bg; body.style.color = fg; box.style.display = '';
 }
 
@@ -2719,6 +2731,8 @@ async function loadHomeLocation() {
     if (d.success) {
       _homeLatLng = [parseFloat(d.lat), parseFloat(d.lng)];
       if (parseInt(d.radius) > 0) ALERT_R = parseInt(d.radius);
+      const hn = document.getElementById('homeNote');
+      if (hn) { hn.value = d.note || ''; document.getElementById('homeNoteBox').style.display = ''; }
       placeHomeMarker(_homeLatLng[0], _homeLatLng[1]);
       document.getElementById('alertRadiusLabel').textContent = ALERT_R + 'm';
       const sel = document.getElementById('alertRadiusSel');
@@ -2794,6 +2808,18 @@ function showHomeStatus(text) {
   setTimeout(() => { st.style.display = 'none'; }, 5000);
 }
 
+async function saveHomeNote() {
+  const note = document.getElementById('homeNote').value.trim().slice(0, 120);
+  try {
+    const fd = new FormData();
+    fd.append('action', 'set_note');
+    fd.append('note', note);
+    const d = await (await fetch(STU_BUS_URL, {method:'POST', body:fd})).json();
+    if (d.success) { document.getElementById('homeNote').value = d.note || ''; showHomeStatus(d.message); }
+    else stuAlert(d.message || 'Could not save the note.');
+  } catch(e) { stuAlert('Network error. Please try again.'); }
+}
+
 async function saveHomeLocation(lat, lng, okMsg) {
   try {
     const fd = new FormData();
@@ -2806,6 +2832,7 @@ async function saveHomeLocation(lat, lng, okMsg) {
       _homeLatLng = [lat, lng];
       _inZone = false;
       if (_busMapInit) placeHomeMarker(lat, lng);
+      const nb = document.getElementById('homeNoteBox'); if (nb) nb.style.display = '';
       showHomeStatus(okMsg || 'Home location saved!');
       return true;
     }

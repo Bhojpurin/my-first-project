@@ -1,56 +1,88 @@
 <?php
-// api/bus_trip.php — trip start / stop / status for ONE bus, authenticated by the bus API key
-// (same key as gps_update.php; sent as ?key=, POST field, or X-API-Key header).
-//   action=status                 bus name, number, shifts, and the open trip (if any)
-//   action=start  [shift=1..5]    open a trip (idempotent) and push "bus has left" to the students
-//   action=stop                   close the open trip and return its summary (km, max speed, stops)
-//   action=stops  [shift=N]       students of that shift with their marked home (the open trip's shift wins)
-//   action=mark_stop student_id=  status=done|absent|pending [by=auto] [ago=sec]   (needs an open trip)
-//   action=set_order order=12,5,9 planned stop order of the open trip (shown to students as "N stops before you")
+// api/bus_trip.php — the driver phone's API for ONE bus. POST only.
+//
+// Auth: a paired-phone device token in the "X-Device-Token" header (see includes/bus_security.php).
+//       The bus API key is NOT accepted here: it is a write-only GPS credential and must never unlock
+//       student names or home locations. The bus and its school always come from the token, never from
+//       the request, so one school can never reach another school's data.
+//
+//   action=pair   code=…                one-time pairing code from the admin's link → {token} (no auth needed)
+//   action=status                       bus name, number, shifts, and the open trip (if any)
+//   action=start  [shift=1..5]          open a trip (idempotent) and push "bus has left" to the students
+//   action=stop                         close the open trip and return its summary (km, max speed, stops)
+//   action=stops  [shift=N]             students of that shift with their marked home + note (open trip's shift wins)
+//   action=mark_stop student_id= status=done|absent|pending [by=auto] [ago=sec]   (needs an open trip)
+//   action=set_order order=12,5,9       planned stop order of the open trip (shown to parents as "N stops before you")
+//   action=eta    etas=12:340,5:610     seconds until the bus reaches each home (parent ETA)
+//   action=unpair                       this phone gives up its token
 
 ob_start();
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../config/constants.php';
 require_once __DIR__ . '/../includes/bus_trips.php';
+require_once __DIR__ . '/../includes/bus_security.php';
 ob_end_clean();
 
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Headers: Content-Type, X-API-Key');
-if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') { http_response_code(204); exit; }
+busApiHeaders();   // same-origin only: no CORS headers on purpose
 
-function tOut(array $d): void { echo json_encode($d); exit; }
+function tOut(array $d, int $code = 200): void { if ($code !== 200) http_response_code($code); echo json_encode($d); exit; }
 
-$key = trim((string)($_SERVER['HTTP_X_API_KEY'] ?? ($_REQUEST['key'] ?? '')));
-if ($key === '' || strlen($key) > 128) tOut(['ok' => false, 'msg' => 'API key required']);
-$action = (string)($_REQUEST['action'] ?? 'status');
+if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') tOut(['ok' => false, 'msg' => 'POST required'], 405);
+// A request started by another website must never act for this phone
+if (($_SERVER['HTTP_SEC_FETCH_SITE'] ?? '') === 'cross-site') tOut(['ok' => false, 'msg' => 'Cross-site request blocked'], 403);
+
+$action = (string)($_POST['action'] ?? 'status');
+$ip     = busClientIp();
 
 try {
     $pdo = Database::connect();
-    $q = $pdo->prepare("SELECT id, school_id, bus_name, bus_number FROM school_buses WHERE gps_api_key=? AND status='active' LIMIT 1");
-    $q->execute([$key]);
-    $bus = $q->fetch();
-    if (!$bus) tOut(['ok' => false, 'msg' => 'Invalid or inactive bus key']);
-    $busId = (int)$bus['id']; $schoolId = (int)$bus['school_id'];
 
+    // ── Pairing (the only action without a token) ────────────────────────────
+    if ($action === 'pair') {
+        if (busRateBlocked($pdo, 'pairfail:' . $ip, 10, 900)) busTooMany();   // 10 wrong codes / 15 min / IP
+        $r = busRedeemPairCode($pdo, strtolower(trim((string)($_POST['code'] ?? ''))), busDeviceLabel());
+        if (!$r) {
+            busRateHit($pdo, 'pairfail:' . $ip, 10, 900);
+            tOut(['ok' => false, 'msg' => 'Ye link istemaal ho chuka hai ya expire ho gaya. School admin se naya link lein.'], 400);
+        }
+        $b = busByDeviceToken($pdo, $r['token']);
+        tOut(['ok' => true, 'token' => $r['token'], 'bus_name' => $b['bus_name'] ?? '', 'bus_number' => $b['bus_number'] ?? '']);
+    }
+
+    // ── Everything else: paired phone only ───────────────────────────────────
+    if (busRateBlocked($pdo, 'tokfail:' . $ip, 30, 900)) busTooMany();
+    $bus = busByDeviceToken($pdo, busDeviceTokenFromRequest());
+    if (!$bus) {
+        busRateHit($pdo, 'tokfail:' . $ip, 30, 900);
+        tOut(['ok' => false, 'code' => 'unpaired', 'msg' => 'Ye phone pair nahi hai ya admin ne hata diya hai. School admin se naya link lein.'], 401);
+    }
+    // Generous per-phone limit (a normal trip makes a few requests a minute)
+    if (!busRateHit($pdo, 'dev:' . $bus['device_id'], 240, 60)) busTooMany();
+
+    $busId = (int)$bus['id']; $schoolId = (int)$bus['school_id'];
     $fmt = function (?array $t) {
         return $t ? ['id' => (int)$t['id'], 'shift' => (int)$t['shift_no'], 'started_at' => $t['started_at']] : null;
     };
-
-    if ($action === 'status') {
+    $maxShift = function () use ($pdo, $busId, $schoolId) {
         $s = $pdo->prepare("SELECT MAX(shift_count) FROM bus_route_assignments WHERE bus_id=? AND school_id=? AND status='active'");
         $s->execute([$busId, $schoolId]);
+        return max(1, (int)$s->fetchColumn());
+    };
+
+    if ($action === 'unpair') {
+        $pdo->prepare("UPDATE bus_driver_devices SET revoked_at=NOW() WHERE id=? AND school_id=?")->execute([(int)$bus['device_id'], $schoolId]);
+        tOut(['ok' => true]);
+    }
+
+    if ($action === 'status') {
         tOut(['ok' => true, 'bus_name' => $bus['bus_name'], 'bus_number' => $bus['bus_number'],
-              'shift_count' => max(1, (int)$s->fetchColumn()), 'shifts' => busShiftList($pdo, $busId, $schoolId),
+              'shift_count' => $maxShift(), 'shifts' => busShiftList($pdo, $busId, $schoolId),
               'trip' => $fmt(busTripGetOpen($pdo, $busId))]);
     }
 
     if ($action === 'start') {
-        $s = $pdo->prepare("SELECT MAX(shift_count) FROM bus_route_assignments WHERE bus_id=? AND school_id=? AND status='active'");
-        $s->execute([$busId, $schoolId]);
-        $shift = (int)($_REQUEST['shift'] ?? 1);
-        if ($shift < 1 || $shift > max(1, (int)$s->fetchColumn())) $shift = 1;
+        $shift = (int)($_POST['shift'] ?? 1);
+        if ($shift < 1 || $shift > $maxShift()) $shift = 1;
         $r = busTripStart($pdo, $busId, $schoolId, $shift);
         tOut(['ok' => true, 'trip' => $fmt($r['trip']), 'already' => $r['already'], 'notified' => $r['notified']]);
     }
@@ -67,26 +99,35 @@ try {
 
     if ($action === 'stops') {
         $open  = busTripGetOpen($pdo, $busId);
-        $shift = $open ? (int)$open['shift_no'] : max(1, min(5, (int)($_REQUEST['shift'] ?? 1)));
+        $shift = $open ? (int)$open['shift_no'] : max(1, min(5, (int)($_POST['shift'] ?? 1)));
         $list  = busStopsForShift($pdo, $busId, $schoolId, $shift, $open ? (int)$open['id'] : null);
         $kind  = busTripKind($pdo, $busId, $schoolId, $shift, $open ? (string)$open['started_at'] : (string)$pdo->query("SELECT NOW()")->fetchColumn());
         tOut(['ok' => true, 'shift' => $shift, 'kind' => $kind, 'trip' => $fmt($open), 'learned' => busLearnedProfile($pdo, $busId, $shift, $kind)] + $list);
     }
 
-    if ($action === 'mark_stop' || $action === 'set_order') {
+    if (in_array($action, ['mark_stop', 'set_order', 'eta'], true)) {
         $open = busTripGetOpen($pdo, $busId);
         if (!$open) tOut(['ok' => false, 'msg' => 'Pehle trip shuru karein']);
         if ($action === 'mark_stop') {
-            $ok = busTripMarkStop($pdo, $open, (int)($_REQUEST['student_id'] ?? 0), (string)($_REQUEST['status'] ?? ''),
-                                  (string)($_REQUEST['by'] ?? 'driver'), (int)($_REQUEST['ago'] ?? 0));
+            $ok = busTripMarkStop($pdo, $open, (int)($_POST['student_id'] ?? 0), (string)($_POST['status'] ?? ''),
+                                  (string)($_POST['by'] ?? 'driver'), (int)($_POST['ago'] ?? 0));
             tOut($ok ? ['ok' => true] : ['ok' => false, 'msg' => 'Ye student is shift mein nahi hai']);
         }
-        $ids = array_filter(array_map('intval', explode(',', (string)($_REQUEST['order'] ?? ''))));
-        tOut(['ok' => true, 'saved' => busTripSetOrder($pdo, $open, array_slice($ids, 0, 300))]);
+        if ($action === 'set_order') {
+            $ids = array_filter(array_map('intval', explode(',', (string)($_POST['order'] ?? ''))));
+            tOut(['ok' => true, 'saved' => busTripSetOrder($pdo, $open, array_slice($ids, 0, 300))]);
+        }
+        $etas = [];
+        foreach (explode(',', (string)($_POST['etas'] ?? '')) as $pair) {
+            [$id, $sec] = array_pad(explode(':', $pair, 2), 2, null);
+            if ((int)$id > 0 && is_numeric($sec)) $etas[(int)$id] = (int)$sec;
+            if (count($etas) >= 300) break;
+        }
+        tOut(['ok' => true, 'saved' => busTripSetEtas($pdo, $open, $etas)]);
     }
 
-    tOut(['ok' => false, 'msg' => 'Unknown action']);
+    tOut(['ok' => false, 'msg' => 'Unknown action'], 400);
 } catch (\Throwable $e) {
     error_log('bus_trip: ' . $e->getMessage());
-    tOut(['ok' => false, 'msg' => 'Server error.']);
+    tOut(['ok' => false, 'msg' => 'Server error.'], 500);
 }

@@ -15,6 +15,10 @@ shifts, student portal, push alerts when the bus is near home.
 | `admin/bus_tracker.php`, `student/index.php`, `student/sw.js` | UI (paths assumed — adjust if yours differ) |
 | `tools/gps_simulator.php` | **new** fake bus for testing |
 | `tools/bus_watchdog_cron.php` | **new** run every minute |
+| `includes/bus_security.php` | **new** pairing, device tokens, rate limits |
+| `includes/bus_alerts.php`, `includes/bus_notify.php` | **new** safety alerts, own-channel notifications |
+| `api/driver_sw.js` | **new** offline cache for the driver page |
+| `tests/` | **new** integration tests (real DB, two schools) |
 | `api/bus_trip.php`, `includes/bus_trips.php` | **new** trip start/stop, "bus nikal gayi" push, trip summary |
 | `database/bus_tracking.sql` | **new** tables: `bus_live`, `bus_watchdog_alerts`, `bus_trips` |
 
@@ -25,7 +29,6 @@ are not in this repo yet.
 1. Run `php tools/migrate.php` (XAMPP: `C:\xampp\php\php.exe tools\migrate.php`). It runs `database/bus_tracking.sql`
    and adds new columns to tables created by older versions. Safe to run again after every update.
 2. Cron: `* * * * * php /path/to/tools/bus_watchdog_cron.php`
-3. Optional: `define('BUS_WATCHDOG_WEBHOOK', 'https://...');` in `config/constants.php` for instant messages.
 
 ## Trips
 Driver page: **Trip Shuru** (starts tracking + pushes "bus nikal gayi" to that shift's students) → **Trip Khatam**
@@ -57,6 +60,43 @@ Privacy: the link has no login, so the driver sees short names ("Rahul K.") + cl
 - **Admin Live Map:** every bus shows the running shift, ✔ picked / ✖ absent / ⏳ remaining, next stop and "⏸ stopped for
   N min". Clicking a bus shows each student on the map with status and time, where the bus stood (2+ min) today, today's
   path and the learned route.
+
+## Security (multi-school panel)
+- **Every query is scoped to the caller's school.** Admin/teacher APIs take `school_id` only from the session; the driver
+  phone's school comes only from its device token; GPS devices' school only from their key. `tests/integration.php` checks
+  this with two schools over real HTTP (fleet, live map, trips, CSV, alerts, devices, student portal, driver phone).
+- **No key in any link.** Driver phones are paired with a one-time link `…/api/driver_tracker.php#p=CODE` (24 h, single use;
+  a newer link kills older unused ones). The code is after `#`, so it never reaches server logs or referrers; it is removed
+  from the address bar immediately. The phone gets its own 256-bit token (stored hashed); admin sees every paired phone
+  (Driver Links) and can remove it — the phone then wipes all bus data. Old `?key=` links show "link band ho chuka hai".
+- **The bus API key is write-only** (GPS hardware / GPSLogger): it can add positions but never read students or homes.
+- **Rate limits:** 20 wrong GPS keys / 10 min / IP, 10 wrong pairing codes / 15 min / IP, 30 bad tokens / 15 min / IP
+  (then 429), 60 GPS requests / min / bus, 240 trip calls / min / phone.
+- **Headers:** driver page has a strict Content-Security-Policy, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`
+  (map tiles get only the site origin); JSON APIs send `nosniff`; `bus_trip.php` is POST-only, same-origin, rejects
+  cross-site requests. Admin writes need the session's CSRF token; teachers are read-only.
+- **No third-party messaging / webhooks:** the old global webhook was removed (it would have mixed schools' alerts).
+
+## Alerts & parent messages (own channels only)
+`includes/bus_notify.php` sends to parents by Web Push **and** the panel's own Messages (create
+`includes/bus_message_hook.php` from the `.example` file to connect your messages table). Admin alerts go to the Live Map feed
+(sound + desktop notification while open). Per-school settings: Live Map → **Alert settings**.
+| Event | Admin | Parents |
+|---|---|---|
+| Trip started | – | "Bus nikal gayi" (that shift) |
+| Bus ~5 min from home (driver phone's road ETA) | – | once per trip |
+| Bus within the alert radius | – | once per approach |
+| Overspeed above limit for N sec | ✔ | – |
+| School gate: arrived (pickup run) / left (drop run) | ✔ | children on board / that shift |
+| Off the learned everyday road for N sec | ✔ | – |
+| Bus should run but is silent 5 min | ✔ | – |
+Student portal shows "Bus will reach your home in about N min" and parents can add a landmark note for the driver
+("mandir ke saamne, neela gate"), shown in the driver's popup / next-stop card and read out on arrival.
+
+## Tests
+`php tests/integration.php` (needs MySQL/MariaDB; env `BUS_TEST_DB`, `BUS_TEST_USER`, `BUS_TEST_PASS`; it DROPS and
+recreates that database). `tests/stubs/` stand in for the panel's core files, `tests/fixtures/base_schema.sql` holds the
+existing tables as used by this module.
 
 ## Setup Wizard
 Admin → Fleet → **Setup Wizard**: 1 Bus → 2 Tracking method (driver link with QR + WhatsApp share / GPSLogger / hardware device)

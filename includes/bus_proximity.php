@@ -94,11 +94,11 @@ function checkBusProximityPush(PDO $pdo, int $busId, int $schoolId, float $busLa
     $students = $stmt->fetchAll();
     if (!$students) return;
 
-    $bnq = $pdo->prepare("SELECT bus_name FROM school_buses WHERE id=?");
-    $bnq->execute([$busId]);
+    $bnq = $pdo->prepare("SELECT bus_name FROM school_buses WHERE id=? AND school_id=?");
+    $bnq->execute([$busId, $schoolId]);
     $busName = $bnq->fetchColumn() ?: 'Your bus';
 
-    require_once __DIR__ . '/push_sender.php';
+    require_once __DIR__ . '/bus_notify.php';
 
     foreach ($students as $s) {
         try {
@@ -120,26 +120,8 @@ function checkBusProximityPush(PDO $pdo, int $busId, int $schoolId, float $busLa
                     }
                     $body .= '.';
 
-                    $subs = $pdo->prepare("SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE student_id=? AND school_id=?");
-                    $subs->execute([$s['student_id'], $schoolId]);
-
-                    foreach ($subs->fetchAll() as $sub) {
-                        try {
-                            $result = sendProximityPush(
-                                ['endpoint' => $sub['endpoint'], 'p256dh' => $sub['p256dh'], 'auth' => $sub['auth']],
-                                [
-                                    'title' => 'Bus Nearby! 🚌',
-                                    'body'  => $body,
-                                    'url'   => BASE_URL . '/student/index.php#bus',
-                                ]
-                            );
-                            if (!empty($result['expired'])) {
-                                $pdo->prepare("DELETE FROM push_subscriptions WHERE id=?")->execute([$sub['id']]);
-                            }
-                        } catch (\Throwable $e) {
-                            error_log('bus_proximity push: ' . $e->getMessage());
-                        }
-                    }
+                    // Push + the panel's own Messages (includes/bus_notify.php), this school only
+                    busNotifyStudents($pdo, $schoolId, [(int)$s['student_id']], 'Bus Nearby! 🚌', $body, 'Bus nazdeek');
                 }
 
                 $pdo->prepare("UPDATE student_home_locations SET in_radius_since=NOW() WHERE student_id=? AND school_id=?")

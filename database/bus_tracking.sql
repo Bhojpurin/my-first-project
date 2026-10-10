@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS bus_trips (
   school_id     INT      NOT NULL,
   bus_id        INT      NOT NULL,
   shift_no      TINYINT  NOT NULL DEFAULT 1,
+  kind          VARCHAR(6) NULL,          -- pickup | drop | any (from the start time vs the shift's times)
   started_at    DATETIME NOT NULL,
   ended_at      DATETIME NULL,
   end_reason    VARCHAR(20) NULL,          -- driver | auto_silent | auto_old
@@ -65,6 +66,8 @@ CREATE TABLE IF NOT EXISTS bus_trip_stops (
   status     VARCHAR(10) NOT NULL DEFAULT 'pending', -- pending | done | absent
   marked_by  VARCHAR(10) NULL,                       -- driver | auto
   marked_at  DATETIME    NULL,
+  eta_at     DATETIME    NULL,                       -- driver phone's estimate when the bus reaches this home
+  eta_notified TINYINT   NOT NULL DEFAULT 0,         -- "bus ~5 min away" already sent to this parent
   PRIMARY KEY (trip_id, student_id),
   KEY idx_student (student_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -83,4 +86,83 @@ CREATE TABLE IF NOT EXISTS bus_route_learn (
   path_json     MEDIUMTEXT NULL,      -- [[lat,lng], ...] real road path of a good recent trip
   updated_at    DATETIME NOT NULL,
   PRIMARY KEY (bus_id, shift_no, kind)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ── Security ────────────────────────────────────────────────────────────────
+-- Rate limiting (hashed bucket → hits in the current window)
+CREATE TABLE IF NOT EXISTS bus_rate_limits (
+  k   CHAR(64) NOT NULL PRIMARY KEY,
+  win INT      NOT NULL,
+  n   INT      NOT NULL,
+  KEY idx_win (win)
+) ENGINE=InnoDB DEFAULT CHARSET=ascii;
+
+-- One-time pairing links for driver phones (only the SHA-256 of the code is stored)
+CREATE TABLE IF NOT EXISTS bus_pair_codes (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  code_hash  CHAR(64) NOT NULL UNIQUE,
+  school_id  INT      NOT NULL,
+  bus_id     INT      NOT NULL,
+  created_by INT      NULL,
+  expires_at DATETIME NOT NULL,
+  used_at    DATETIME NULL,
+  KEY idx_bus (bus_id, used_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Paired driver phones (token stored as SHA-256 only; revocable)
+CREATE TABLE IF NOT EXISTS bus_driver_devices (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  school_id    INT      NOT NULL,
+  bus_id       INT      NOT NULL,
+  token_hash   CHAR(64) NOT NULL UNIQUE,
+  label        VARCHAR(80) NULL,
+  created_at   DATETIME NOT NULL,
+  last_seen_at DATETIME NOT NULL,
+  last_ip      VARCHAR(45) NULL,
+  revoked_at   DATETIME NULL,
+  KEY idx_bus (school_id, bus_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ── Safety alerts ───────────────────────────────────────────────────────────
+-- Per-school settings (each school sets its own speed limit and school gate location)
+CREATE TABLE IF NOT EXISTS bus_alert_settings (
+  school_id        INT          NOT NULL PRIMARY KEY,
+  overspeed_kmh    SMALLINT     NOT NULL DEFAULT 50,
+  overspeed_sec    SMALLINT     NOT NULL DEFAULT 20,   -- must last this long (no alert for one GPS spike)
+  school_lat       DECIMAL(10,7) NULL,
+  school_lng       DECIMAL(10,7) NULL,
+  school_radius_m  SMALLINT     NOT NULL DEFAULT 150,
+  deviation_m      SMALLINT     NOT NULL DEFAULT 400,  -- this far from the learned everyday road = off route
+  deviation_sec    SMALLINT     NOT NULL DEFAULT 90,
+  notify_parents   TINYINT      NOT NULL DEFAULT 1,    -- "bus reached school / left school" to parents
+  updated_at       DATETIME     NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Alert log (admin feed on the live map + history)
+CREATE TABLE IF NOT EXISTS bus_alerts (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  school_id   INT         NOT NULL,
+  bus_id      INT         NOT NULL,
+  trip_id     INT         NULL,
+  type        VARCHAR(20) NOT NULL,        -- overspeed | school_arrive | school_leave | deviation | silent
+  lat         DECIMAL(10,7) NULL,
+  lng         DECIMAL(10,7) NULL,
+  value       DECIMAL(8,1) NULL,           -- km/h for overspeed, metres for deviation
+  message     VARCHAR(255) NOT NULL,
+  created_at  DATETIME    NOT NULL,
+  seen_at     DATETIME    NULL,
+  KEY idx_school_time (school_id, created_at),
+  KEY idx_bus_time (bus_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Running state per bus for the alert engine (so one event = one alert, not one per GPS point)
+CREATE TABLE IF NOT EXISTS bus_alert_state (
+  bus_id       INT      NOT NULL PRIMARY KEY,
+  school_id    INT      NOT NULL,
+  over_since   DATETIME NULL,
+  over_max     DECIMAL(6,1) NULL,
+  over_alerted TINYINT  NOT NULL DEFAULT 0,
+  at_school    TINYINT  NULL,              -- NULL = unknown yet (no alert on the first fix)
+  off_since    DATETIME NULL,
+  off_alerted  TINYINT  NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
