@@ -158,6 +158,14 @@ try {
     $tokB = $j['token'] ?? '';
     ok(strlen($tokB) === 64, 'school B pairs its own phone');
 
+    section('Driver sees only the shifts the bus really runs');
+    $pdo->exec("UPDATE bus_route_assignments SET shift_count=5, pickup_time5='13:45', drop_time5='14:45' WHERE bus_id=1");
+    [, $j] = trip($tokA, 'status');
+    ok(array_column($j['shifts'] ?? [], 'no') == [1, 5], 'route says 5 shifts, only 1 (students) and 5 (times) are used → driver sees 1 and 5', array_column($j['shifts'] ?? [], 'no'));
+    $pdo->exec("UPDATE bus_route_assignments SET shift_count=1, pickup_time5=NULL, drop_time5=NULL WHERE bus_id=1");
+    [, $j] = trip($tokA, 'status');
+    ok(array_column($j['shifts'] ?? [], 'no') == [1], 'back to one shift → only Shift 1');
+
     section('School isolation (driver phone)');
     [$s, $j] = trip($tokA, 'stops', ['shift' => 1]);
     $ids = array_column($j['stops'] ?? [], 'id');

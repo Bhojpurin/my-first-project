@@ -419,6 +419,8 @@ function sendEarly(now) {
 function onPos(p) {
   const c = p.coords, now = Date.now();
   lastPosAt = now;
+  // The trip opens on the server only once the phone really delivers locations (never with GPS blocked)
+  if (running && !tripOpen) tripStartNow();
   const raw = {
     lat: c.latitude, lng: c.longitude, acc: c.accuracy || 999,
     speed: (c.speed != null && isFinite(c.speed) && c.speed >= 0) ? c.speed : null,
@@ -532,6 +534,8 @@ async function getWake() {
 }
 
 async function start() {
+  // Location blocked? Show how to allow it — and do not start anything on the server.
+  try { const p = await navigator.permissions.query({name: 'geolocation'}); if (p.state === 'denied') { showPermHelp('denied'); setState('err', 'Location permission band hai'); return; } } catch (e) {}
   if (!('geolocation' in navigator)) { say('Is browser mein GPS support nahi hai. Chrome use karein.'); return; }
   if (!window.isSecureContext) { showPermHelp('http'); return; }
   running = true; startedAt = Date.now(); accepted = null; glitch = 0; lastPosAt = 0; kf.reset();
@@ -543,7 +547,8 @@ async function start() {
   startWatch();
   clearInterval(loopTimer);
   loopTimer = setInterval(loop, 1000);
-  tripStartNow();
+  if (tripOpen) showTrip();   // a trip that is already open simply continues
+  else say('GPS mil rahi hai… pehli location aate hi trip shuru hogi.', 20000);
 }
 
 function stop() {
@@ -1305,7 +1310,7 @@ async function loadInfo() {
     tripOpen = t.trip || null;
     shifts = t.shifts || [];
     const sv = +load('trk_shift_' + KEY);
-    selShift = tripOpen ? tripOpen.shift : (shifts.some(s => s.no === sv) ? sv : 1);
+    selShift = tripOpen ? tripOpen.shift : (shifts.some(s => s.no === sv) ? sv : (shifts.length ? shifts[0].no : 1));
     showTrip();
     if (shifts.length) await loadStops();
   }

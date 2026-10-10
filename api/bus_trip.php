@@ -78,9 +78,16 @@ try {
     }
 
     if ($action === 'status') {
+        // Only the shifts this bus really runs: a time is set or students are on it (the route may say "5 shifts"
+        // while only some are used). The running trip's shift is always shown. Nothing set up → just shift 1.
+        $open = busTripGetOpen($pdo, $busId);
+        $all  = busShiftList($pdo, $busId, $schoolId);
+        $used = array_values(array_filter($all, function ($s) use ($open) {
+            return $s['pickup'] || $s['drop'] || $s['students'] > 0 || ($open && (int)$open['shift_no'] === $s['no']);
+        }));
+        if (!$used) $used = array_slice($all, 0, 1);
         tOut(['ok' => true, 'bus_name' => $bus['bus_name'], 'bus_number' => $bus['bus_number'],
-              'shift_count' => $maxShift(), 'shifts' => busShiftList($pdo, $busId, $schoolId),
-              'trip' => $fmt(busTripGetOpen($pdo, $busId))]);
+              'shift_count' => $maxShift(), 'shifts' => $used, 'trip' => $fmt($open)]);
     }
 
     if ($action === 'start') {
