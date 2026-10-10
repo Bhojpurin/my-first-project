@@ -13,6 +13,7 @@
 const BUS_ALERT_TZ            = 'Asia/Kolkata'; // school timezone, independent of the server's default
 const BUS_ALERT_MAX_ACC_M     = 100;            // ignore bus fixes less accurate than this (metres)
 const BUS_ALERT_REARM_FACTOR  = 1.25;           // must leave radius x1.25 before the next alert
+const BUS_ALERT_REQUIRE_TRIP  = false;          // true = "Bus nearby" alerts only while the driver has an open trip (api/bus_trip.php)
 const BUS_ALERT_BEFORE_MIN    = 90;             // alert window: this many minutes before the shift's pickup/drop time...
 const BUS_ALERT_AFTER_MIN     = 150;            // ...and this many minutes after it
 
@@ -71,6 +72,14 @@ function checkBusProximityPush(PDO $pdo, int $busId, int $schoolId, float $busLa
                                ?float $speedKmh = null, ?float $accuracyM = null): void
 {
     if ($accuracyM !== null && $accuracyM > BUS_ALERT_MAX_ACC_M) return;   // rough fix: could be a false "entry"
+
+    if (BUS_ALERT_REQUIRE_TRIP) {
+        try {
+            $ot = $pdo->prepare("SELECT 1 FROM bus_trips WHERE bus_id=? AND ended_at IS NULL LIMIT 1");
+            $ot->execute([$busId]);
+            if (!$ot->fetchColumn()) return;          // no running trip → bus is parked/at depot, stay quiet
+        } catch (\Throwable $e) { /* bus_trips not created yet → do not block alerts */ }
+    }
 
     $stmt = $pdo->prepare("
         SELECT hl.student_id, hl.lat, hl.lng, hl.alert_radius, hl.in_radius_since,

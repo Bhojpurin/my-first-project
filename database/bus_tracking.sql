@@ -33,3 +33,24 @@ CREATE TABLE IF NOT EXISTS bus_watchdog_alerts (
   KEY idx_open (bus_id, resolved_at),
   KEY idx_school (school_id, resolved_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Trips: one row per run of a bus (driver presses "Trip shuru" ... "Trip khatam").
+-- The summary (distance, speed, stops, a thinned path) is stored when the trip ends, so reports keep
+-- working long after bus_gps_locations history (48 h) has been pruned.
+CREATE TABLE IF NOT EXISTS bus_trips (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  school_id     INT      NOT NULL,
+  bus_id        INT      NOT NULL,
+  shift_no      TINYINT  NOT NULL DEFAULT 1,
+  started_at    DATETIME NOT NULL,
+  ended_at      DATETIME NULL,
+  end_reason    VARCHAR(20) NULL,          -- driver | auto_silent | auto_old
+  distance_m    INT      NULL,
+  max_speed_kmh DECIMAL(6,1) NULL,
+  avg_speed_kmh DECIMAL(6,1) NULL,
+  points        INT      NULL,
+  stops_json    MEDIUMTEXT NULL,           -- [{lat,lng,at,min}, ...]
+  path_json     MEDIUMTEXT NULL,           -- [[lat,lng], ...] (max ~200 pts)
+  KEY idx_bus_open (bus_id, ended_at),
+  KEY idx_school_time (school_id, started_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

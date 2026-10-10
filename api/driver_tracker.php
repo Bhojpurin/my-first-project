@@ -55,7 +55,12 @@ $key = preg_replace('/[^A-Za-z0-9_\-]/', '', (string)($_GET['key'] ?? ''));
   <div class="num" id="busNum">&nbsp;</div>
 
   <div class="pill" id="state"><span class="dot"></span><span id="stateText">Band hai — Start dabayein</span></div>
-  <button id="go" disabled>Tracking Chalu Karein</button>
+  <div class="pill" id="tripBox" style="display:none;margin-top:10px"><span class="dot"></span><span id="tripText">Trip shuru nahi hui</span></div>
+  <div id="shiftRow" style="display:none;margin-top:10px">
+    <label style="font-size:.85rem;color:#94a3b8">Kaunsi shift? </label>
+    <select id="shiftSel" style="padding:10px;border-radius:10px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;font-size:1rem"></select>
+  </div>
+  <button id="go" disabled>Trip Shuru Karein</button>
   <button id="dimBtn" type="button">🌙 Screen dim karein (battery bachao)</button>
 
   <div class="grid">
@@ -71,6 +76,7 @@ $key = preg_replace('/[^A-Za-z0-9_\-]/', '', (string)($_GET['key'] ?? ''));
 
   <div class="note">
     <strong>Zaroori baatein:</strong><br>
+    • <strong>Trip Shuru</strong> dabate hi students ko "bus nikal gayi" ka message jata hai. Kaam poora hone par <strong>Trip Khatam</strong> dabayein — aaj ki doori aur stops yahin dikh jayenge.<br>
     • Tracking ke dauran <strong>screen ON</strong> rakhein aur is page ko band ya minimize na karein. Battery bachane ke liye "Screen dim karein" dabayein.<br>
     • Location ki permission <strong>Allow</strong> karein aur phone ka GPS (Location) ON rakhein.<br>
     • Internet na ho to location phone mein jama hoti rehti hai aur net aate hi apne aap bhej di jaati hai.<br>
@@ -84,6 +90,8 @@ $key = preg_replace('/[^A-Za-z0-9_\-]/', '', (string)($_GET['key'] ?? ''));
 <script>
 const KEY = <?= json_encode($key) ?>;
 const ENDPOINT = 'gps_update.php';
+const TRIP = 'bus_trip.php';
+let tripOpen = null;   // {id, shift, started_at} while a trip is running
 
 // ── Tuning ────────────────────────────────────────────────────────────────
 const CFG = {
@@ -342,11 +350,12 @@ async function start() {
   if (!window.isSecureContext) { say('GPS ke liye HTTPS zaroori hai. Link https:// se shuru hona chahiye.'); return; }
   running = true; startedAt = Date.now(); accepted = null; glitch = 0; kf.reset();
   store('trk_on_' + KEY, '1');
-  $('go').textContent = 'Tracking Band Karein'; $('go').classList.add('stop');
+  $('go').textContent = 'Trip Khatam Karein'; $('go').classList.add('stop');
   setState('warn', 'GPS dhoondh rahe hain…'); say('');
   await getWake();
   startWatch();
   loopTimer = setInterval(loop, 1000);
+  tripStartNow();
 }
 
 function stop() {
@@ -356,12 +365,55 @@ function stop() {
   clearInterval(loopTimer);
   if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
   $('dim').classList.remove('show');
-  $('go').textContent = 'Tracking Chalu Karein'; $('go').classList.remove('stop');
+  $('go').textContent = 'Trip Shuru Karein'; $('go').classList.remove('stop');
   setState('', 'Band hai — Start dabayein');
 }
 
+// ── Trip (start / stop) ───────────────────────────────────────────────────
+async function tripCall(action, extra) {
+  const body = new URLSearchParams(Object.assign({key: KEY, action}, extra || {}));
+  try {
+    const r = await fetch(TRIP, {method: 'POST', body, cache: 'no-store'});
+    return await r.json();
+  } catch (e) { return null; }
+}
+function showTrip() {
+  const b = $('tripBox');
+  b.style.display = '';
+  if (tripOpen) {
+    b.className = 'pill live';
+    $('tripText').textContent = 'Trip chal rahi hai (' + (tripOpen.started_at || '').slice(11, 16) + ' se)';
+  } else {
+    b.className = 'pill';
+    $('tripText').textContent = 'Trip shuru nahi hui';
+  }
+}
+async function tripStartNow() {
+  if (tripOpen) return;
+  const r = await tripCall('start', {shift: $('shiftSel').value || 1});
+  if (r && r.ok && r.trip) {
+    tripOpen = r.trip; showTrip();
+    if (!r.already) say(r.notified ? 'Trip shuru. ' + r.notified + ' students ko "bus nikal gayi" ka message gaya.' : 'Trip shuru ho gayi.');
+  } else {
+    say('Trip shuru nahi ho paayi (internet?) — tracking phir bhi chal rahi hai.');
+  }
+}
+async function tripStopNow() {
+  const r = await tripCall('stop');
+  tripOpen = null; showTrip();
+  if (r && r.ok && r.summary) {
+    const s = r.summary;
+    say('Trip khatam ✔  ' + s.distance_km + ' km · ' + s.minutes + ' min · max ' + Math.round(s.max_speed) + ' km/h · ' + s.stops + ' stop');
+  }
+}
+
 // ── Page events ───────────────────────────────────────────────────────────
-$('go').addEventListener('click', () => running ? stop() : start());
+$('go').addEventListener('click', async () => {
+  if (!running) { await start(); return; }
+  if (!confirm('Trip khatam karein? Tracking band ho jayegi.')) return;
+  await tripStopNow();
+  stop();
+});
 $('dimBtn').addEventListener('click', () => { if (running) $('dim').classList.add('show'); else say('Pehle tracking chalu karein.'); });
 $('dim').addEventListener('click', () => $('dim').classList.remove('show'));
 
@@ -394,6 +446,18 @@ async function loadInfo() {
     if (!j.ok) { setState('err', 'Key galat ya bus inactive'); say(j.msg || ''); $('busName').textContent = 'Bus nahi mili'; return 'bad'; }
     $('busName').textContent = j.bus_name;
     $('busNum').textContent = j.bus_number || '';
+    const t = await tripCall('status');
+    if (t && t.ok) {
+      tripOpen = t.trip || null;
+      if (t.shift_count > 1) {
+        $('shiftSel').innerHTML = Array.from({length: t.shift_count}, (_, i) => '<option value="' + (i + 1) + '">Shift ' + (i + 1) + '</option>').join('');
+        const sv = load('trk_shift_' + KEY); if (sv) $('shiftSel').value = sv;
+        if (tripOpen) $('shiftSel').value = tripOpen.shift;
+        $('shiftSel').onchange = () => store('trk_shift_' + KEY, $('shiftSel').value);
+        $('shiftRow').style.display = '';
+      }
+      showTrip();
+    }
     return 'ok';
   } catch (e) {
     $('busName').textContent = 'Bus';

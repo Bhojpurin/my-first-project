@@ -18,7 +18,7 @@
 //   fast     bursts faster than the server's 2 s limit (expects "Too frequent")
 //   badkey   uses a wrong key (expects "Invalid or inactive bus key")
 //
-// Options: --dry-run prints fixes without sending · --loop repeats the route · --no-color
+// Options: --trip also presses "Trip shuru" before and "Trip khatam" after (api/bus_trip.php; --shift=N) · --dry-run prints fixes without sending · --loop repeats the route · --no-color
 // --speedup=N plays N× faster (the *clock* is compressed, so use it only with --dry-run or tolerant servers).
 
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
@@ -216,8 +216,23 @@ $run = function () use (&$stats, &$buffer, $route, $url, $key, $dry, $scenario, 
     }
 };
 
+$tripUrl = str_replace('gps_update.php', 'bus_trip.php', $url);
+$useTrip = (bool)opt('trip') && !$dry;
+if ($useTrip) {
+    [$ok, $j, $err] = send($tripUrl, ['action' => 'start', 'shift' => (int)opt('shift', 1)], $key);
+    echo $ok && !empty($j['ok']) ? c("   ▶ trip started" . (!empty($j['already']) ? ' (already open)' : ", {$j['notified']} students notified") . "
+", '32')
+                                  : c("   ✖ trip start failed: " . ($err ?: ($j['msg'] ?? '?')) . "
+", '31');
+}
 do { $run(); if ($loop) echo c("— route finished, restarting —\n", '1'); } while ($loop);
 
+if ($useTrip) {
+    [$ok, $j, $err] = send($tripUrl, ['action' => 'stop'], $key);
+    $sm = $j['summary'] ?? null;
+    echo $ok && $sm ? c(sprintf("   ■ trip ended: %s km · %s min · max %s km/h · %s stops\n", $sm['distance_km'], $sm['minutes'], round($sm['max_speed']), $sm['stops']), '32')
+                    : c("   ✖ trip stop failed: " . ($err ?: ($j['msg'] ?? '?')) . "\n", '31');
+}
 echo "\n", c('Summary', '1;36'), ": sent {$stats['sent']} · ok {$stats['ok']} · rejected {$stats['rejected']} · failed {$stats['failed']} · back-filled {$stats['backfilled']}\n";
 $expect = [
     'normal'  => 'expect: all ✔; proximity push fires once when ≤ radius from --home',

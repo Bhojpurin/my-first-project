@@ -209,7 +209,7 @@ require_once __DIR__ . '/school_header.php';
 $pdo      = Database::connect();
 $schoolId = (int)$user['school_id'];
 $csrf     = csrfToken();
-$activeTab = in_array($_GET['tab'] ?? '', ['fleet','routes','map','students']) ? $_GET['tab'] : 'fleet';
+$activeTab = in_array($_GET['tab'] ?? '', ['fleet','routes','map','students','trips']) ? $_GET['tab'] : 'fleet';
 
 // Load all routes for dropdowns (safe: van_routes may not have is_active in all setups)
 $allRoutes = [];
@@ -244,6 +244,7 @@ try {
   <button class="bt-tab <?= $activeTab==='routes'  ?'active':'' ?>" onclick="switchTab('routes',this)"><i class="bi bi-map-fill"></i> Route Assignments</button>
   <button class="bt-tab <?= $activeTab==='map'     ?'active':'' ?>" onclick="switchTab('map',this)"><i class="bi bi-geo-alt-fill"></i> Live Map</button>
   <button class="bt-tab <?= $activeTab==='students'?'active':'' ?>" onclick="switchTab('students',this)"><i class="bi bi-people-fill"></i> Students</button>
+  <button class="bt-tab <?= $activeTab==='trips'   ?'active':'' ?>" onclick="switchTab('trips',this)"><i class="bi bi-clock-history"></i> Trips</button>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
@@ -314,6 +315,30 @@ try {
       <div id="mapBusItems" style="color:#94a3b8;font-size:.82rem;padding:8px;">Loading…</div>
     </div>
     <div class="map-wrap"><div id="liveMap"></div></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TRIPS TAB -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="pane_trips" class="bt-pane <?= $activeTab==='trips'?'active':'' ?>">
+  <div class="page-actions" style="flex-wrap:wrap;gap:8px;">
+    <label style="font-size:.8rem;color:#6b7280;">From <input type="date" id="tripFrom" class="form-control" style="display:inline-block;width:auto;"></label>
+    <label style="font-size:.8rem;color:#6b7280;">To <input type="date" id="tripTo" class="form-control" style="display:inline-block;width:auto;"></label>
+    <select id="tripBus" class="form-control" style="width:auto;"><option value="">All buses</option></select>
+    <button class="edu-btn edu-btn-primary" onclick="loadTrips()"><i class="bi bi-search"></i> Show</button>
+    <div style="flex:1;"></div>
+    <button class="edu-btn edu-btn-secondary" onclick="exportTrips()"><i class="bi bi-download"></i> CSV</button>
+  </div>
+  <div id="tripSummary" style="font-size:.84rem;color:#374151;margin:0 0 10px;"></div>
+  <div style="background:#fff;border-radius:14px;border:1.5px solid #e5e7eb;overflow:auto;">
+    <table class="route-table">
+      <thead><tr><th>Bus</th><th>Shift</th><th>Start</th><th>Duration</th><th>Distance</th><th>Max speed</th><th>Stops</th><th>Ended</th><th></th></tr></thead>
+      <tbody id="tripBody"><tr><td colspan="9" style="text-align:center;padding:30px;color:#94a3b8;">Loading…</td></tr></tbody>
+    </table>
+  </div>
+  <div id="tripMapWrap" style="display:none;margin-top:12px;">
+    <div class="map-wrap"><div id="tripMap" style="height:380px;border-radius:12px;"></div></div>
   </div>
 </div>
 
@@ -573,6 +598,7 @@ function switchTab(name, btn) {
   if (name === 'routes')   loadRoutes();
   if (name === 'map')      { initMap(); setTimeout(() => _map && _map.invalidateSize(), 60); refreshMap(); _mapInterval = setInterval(refreshMap, 15000); }
   if (name === 'students') loadStudents();
+  if (name === 'trips')    initTrips();
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1322,12 +1348,76 @@ async function setShift(studentId, routeId, shiftNo) {
   if (!r.success) showToast(r.message, false);
 }
 
+// ── Trips report ──────────────────────────────────────────────────────────────
+let _tripMap = null, _tripLayer = null, _tripsInit = false;
+async function initTrips() {
+  if (!_tripsInit) {
+    _tripsInit = true;
+    const d = new Date(), pad = n => String(n).padStart(2, '0'), iso = x => x.getFullYear() + '-' + pad(x.getMonth() + 1) + '-' + pad(x.getDate());
+    document.getElementById('tripTo').value = iso(d);
+    d.setDate(d.getDate() - 6);
+    document.getElementById('tripFrom').value = iso(d);
+    const r = await api('get_fleet');
+    (r.buses || []).forEach(b => document.getElementById('tripBus').insertAdjacentHTML('beforeend', '<option value="' + b.id + '">' + esc(b.bus_name) + '</option>'));
+  }
+  loadTrips();
+}
+function tripParams() {
+  return {from: document.getElementById('tripFrom').value, to: document.getElementById('tripTo').value, bus_id: document.getElementById('tripBus').value || 0};
+}
+function exportTrips() {
+  const p = new URLSearchParams(Object.assign({action: 'export_trips'}, tripParams()));
+  window.location = API + '?' + p.toString();
+}
+async function loadTrips() {
+  const body = document.getElementById('tripBody');
+  const r = await api('get_trips', tripParams());
+  if (!r.success) { body.innerHTML = '<tr><td colspan="9" style="padding:24px;color:#b91c1c;">' + esc(r.message || 'Error') + '</td></tr>'; return; }
+  const t = r.trips || [];
+  const km = t.reduce((s, x) => s + (+x.distance_m || 0), 0) / 1000;
+  document.getElementById('tripSummary').innerHTML = '<strong>' + t.length + '</strong> trips · <strong>' + km.toFixed(1) + ' km</strong> total';
+  const why = {driver: 'Driver', auto_silent: 'Auto (signal gaya)', auto_old: 'Auto (bahut purani)'};
+  body.innerHTML = t.length ? t.map(x => {
+    const m = +x.minutes || 0;
+    return '<tr><td><strong>' + esc(x.bus_name) + '</strong><br><small style="color:#94a3b8">' + esc(x.bus_number) + '</small></td>'
+      + '<td>' + x.shift_no + '</td><td>' + esc((x.started_at || '').replace('T', ' ').slice(0, 16)) + '</td>'
+      + '<td>' + Math.floor(m / 60) + 'h ' + (m % 60) + 'm</td>'
+      + '<td>' + (x.distance_m != null ? (x.distance_m / 1000).toFixed(1) + ' km' : '—') + '</td>'
+      + '<td>' + (x.max_speed_kmh != null ? Math.round(x.max_speed_kmh) + ' km/h' : '—') + '</td>'
+      + '<td>' + (x.stop_count || 0) + '</td><td>' + (x.ended_at ? esc(why[x.end_reason] || x.end_reason) : '<span style="color:#16a34a">● chal rahi</span>') + '</td>'
+      + '<td>' + (x.ended_at ? '<button class="edu-btn edu-btn-sm edu-btn-secondary" onclick="showTrip(' + x.id + ')"><i class="bi bi-map"></i> Map</button>' : '') + '</td></tr>';
+  }).join('') : '<tr><td colspan="9" style="text-align:center;padding:30px;color:#94a3b8;">Is samay mein koi trip nahi mili.</td></tr>';
+}
+async function showTrip(id) {
+  const r = await api('get_trip', {id});
+  if (!r.success) { showToast(r.message, false); return; }
+  document.getElementById('tripMapWrap').style.display = 'block';
+  if (!_tripMap) {
+    _tripMap = L.map('tripMap');
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '© OpenStreetMap'}).addTo(_tripMap);
+  }
+  if (_tripLayer) _tripMap.removeLayer(_tripLayer);
+  _tripLayer = L.layerGroup().addTo(_tripMap);
+  const path = r.path || [];
+  if (path.length) {
+    const line = L.polyline(path, {color: '#2563eb', weight: 4}).addTo(_tripLayer);
+    L.circleMarker(path[0], {radius: 7, color: '#16a34a', fillOpacity: 1}).bindTooltip('Start').addTo(_tripLayer);
+    L.circleMarker(path[path.length - 1], {radius: 7, color: '#dc2626', fillOpacity: 1}).bindTooltip('End').addTo(_tripLayer);
+    (r.stops || []).forEach(s => L.circleMarker([s.lat, s.lng], {radius: 6, color: '#f59e0b', fillOpacity: .9})
+      .bindTooltip('Stop · ' + s.min + ' min · ' + String(s.at).slice(11, 16)).addTo(_tripLayer));
+    _tripMap.fitBounds(line.getBounds(), {padding: [30, 30]});
+  }
+  setTimeout(() => _tripMap.invalidateSize(), 60);
+  document.getElementById('tripMapWrap').scrollIntoView({behavior: 'smooth'});
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 (function init() {
   const activePane = '<?= $activeTab ?>';
   if      (activePane === 'routes')   loadRoutes();  // loadRoutes fetches fleet internally
   else if (activePane === 'map')      { initMap(); refreshMap(); _mapInterval = setInterval(refreshMap, 15000); }
   else if (activePane === 'students') loadStudents();
+  else if (activePane === 'trips')    initTrips();
   else                                loadFleet();   // default: fleet tab
 })();
 </script>

@@ -485,4 +485,70 @@ if ($action === 'get_unassigned_routes') {
     jBus(true, '', ['routes'=>$rows->fetchAll()]);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TRIP HISTORY
+// ─────────────────────────────────────────────────────────────────────────────
+
+function tripFilters(): array {
+    global $schoolId;
+    $from = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_REQUEST['from'] ?? '') ? $_REQUEST['from'] : date('Y-m-d', strtotime('-6 days'));
+    $to   = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_REQUEST['to']   ?? '') ? $_REQUEST['to']   : date('Y-m-d');
+    $where = ['t.school_id=?', 't.started_at >= ?', 't.started_at < DATE_ADD(?, INTERVAL 1 DAY)'];
+    $par   = [$schoolId, $from . ' 00:00:00', $to];
+    $bus   = (int)($_REQUEST['bus_id'] ?? 0);
+    if ($bus) { $where[] = 't.bus_id=?'; $par[] = $bus; }
+    return [implode(' AND ', $where), $par];
+}
+
+const TRIP_SELECT = "SELECT t.id, t.bus_id, b.bus_name, b.bus_number, t.shift_no, t.started_at, t.ended_at, t.end_reason,
+        t.distance_m, t.max_speed_kmh, t.avg_speed_kmh, t.points, t.stops_json,
+        TIMESTAMPDIFF(MINUTE, t.started_at, COALESCE(t.ended_at, NOW())) AS minutes
+    FROM bus_trips t JOIN school_buses b ON b.id=t.bus_id";
+
+// ── get_trips ─────────────────────────────────────────────────────────────────
+if ($action === 'get_trips') {
+    [$w, $p] = tripFilters();
+    try {
+        $st = $pdo->prepare(TRIP_SELECT . " WHERE $w ORDER BY t.started_at DESC LIMIT 500");
+        $st->execute($p);
+        $rows = $st->fetchAll();
+    } catch (\Throwable $e) { jBus(false, 'Trip tables not installed yet — run database/bus_tracking.sql.'); }
+    foreach ($rows as &$r) {
+        $r['stop_count'] = $r['stops_json'] ? count(json_decode($r['stops_json'], true) ?: []) : 0;
+        unset($r['stops_json']);
+    }
+    unset($r);
+    jBus(true, '', ['trips' => $rows]);
+}
+
+// ── get_trip (one trip with path + stops for the map) ─────────────────────────
+if ($action === 'get_trip') {
+    $id = (int)($_REQUEST['id'] ?? 0);
+    $st = $pdo->prepare("SELECT t.path_json, t.stops_json FROM bus_trips t WHERE t.id=? AND t.school_id=?");
+    $st->execute([$id, $schoolId]);
+    $r = $st->fetch();
+    if (!$r) jBus(false, 'Trip not found.');
+    jBus(true, '', ['path' => json_decode($r['path_json'] ?: '[]', true), 'stops' => json_decode($r['stops_json'] ?: '[]', true)]);
+}
+
+// ── export_trips (CSV download) ───────────────────────────────────────────────
+if ($action === 'export_trips') {
+    [$w, $p] = tripFilters();
+    $st = $pdo->prepare(TRIP_SELECT . " WHERE $w ORDER BY t.started_at");
+    $st->execute($p);
+    header_remove('Content-Type');
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="bus_trips_' . date('Ymd') . '.csv"');
+    $out = fopen('php://output', 'w');
+    fwrite($out, "\xEF\xBB\xBF");   // Excel-friendly UTF-8
+    fputcsv($out, ['Bus', 'Number', 'Shift', 'Start', 'End', 'Minutes', 'Distance (km)', 'Max speed (km/h)', 'Avg moving speed (km/h)', 'Stops', 'Ended by']);
+    foreach ($st->fetchAll() as $r) {
+        $csvSafe = function ($v) { return is_string($v) && preg_match('/^[=+\-@]/', $v) ? "'" . $v : $v; };   // no spreadsheet formulas
+        fputcsv($out, [$csvSafe($r['bus_name']), $csvSafe($r['bus_number']), $r['shift_no'], $r['started_at'], $r['ended_at'], $r['minutes'],
+            $r['distance_m'] !== null ? round($r['distance_m'] / 1000, 1) : '', $r['max_speed_kmh'], $r['avg_speed_kmh'],
+            $r['stops_json'] ? count(json_decode($r['stops_json'], true) ?: []) : 0, $r['end_reason'] ?: 'running']);
+    }
+    exit;
+}
+
 jBus(false, 'Unknown action.');

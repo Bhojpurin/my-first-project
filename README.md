@@ -14,7 +14,8 @@ shifts, student portal, push alerts when the bus is near home.
 | `admin/bus_tracker.php`, `student/index.php`, `student/sw.js` | UI (paths assumed — adjust if yours differ) |
 | `tools/gps_simulator.php` | **new** fake bus for testing |
 | `tools/bus_watchdog_cron.php` | **new** run every minute |
-| `database/bus_tracking.sql` | **new** tables: `bus_live`, `bus_watchdog_alerts` |
+| `api/bus_trip.php`, `includes/bus_trips.php` | **new** trip start/stop, "bus nikal gayi" push, trip summary |
+| `database/bus_tracking.sql` | **new** tables: `bus_live`, `bus_watchdog_alerts`, `bus_trips` |
 
 `config/` (db.php, constants.php), `includes/session.php`, `functions.php`, `push_sender.php` and `student/stu_guard.php`
 are not in this repo yet.
@@ -24,10 +25,16 @@ are not in this repo yet.
 2. Cron: `* * * * * php /path/to/tools/bus_watchdog_cron.php`
 3. Optional: `define('BUS_WATCHDOG_WEBHOOK', 'https://...');` in `config/constants.php` for instant messages.
 
+## Trips
+Driver page: **Trip Shuru** (starts tracking + pushes "bus nikal gayi" to that shift's students) → **Trip Khatam**
+(stores km, max speed, stops, path). Admin → **Trips** tab: filter by date/bus, map of the route, CSV export.
+Forgotten trips are closed automatically by the cron job. To send "Bus nearby" alerts only during a real trip,
+set `BUS_ALERT_REQUIRE_TRIP = true` in `includes/bus_proximity.php` (off by default so nothing stops working).
+
 ## Test without a bus
 ```
 php tools/gps_simulator.php --url=https://YOUR-DOMAIN/api/gps_update.php --key=BUS_KEY --home=LAT,LNG
-php tools/gps_simulator.php ... --scenario=offline|glitch|stopgo|fast|badkey
+php tools/gps_simulator.php ... --scenario=offline|glitch|stopgo|fast|badkey --trip
 php tools/gps_simulator.php --dry-run          # no network
 ```
 Status: not run against a real PHP+MySQL server yet. Only syntax checks, the simulator in `--dry-run`, and the
