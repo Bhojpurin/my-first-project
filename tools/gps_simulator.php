@@ -18,7 +18,8 @@
 //   fast     bursts faster than the server's 2 s limit (expects "Too frequent")
 //   badkey   uses a wrong key (expects "Invalid or inactive bus key")
 //
-// Options: --trip also presses "Trip shuru" before and "Trip khatam" after (api/bus_trip.php; --shift=N) · --dry-run prints fixes without sending · --loop repeats the route · --no-color
+// Options: --trip also presses "Trip shuru" before and "Trip khatam" after (api/bus_trip.php; --shift=N).
+//          It needs a paired phone's token: --token=DEVICE_TOKEN (the bus key cannot start trips) · --dry-run prints fixes without sending · --loop repeats the route · --no-color
 // --speedup=N plays N× faster (the *clock* is compressed, so use it only with --dry-run or tolerant servers).
 
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
@@ -98,12 +99,13 @@ function densify(array $pts, float $stepM = 25): array {
 
 function fail(string $m): void { fwrite(STDERR, c("✖ $m\n", '31')); exit(1); }
 
-/** POST one fix. Returns [httpOk(bool), decodedJson|null, rawError|null]. */
-function send(string $url, array $fix, string $key): array {
-    $body = http_build_query($fix + ['key' => $key]);
+/** POST one request. $token set → sent as X-Device-Token (paired phone) instead of the bus key. */
+function send(string $url, array $fix, string $key, string $token = ''): array {
+    $body = http_build_query($token !== '' ? $fix : $fix + ['key' => $key]);
     $ctx = stream_context_create(['http' => [
         'method' => 'POST', 'timeout' => 12, 'ignore_errors' => true,
-        'header' => "Content-Type: application/x-www-form-urlencoded\r\nContent-Length: " . strlen($body) . "\r\n",
+        'header' => "Content-Type: application/x-www-form-urlencoded\r\nContent-Length: " . strlen($body) . "\r\n"
+                  . ($token !== '' ? "X-Device-Token: $token\r\n" : ''),
         'content' => $body,
     ]]);
     $raw = @file_get_contents($url, false, $ctx);
@@ -218,8 +220,10 @@ $run = function () use (&$stats, &$buffer, $route, $url, $key, $dry, $scenario, 
 
 $tripUrl = str_replace('gps_update.php', 'bus_trip.php', $url);
 $useTrip = (bool)opt('trip') && !$dry;
+$token   = (string)opt('token', '');
+if ($useTrip && !preg_match('/^[a-f0-9]{64}$/', $token)) fail('--trip needs --token=DEVICE_TOKEN of a paired phone (driver page → localStorage "drv_token").');
 if ($useTrip) {
-    [$ok, $j, $err] = send($tripUrl, ['action' => 'start', 'shift' => (int)opt('shift', 1)], $key);
+    [$ok, $j, $err] = send($tripUrl, ['action' => 'start', 'shift' => (int)opt('shift', 1)], $key, $token);
     echo $ok && !empty($j['ok']) ? c("   ▶ trip started" . (!empty($j['already']) ? ' (already open)' : ", {$j['notified']} students notified") . "
 ", '32')
                                   : c("   ✖ trip start failed: " . ($err ?: ($j['msg'] ?? '?')) . "
@@ -228,7 +232,7 @@ if ($useTrip) {
 do { $run(); if ($loop) echo c("— route finished, restarting —\n", '1'); } while ($loop);
 
 if ($useTrip) {
-    [$ok, $j, $err] = send($tripUrl, ['action' => 'stop'], $key);
+    [$ok, $j, $err] = send($tripUrl, ['action' => 'stop'], $key, $token);
     $sm = $j['summary'] ?? null;
     echo $ok && $sm ? c(sprintf("   ■ trip ended: %s km · %s min · max %s km/h · %s stops\n", $sm['distance_km'], $sm['minutes'], round($sm['max_speed']), $sm['stops']), '32')
                     : c("   ✖ trip stop failed: " . ($err ?: ($j['msg'] ?? '?')) . "\n", '31');

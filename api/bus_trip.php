@@ -20,6 +20,7 @@
 ob_start();
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../config/constants.php';
+require_once __DIR__ . '/../includes/bus_db.php';
 require_once __DIR__ . '/../includes/bus_trips.php';
 require_once __DIR__ . '/../includes/bus_security.php';
 ob_end_clean();
@@ -36,7 +37,7 @@ $action = (string)($_POST['action'] ?? 'status');
 $ip     = busClientIp();
 
 try {
-    $pdo = Database::connect();
+    $pdo = busDb(Database::connect());
 
     // ── Pairing (the only action without a token) ────────────────────────────
     if ($action === 'pair') {

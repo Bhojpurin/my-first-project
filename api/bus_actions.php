@@ -4,6 +4,7 @@ ob_start();
 ini_set('display_errors', '0');
 require_once __DIR__ . '/../includes/session.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/bus_db.php';
 require_once __DIR__ . '/../includes/activity_log.php';
 
 if (empty($_SESSION['logged_in']) || !in_array($_SESSION['role'], [ROLE_SCHOOL_ADMIN, ROLE_TEACHER])) {
@@ -20,7 +21,7 @@ $action   = $_REQUEST['action'] ?? '';
 $schoolId = (int)$_SESSION['school_id'];
 $userId   = (int)$_SESSION['user_id'];
 $isAdmin  = ($_SESSION['role'] === ROLE_SCHOOL_ADMIN);
-$pdo      = Database::connect();
+$pdo      = busDb(Database::connect());
 
 function jBus(bool $ok, string $msg = '', array $extra = []): void {
     echo json_encode(array_merge(['success'=>$ok,'message'=>$msg], $extra)); exit;

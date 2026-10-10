@@ -9,6 +9,7 @@
 ob_start();
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../config/constants.php';
+require_once __DIR__ . '/../includes/bus_db.php';
 ob_end_clean();
 
 const BUS_LOCATION_REQUIRE_LOGIN = true;
@@ -38,7 +39,7 @@ if (BUS_LOCATION_REQUIRE_LOGIN) {
 }
 
 try {
-    $pdo = Database::connect();
+    $pdo = busDb(Database::connect());
 
     // Bus must be active, belong to the school — and (when login is required) be this student's bus
     if (BUS_LOCATION_REQUIRE_LOGIN) {

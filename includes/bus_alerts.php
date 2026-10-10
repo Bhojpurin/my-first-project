@@ -143,7 +143,7 @@ function busTripDistM(float $la1, float $lo1, float $la2, float $lo2): float
 function busGeofenceEvent(PDO $pdo, array $set, int $schoolId, int $busId, ?array $trip, ?int $tripId, string $label,
                           bool $arrived, float $lat, float $lng): void
 {
-    $hm = date('H:i');
+    $hm = (new DateTime('now', new DateTimeZone(BUS_SCHOOL_TZ)))->format('H:i');
     busAdminAlert($pdo, $schoolId, $busId, $tripId, $arrived ? 'school_arrive' : 'school_leave',
         ($arrived ? '🏫 ' . $label . ' school pahunch gayi' : '🚌 ' . $label . ' school se nikal gayi') . ' (' . $hm . ')', $lat, $lng, null, 5);
     if (!$trip || !$tripId || !$set['notify_parents']) return;

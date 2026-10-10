@@ -13,6 +13,7 @@
 ob_start();
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../config/constants.php';
+require_once __DIR__ . '/../includes/bus_db.php';
 require_once __DIR__ . '/../includes/bus_security.php';
 ob_end_clean();
 
@@ -122,7 +123,7 @@ function gpsAuth(PDO $pdo, string $key, string $token): array {
 // ?info=1 : validate the credential and return the bus name. Stores nothing.
 if (($_REQUEST['info'] ?? '') === '1') {
     try {
-        $b = gpsAuth(Database::connect(), $key, $token);
+        $b = gpsAuth(busDb(Database::connect()), $key, $token);
         jOut(['ok'=>true,'bus_name'=>$b['bus_name'],'bus_number'=>$b['bus_number']]);
     } catch (\Throwable $e) {
         error_log('gps_update info: '.$e->getMessage());
@@ -155,7 +156,7 @@ if ($ageSec !== null && $ageSec >= GPS_BACKFILL_MIN_SEC) {
 }
 
 try {
-    $pdo = Database::connect();
+    $pdo = busDb(Database::connect());
 
     $bus = gpsAuth($pdo, $key, $token);
     // Per-bus flood guard (a stolen key cannot fill the database): 60 requests a minute is plenty

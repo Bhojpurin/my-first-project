@@ -30,6 +30,7 @@ $root = new PDO('mysql:host=localhost;charset=utf8mb4', getenv('BUS_TEST_USER') 
 foreach ($root->query("SHOW TABLES FROM `$DB`")->fetchAll(PDO::FETCH_COLUMN) as $t) $root->exec("DROP TABLE `$DB`.`$t`");
 $pdo = new PDO("mysql:host=localhost;dbname=$DB;charset=utf8mb4", getenv('BUS_TEST_USER') ?: 'ss', getenv('BUS_TEST_PASS') ?: 'ss',
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
+$pdo->exec("SET time_zone = '+05:30'");   // same session time zone as the module (includes/bus_db.php)
 foreach (array_filter(array_map('trim', explode(';', preg_replace('/^--.*$/m', '', file_get_contents("$ROOT/tests/fixtures/base_schema.sql"))))) as $q) $pdo->exec($q);
 
 $out1 = shell_exec('php ' . escapeshellarg("$SB/tools/migrate.php") . ' 2>&1');
@@ -139,6 +140,9 @@ try {
     ok(!in_array('Aman Singh', array_column($j['stops'], 'name'), true) && in_array('Aman S.', array_column($j['stops'], 'name'), true), 'driver sees short names, not full names');
     [$s, $j] = trip($tokA, 'start', ['shift' => 1]);
     ok(!empty($j['ok']), 'trip starts');
+    $ist = new DateTime('now', new DateTimeZone('Asia/Kolkata'));
+    $st0 = strtotime($pdo->query("SELECT started_at FROM bus_trips WHERE ended_at IS NULL")->fetchColumn());
+    ok(abs($st0 - strtotime($ist->format('Y-m-d H:i:s'))) < 120, 'trip start time is stored in school time (IST) even though MySQL runs in UTC', [$ist->format('H:i'), date('H:i', $st0)]);
     [$s, $j] = trip($tokA, 'mark_stop', ['student_id' => 21, 'status' => 'done']);
     ok(empty($j['ok']), "phone A cannot mark school B's student", $j);
     [$s, $j] = trip($tokA, 'set_order', ['order' => '21,12,11']);

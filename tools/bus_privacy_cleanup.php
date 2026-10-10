@@ -3,6 +3,7 @@
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../config/constants.php';
+require_once __DIR__ . '/../includes/bus_db.php';
 require_once __DIR__ . '/../includes/bus_privacy.php';
-$r = busPrivacyCleanup(Database::connect());
+$r = busPrivacyCleanup(busDb(Database::connect()));
 echo date('c'), ' ', $r ? json_encode($r) : 'nothing to delete', "\n";

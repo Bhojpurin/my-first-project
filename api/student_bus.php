@@ -7,6 +7,7 @@ header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
 
 require_once __DIR__ . '/../student/stu_guard.php';
+require_once __DIR__ . '/../includes/bus_db.php';
 
 if (!stuLoggedIn()) {
     http_response_code(403);
@@ -32,7 +33,7 @@ if (!$stuId || !$schoolId) {
     echo json_encode(['success'=>false,'message'=>'Session error']); exit;
 }
 
-$pdo = Database::connect();
+$pdo = busDb(Database::connect());
 
 
 // ── set_home ──────────────────────────────────────────────────────────────────
