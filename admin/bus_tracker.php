@@ -263,7 +263,8 @@ try {
     <div class="search-box"><i class="bi bi-search"></i><input type="text" id="busSearch" placeholder="Search buses…" oninput="filterBuses(this.value)"></div>
     <div style="flex:1;"></div>
     <button class="edu-btn edu-btn-secondary" onclick="openLinksModal()"><i class="bi bi-link-45deg"></i> Driver Links</button>
-    <button class="edu-btn edu-btn-primary" onclick="openBusModal()"><i class="bi bi-plus-circle"></i> Add Bus</button>
+    <button class="edu-btn edu-btn-secondary" onclick="openBusModal()"><i class="bi bi-plus-circle"></i> Add Bus (quick)</button>
+    <button class="edu-btn edu-btn-primary" onclick="openBusWizard()"><i class="bi bi-magic"></i> Setup Wizard</button>
   </div>
 
   <div class="bus-grid" id="busGrid">
@@ -685,7 +686,7 @@ function renderFleet(buses) {
 
   const grid = document.getElementById('busGrid');
   if (!buses.length) {
-    grid.innerHTML = '<div style="text-align:center;padding:60px;color:#94a3b8;grid-column:1/-1;"><i class="bi bi-bus-front" style="font-size:2.5rem;"></i><br><br>No buses added yet.<br>Click <strong>Add Bus</strong> to get started.</div>';
+    grid.innerHTML = '<div style="text-align:center;padding:60px;color:#94a3b8;grid-column:1/-1;"><i class="bi bi-bus-front" style="font-size:2.5rem;"></i><br><br>No buses added yet.<br>Click <strong>Setup Wizard</strong> to add your first bus step by step.</div>';
     return;
   }
   grid.innerHTML = buses.map(b => {
@@ -709,6 +710,7 @@ function renderFleet(buses) {
         <span class="bt-badge active">${b.route_count} route${b.route_count!=1?'s':''}</span>
       </div>
       <div class="bus-foot">
+        <button class="edu-btn edu-btn-sm edu-btn-secondary" onclick="openBusWizard(${b.id},5)" title="Setup health check"><i class="bi bi-heart-pulse"></i> Check</button>
         <button class="edu-btn edu-btn-sm edu-btn-secondary" onclick="editBusById(${b.id})"><i class="bi bi-pencil"></i> Edit</button>
         <button class="edu-btn edu-btn-sm" style="background:#fef2f2;color:#dc2626;border:1.5px solid #fecaca;" onclick="deleteBus(${b.id})"><i class="bi bi-trash"></i></button>
       </div>
@@ -1422,4 +1424,5 @@ async function showTrip(id) {
 })();
 </script>
 
+<?php require __DIR__ . '/bus_wizard.php'; ?>
 <?php require_once __DIR__ . '/school_footer.php'; ?>

@@ -486,6 +486,106 @@ if ($action === 'get_unassigned_routes') {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SETUP WIZARD / BUS HEALTH
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── wizard_check ──────────────────────────────────────────────────────────────
+// Light poll used by the wizard's live test: the newest fix of one bus (no key is returned).
+if ($action === 'wizard_check') {
+    $busId = (int)($_REQUEST['bus_id'] ?? 0);
+    $chk = $pdo->prepare("SELECT id FROM school_buses WHERE id=? AND school_id=?");
+    $chk->execute([$busId, $schoolId]);
+    if (!$chk->fetch()) jBus(false, 'Bus not found.');
+    $l = busLatestLocations($pdo, $schoolId)[$busId] ?? null;
+    if (!$l) jBus(true, '', ['fix' => null]);
+    jBus(true, '', ['fix' => [
+        'lat' => (float)$l['lat'], 'lng' => (float)$l['lng'],
+        'speed' => (float)$l['speed'], 'accuracy' => isset($l['accuracy']) ? (float)$l['accuracy'] : null,
+        'recorded_at' => $l['recorded_at'], 'age' => max(0, (int)$l['age_seconds']),
+    ]]);
+}
+
+// ── wizard_status ─────────────────────────────────────────────────────────────
+// Health checklist for one bus: what works, what is missing, and how to fix it.
+if ($action === 'wizard_status') {
+    $busId = (int)($_REQUEST['bus_id'] ?? 0);
+    $bq = $pdo->prepare("SELECT id, bus_name, bus_number, status FROM school_buses WHERE id=? AND school_id=?");
+    $bq->execute([$busId, $schoolId]);
+    $bus = $bq->fetch();
+    if (!$bus) jBus(false, 'Bus not found.');
+
+    $checks = [];
+    $add = function (string $key, string $level, string $title, string $hint = '', string $fix = '') use (&$checks) {
+        $checks[] = ['key' => $key, 'level' => $level, 'title' => $title, 'hint' => $hint, 'fix' => $fix];   // level: ok | warn | bad
+    };
+
+    // GPS
+    $l   = busLatestLocations($pdo, $schoolId)[$busId] ?? null;
+    $age = $l ? max(0, (int)$l['age_seconds']) : null;
+    $gs  = busGpsStatus($age);
+    $acc = ($l && isset($l['accuracy'])) ? (float)$l['accuracy'] : null;
+    if ($gs === 'live') {
+        if ($acc !== null && $acc > 60) $add('gps', 'warn', 'GPS chal raha hai, par accuracy kamzor hai (±' . round($acc) . ' m)', 'Phone ko dashboard par shishe ke paas, khule mein lagayein.', 'method');
+        else $add('gps', 'ok', 'GPS live hai' . ($acc !== null ? ' (±' . round($acc) . ' m)' : ''));
+    } elseif ($gs === 'recent') $add('gps', 'warn', 'Aakhri location ' . round($age / 60) . ' min pehle aayi', 'Check karein ki tracking abhi bhi chal rahi hai.', 'test');
+    elseif ($gs === 'offline')  $add('gps', 'bad', 'Location band hai (' . round($age / 60) . ' min se)', 'Phone/device band ya internet nahi.', 'test');
+    else                        $add('gps', 'bad', 'Abhi tak koi location nahi aayi', 'Tracking ka tareeka chunkar test karein.', 'method');
+
+    // Assignments
+    $aq = $pdo->prepare("
+        SELECT a.*, vr.route_name, u.name AS driver_name,
+          (SELECT COUNT(*) FROM student_van_assignments sv WHERE sv.van_route_id=a.route_id AND sv.school_id=a.school_id) AS students,
+          (SELECT COUNT(*) FROM student_van_assignments sv JOIN student_home_locations hl ON hl.student_id=sv.student_id AND hl.school_id=sv.school_id
+             WHERE sv.van_route_id=a.route_id AND sv.school_id=a.school_id) AS with_home,
+          (SELECT COUNT(*) FROM student_van_assignments sv JOIN student_home_locations hl ON hl.student_id=sv.student_id AND hl.school_id=sv.school_id
+             WHERE sv.van_route_id=a.route_id AND sv.school_id=a.school_id AND hl.push_enabled=1) AS with_push
+        FROM bus_route_assignments a
+        JOIN van_routes vr ON vr.id=a.route_id
+        LEFT JOIN teachers t ON t.id=a.driver_id LEFT JOIN users u ON u.id=t.user_id
+        WHERE a.bus_id=? AND a.school_id=? AND a.status='active'");
+    $aq->execute([$busId, $schoolId]);
+    $asg = $aq->fetchAll();
+
+    if (!$asg) {
+        $add('route', 'bad', 'Koi route assign nahi hai', 'Bina route ke students ko is bus ka alert/map nahi milega.', 'route');
+    } else {
+        $add('route', 'ok', count($asg) . ' route assigned: ' . implode(', ', array_column($asg, 'route_name')));
+        $noDriver = array_filter($asg, function ($a) { return !$a['driver_id']; });
+        $noDriver ? $add('driver', 'warn', 'Driver assign nahi: ' . implode(', ', array_column($noDriver, 'route_name')), 'Optional, par admin ko pata rehta hai kaun chala raha hai.', 'route')
+                  : $add('driver', 'ok', 'Driver: ' . implode(', ', array_unique(array_column($asg, 'driver_name'))));
+        $noTimes = array_filter($asg, function ($a) { return !$a['pickup_time'] && !$a['drop_time']; });
+        $noTimes ? $add('times', 'warn', 'Pickup/Drop time set nahi', 'Time ke bina "bus chup hai" alert aur time-window wala proximity alert kaam nahi karte.', 'route')
+                 : $add('times', 'ok', 'Shift timings set hain');
+        $stu = array_sum(array_column($asg, 'students'));
+        $home = array_sum(array_column($asg, 'with_home'));
+        $push = array_sum(array_column($asg, 'with_push'));
+        if ($stu === 0)             $add('students', 'warn', 'Is route par abhi koi student nahi', 'Fee → Van Setup mein students ko route par daalein.', 'students');
+        else {
+            $add('students', 'ok', $stu . ' students route par');
+            $pctHome = round($home / $stu * 100); $pctPush = round($push / $stu * 100);
+            $add('home', $pctHome >= 50 ? 'ok' : 'warn', "$home / $stu students ne ghar ki location set ki ($pctHome%)", $pctHome >= 50 ? '' : 'Parents ko student portal → Bus tab mein ghar set karne ko kahein, tabhi "bus nazdeek hai" alert milega.', 'students');
+            $add('push', $pctPush >= 30 ? 'ok' : 'warn', "$push / $stu students ke phone par alerts ON ($pctPush%)", $pctPush >= 30 ? '' : 'Parents ko Bus tab mein "Background alerts" ON karne ko kahein.', 'students');
+        }
+    }
+
+    // Open watchdog alert / trips
+    try {
+        $w = $pdo->prepare("SELECT 1 FROM bus_watchdog_alerts WHERE bus_id=? AND resolved_at IS NULL LIMIT 1");
+        $w->execute([$busId]);
+        if ($w->fetchColumn()) $add('watchdog', 'bad', 'Watchdog alert khula hai: bus chalni chahiye par chup hai', '', 'test');
+    } catch (\Throwable $e) {}
+    try {
+        $t = $pdo->prepare("SELECT COUNT(*) FROM bus_trips WHERE bus_id=?");
+        $t->execute([$busId]);
+        (int)$t->fetchColumn() > 0 ? $add('trip', 'ok', 'Trip shuru/khatam pehle ho chuki hai')
+                                   : $add('trip', 'warn', 'Abhi tak koi trip nahi chali', 'Driver ko link kholkar "Trip Shuru Karein" dabane ko kahein.', 'method');
+    } catch (\Throwable $e) {}
+
+    $score = 0; foreach ($checks as $c) $score += $c['level'] === 'ok' ? 2 : ($c['level'] === 'warn' ? 1 : 0);
+    jBus(true, '', ['bus' => $bus, 'checks' => $checks, 'score' => (int)round($score / (2 * max(1, count($checks))) * 100)]);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TRIP HISTORY
 // ─────────────────────────────────────────────────────────────────────────────
 
