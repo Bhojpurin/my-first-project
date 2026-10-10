@@ -485,13 +485,13 @@ try {
     </div>
     <div class="modal-body">
       <div style="font-size:.8rem;color:#6b7280;margin-bottom:10px;">
-        Every bus has its <strong>own link</strong>. Send each driver only <em>their</em> bus's link (WhatsApp / QR). The driver opens it in Chrome and taps <strong>Start</strong>. Opening a link on the live <strong>https</strong> domain is required for GPS to work.
+        Har driver ka phone <strong>ek baar pair</strong> hota hai: "link banayein" dabayein aur sirf us bus ke driver ko QR / WhatsApp se bhejein.
+        Link <strong>24 ghante</strong> tak aur <strong>sirf ek phone</strong> par chalta hai — forward ho jaaye to bhi kisi aur ke kaam ka nahi. Phone jud jaane ke baad driver
+        seedha page kholta hai, link ki zaroorat nahi. Neeche har bus ke jude hue phone dikhte hain; kisi ko bhi <strong>Hatayein</strong> kar sakte hain.
       </div>
       <div id="linksLocalWarn" style="display:none;margin-bottom:10px;padding:9px 12px;border-radius:9px;font-size:.76rem;background:#fffbeb;color:#92400e;border:1px solid #fde68a;">
-        You opened this panel on <strong>localhost</strong>, so these links point to localhost and will not open on a phone. On the live site they automatically use your real domain.
-      </div>
-      <div style="display:flex;gap:8px;margin-bottom:12px;">
-        <button class="edu-btn edu-btn-sm edu-btn-secondary" onclick="copyAllLinks(this)"><i class="bi bi-clipboard"></i> Copy all links</button>
+        Aap panel <strong>localhost</strong> par chala rahe hain — yahan bane link phone par nahi khulenge (phone ke liye <strong>https</strong> wali live site chahiye).
+        Live site par link apne aap aapke domain se banenge. Localhost par test ke liye isi computer ke Chrome mein link khol sakte hain.
       </div>
       <div id="linksList" style="display:flex;flex-direction:column;gap:10px;">Loading…</div>
     </div>

@@ -33,8 +33,6 @@ $pdo = new PDO("mysql:host=localhost;dbname=$DB;charset=utf8mb4", getenv('BUS_TE
 $pdo->exec("SET time_zone = '+05:30'");   // same session time zone as the module (includes/bus_db.php)
 foreach (array_filter(array_map('trim', explode(';', preg_replace('/^--.*$/m', '', file_get_contents("$ROOT/tests/fixtures/base_schema.sql"))))) as $q) $pdo->exec($q);
 
-$out1 = shell_exec('php ' . escapeshellarg("$SB/tools/migrate.php") . ' 2>&1');
-$out2 = shell_exec('php ' . escapeshellarg("$SB/tools/migrate.php") . ' 2>&1');
 
 // ── tiny test framework ──────────────────────────────────────────────────────
 $pass = 0; $fail = 0;
@@ -76,12 +74,8 @@ function pushes(): array { global $PUSHLOG; return is_file($PUSHLOG) ? array_map
 function clearPushes(): void { global $PUSHLOG; @unlink($PUSHLOG); }
 function off(float $m, float $e = 0): array { return [28.6 + $m / 111320, 77.2 + $e / 97700]; }
 
-section('Migration');
-ok(strpos($out1, '✖') === false, 'migrate.php runs clean on a fresh database', $out1);
-ok(strpos($out2, '✖') === false, 'migrate.php runs clean a second time (idempotent)', $out2);
-ok((bool)$pdo->query("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='student_home_locations' AND COLUMN_NAME='note'")->fetchColumn(), 'home note column added');
 
-// ── seed two schools ─────────────────────────────────────────────────────────
+// ── seed two schools (only the panel's own tables exist — no bus tables yet, no migrate.php run) ──
 $pdo->exec("INSERT INTO classes (id, class_name) VALUES (1,'5'),(2,'7'); INSERT INTO sections (id, section_name) VALUES (1,'A')");
 $pdo->exec("INSERT INTO school_buses (id, school_id, bus_name, bus_number, gps_api_key, status) VALUES
    (1, 1, 'A-Bus', 'UP32 A', 'keyschoolA0000000000000000000000000000000000000', 'active'),
@@ -105,6 +99,26 @@ usleep(800000);
 
 try {
     $A = login('school_admin', 1); $B = login('school_admin', 2); $T = login('teacher', 1);
+
+    section('Automatic database setup (no command line)');
+    ok(!$pdo->query("SHOW TABLES LIKE 'bus_trips'")->fetchColumn(), 'fresh deploy: bus tables do not exist yet');
+    $pdo->exec("UPDATE students SET status=status");   // (keeps the seed untouched)
+    $par = [];
+    for ($i = 0; $i < 3; $i++) $par[] = curl_init();   // three admins open the page at the same moment
+    $mh = curl_multi_init();
+    foreach ($par as $ch) { curl_setopt_array($ch, [CURLOPT_URL => "$BASE/api/bus_actions.php", CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POSTFIELDS => http_build_query(['action' => 'get_fleet']), CURLOPT_COOKIEFILE => $A[0], CURLOPT_TIMEOUT => 60]); curl_multi_add_handle($mh, $ch); }
+    do { curl_multi_exec($mh, $run); curl_multi_select($mh); } while ($run);
+    $okAll = true; foreach ($par as $ch) { $j = json_decode(curl_multi_getcontent($ch), true); $okAll = $okAll && !empty($j['success']); }
+    ok($okAll, 'first requests (3 at once) succeed while the module sets up its tables');
+    $sv = (int)$pdo->query("SELECT MAX(v) FROM bus_schema_version")->fetchColumn();
+    $need = ['bus_live', 'bus_watchdog_alerts', 'bus_trips', 'bus_trip_stops', 'bus_route_learn', 'bus_rate_limits', 'bus_pair_codes',
+             'bus_driver_devices', 'bus_alert_settings', 'bus_alerts', 'bus_alert_state', 'bus_halt_reports', 'bus_absences', 'bus_schema_version'];
+    $have = $pdo->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()")->fetchAll(PDO::FETCH_COLUMN);
+    ok($sv >= 8 && !array_diff($need, $have), "all 14 bus tables created automatically (schema v$sv)", array_values(array_diff($need, $have)));
+    ok((bool)$pdo->query("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='student_home_locations' AND COLUMN_NAME='note'")->fetchColumn(), "the panel's own tables got the new columns");
+    $out1 = shell_exec('php ' . escapeshellarg("$SB/tools/migrate.php") . ' 2>&1');
+    ok(strpos($out1, '✖') === false && strpos($out1, 'Done') !== false, 'tools/migrate.php afterwards: nothing breaks (idempotent)', $out1);
 
     section('Driver phone pairing (no key in any link)');
     [, $j] = admin($T, 'driver_pair_link', ['bus_id' => 1]);

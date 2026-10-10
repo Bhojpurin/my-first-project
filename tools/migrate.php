@@ -1,52 +1,17 @@
 <?php
-// tools/migrate.php — creates / upgrades the bus tracker tables. Safe to run any number of times.
+// tools/migrate.php — creates / upgrades the bus tracker tables by hand and prints every step.
+// Normally NOT needed: the module upgrades itself on the first request after a deploy (includes/bus_schema.php).
 //   php tools/migrate.php            (XAMPP: C:\\xampp\\php\\php.exe tools\\migrate.php)
-// Runs database/bus_tracking.sql, then adds columns that newer versions need on tables created earlier
-// (works on MySQL and MariaDB — no "ADD COLUMN IF NOT EXISTS" needed).
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../config/constants.php';
+require_once __DIR__ . '/../includes/bus_schema.php';
 $pdo = Database::connect();
-$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-$sql = preg_replace('/^\s*--.*$/m', '', file_get_contents(__DIR__ . '/../database/bus_tracking.sql'));
-foreach (array_filter(array_map('trim', explode(';', $sql))) as $stmt) {
-    try { $pdo->exec($stmt); echo '✔ ', strtok($stmt, "\n"), "\n"; }
-    catch (\Throwable $e) { echo '✖ ', strtok($stmt, "\n"), ' → ', $e->getMessage(), "\n"; }
+$ok = busRunMigration($pdo, function ($l) { echo $l, "\n"; });
+if ($ok) {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS bus_schema_version (v INT NOT NULL, updated_at DATETIME NOT NULL) ENGINE=InnoDB");
+    $pdo->exec("DELETE FROM bus_schema_version");
+    $pdo->prepare("INSERT INTO bus_schema_version (v, updated_at) VALUES (?, NOW())")->execute([BUS_SCHEMA_VERSION]);
 }
-
-$addCols = [
-    ['bus_live', 'still_since', 'DATETIME NULL'],
-    ['bus_gps_locations', 'accuracy', 'DECIMAL(8,2) NULL'],
-    ['bus_trip_stops', 'eta_at', 'DATETIME NULL'],
-    ['bus_trip_stops', 'eta_notified', 'TINYINT NOT NULL DEFAULT 0'],
-    ['bus_trips', 'kind', 'VARCHAR(6) NULL'],
-    ['bus_alert_settings', 'halt_ask_min', 'SMALLINT NOT NULL DEFAULT 3'],
-    ['bus_alert_settings', 'halt_admin_min', 'SMALLINT NOT NULL DEFAULT 8'],
-    ['bus_alerts', 'ref_id', 'INT NULL'],
-    ['bus_alerts', 'broadcast_at', 'DATETIME NULL'],
-    ['bus_alerts', 'broadcast_n', 'INT NOT NULL DEFAULT 0'],
-    ['bus_alert_state', 'halt_alerted_for', 'DATETIME NULL'],
-    ['student_home_locations', 'note', 'VARCHAR(120) NULL'],
-    ['student_home_locations', 'bus_lost_at', 'DATETIME NULL'],   // privacy: student has no bus since (grace period)   // "mandir ke saamne, neela gate" — shown to the driver
-];
-foreach ($addCols as [$t, $c, $def]) {
-    $q = $pdo->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?");
-    $q->execute([$t, $c]);
-    if ((int)$q->fetchColumn()) { echo "✔ $t.$c exists\n"; continue; }
-    try { $pdo->exec("ALTER TABLE `$t` ADD COLUMN `$c` $def"); echo "✔ added $t.$c\n"; }
-    catch (\Throwable $e) { echo "✖ $t.$c → ", $e->getMessage(), "\n"; }
-}
-// bus_route_learn got a "kind" (pickup/drop) column in its primary key
-try {
-    $q = $pdo->query("SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA=DATABASE()
-                      AND TABLE_NAME='bus_route_learn' AND CONSTRAINT_NAME='PRIMARY' AND COLUMN_NAME='kind'");
-    if (!(int)$q->fetchColumn()) {
-        $c = $pdo->query("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='bus_route_learn' AND COLUMN_NAME='kind'");
-        if (!(int)$c->fetchColumn()) $pdo->exec("ALTER TABLE bus_route_learn ADD COLUMN kind VARCHAR(6) NOT NULL DEFAULT 'any' AFTER shift_no");
-        $pdo->exec("ALTER TABLE bus_route_learn DROP PRIMARY KEY, ADD PRIMARY KEY (bus_id, shift_no, kind)");
-        echo "✔ bus_route_learn primary key upgraded\n";
-    }
-} catch (\Throwable $e) { echo "✖ bus_route_learn key → ", $e->getMessage(), "\n"; }
-
-echo "Done.\n";
+echo $ok ? "Done (schema v" . BUS_SCHEMA_VERSION . ").\n" : "Some steps failed — see ✖ lines above.\n";
+exit($ok ? 0 : 1);

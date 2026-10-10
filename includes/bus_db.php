@@ -4,6 +4,7 @@
 // come from MySQL NOW(). Many servers run MySQL in UTC; without this, a 07:00 trip would be stored as 01:30.
 // Only this connection's session is changed (SET time_zone); the panel's other modules are not affected.
 // Override with define('BUS_DB_TIMEZONE', '+04:00') in config/constants.php for schools outside India.
+// It also makes sure the bus tables exist and are up to date (includes/bus_schema.php).
 
 function busDb(PDO $pdo): PDO
 {
@@ -15,6 +16,9 @@ function busDb(PDO $pdo): PDO
         if (preg_match('/^[+-](0\d|1[0-4]):[0-5]\d$/', $tz)) {
             try { $pdo->exec("SET time_zone = '$tz'"); } catch (\Throwable $e) { error_log('bus_db tz: ' . $e->getMessage()); }
         }
+        // Tables are created / upgraded automatically on the first request after a deploy
+        require_once __DIR__ . '/bus_schema.php';
+        busEnsureSchema($pdo);
     }
     return $pdo;
 }

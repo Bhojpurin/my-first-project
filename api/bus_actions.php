@@ -33,6 +33,7 @@ function csrfBus(): void {
 }
 
 const BUS_MAX_SHIFTS = 5;
+const BUS_DB_SETUP_MSG = 'Database update nahi ho paaya — server ke error log mein "bus_schema" dekhein (DB user ko CREATE/ALTER ki permission chahiye).';
 
 // Normalise a time input ("HH:MM" or "HH:MM:SS") to "HH:MM:SS", or null if empty/invalid.
 function busTime($v): ?string {
@@ -213,7 +214,7 @@ if ($action === 'driver_pair_link') {
     if (!$chk->fetch()) jBus(false, 'Bus not found or inactive.');
     if (!busRateHit($pdo, 'pairmk:' . $schoolId, 60, 3600)) jBus(false, 'Too many links created. Try again later.');
     try { $code = busCreatePairCode($pdo, $schoolId, $busId, $userId); }
-    catch (\Throwable $e) { jBus(false, 'Security tables missing — run tools/migrate.php.'); }
+    catch (\Throwable $e) { error_log('bus pair: ' . $e->getMessage()); jBus(false, BUS_DB_SETUP_MSG); }
     _slog("Driver pairing link created for bus #$busId", 'update');
     jBus(true, '', ['code' => $code, 'valid_hours' => (int)(BUS_PAIR_TTL_SEC / 3600)]);
 }
@@ -468,7 +469,7 @@ if ($action === 'get_bus_live_detail') {
         $kind  = busTripKind($pdo, $busId, $schoolId, $shift, $trip ? (string)$trip['started_at'] : (string)$pdo->query("SELECT NOW()")->fetchColumn());
         $learn = busLearnedProfile($pdo, $busId, $shift, $kind);
     } catch (\Throwable $e) {
-        jBus(false, 'Trip tables not installed yet — run tools/migrate.php.');
+        error_log('bus detail: ' . $e->getMessage()); jBus(false, BUS_DB_SETUP_MSG);
     }
     jBus(true, '', ['bus' => $bus, 'shift' => $shift, 'kind' => $kind,
         'trip' => $trip ? ['id' => (int)$trip['id'], 'started_at' => $trip['started_at']] : null,
@@ -517,7 +518,7 @@ if ($action === 'save_alert_settings') {
             ->execute([$schoolId, $n('overspeed_kmh', 20, 120, 50), $n('overspeed_sec', 5, 300, 20), $lat, $lng,
                        $n('school_radius_m', 50, 1000, 150), $n('deviation_m', 150, 3000, 400), $n('deviation_sec', 30, 900, 90),
                        !empty($_POST['notify_parents']) ? 1 : 0, $askMin, max($askMin + 1, $n('halt_admin_min', 2, 60, 8))]);
-    } catch (\Throwable $e) { jBus(false, 'Alert tables missing — run tools/migrate.php.'); }
+    } catch (\Throwable $e) { error_log('bus alert settings: ' . $e->getMessage()); jBus(false, BUS_DB_SETUP_MSG); }
     _slog('Bus alert settings updated', 'update');
     jBus(true, 'Alert settings save ho gayi.');
 }
@@ -837,7 +838,7 @@ if ($action === 'get_trips') {
         $st = $pdo->prepare(TRIP_SELECT . " WHERE $w ORDER BY t.started_at DESC LIMIT 500");
         $st->execute($p);
         $rows = $st->fetchAll();
-    } catch (\Throwable $e) { jBus(false, 'Trip tables not installed yet — run database/bus_tracking.sql.'); }
+    } catch (\Throwable $e) { jBus(false, BUS_DB_SETUP_MSG); }
     foreach ($rows as &$r) {
         $r['stop_count'] = $r['stops_json'] ? count(json_decode($r['stops_json'], true) ?: []) : 0;
         unset($r['stops_json']);

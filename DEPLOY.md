@@ -19,7 +19,7 @@ hain** — wo aapke server par pehle se hain aur waise hi rahengi.
 | `api/` | `driver_sw.js` | **nayi** (driver page ka offline cache) |
 | `api/` | `gps_update.php` | badli |
 | `api/` | `student_bus.php` | badli |
-| `includes/` | `bus_alerts.php`, `bus_db.php`, `bus_halt.php`, `bus_message_hook.php`, `bus_notify.php`, `bus_privacy.php`, `bus_security.php`, `bus_trips.php`, `bus_watchdog.php` | **nayi** |
+| `includes/` | `bus_alerts.php`, `bus_db.php`, `bus_schema.php`, `bus_halt.php`, `bus_message_hook.php`, `bus_notify.php`, `bus_privacy.php`, `bus_security.php`, `bus_trips.php`, `bus_watchdog.php` | **nayi** |
 | `includes/` | `bus_proximity.php` | badli |
 | `school/` * | `bus_tracker.php` | badli |
 | `school/` * | `bus_wizard.php` | **nayi** (bus_tracker.php ke bagal mein) |
@@ -34,13 +34,17 @@ overwrite na karein — mujhe nayi file bhejein, main badlaav jod dunga.
 
 `tests/` folder **upload na karein** (sirf development ke liye).
 
-## 2. Database update
-```
-php tools/migrate.php          (XAMPP: C:\xampp\php\php.exe tools\migrate.php)
-```
-Har line ✔ honi chahiye. Dobara chalana safe hai. ✖ aaye to output mujhe bhejein.
+## 2. Database update — apne aap
+Kuch chalane ki zaroorat **nahi**. Files upload karke panel mein **Bus Tracker** kholein — pehli request par module apni
+saari tables / columns khud bana leta hai (ek hi baar, kai log ek saath kholein to bhi). Agar fir bhi
+"Database update nahi ho paaya" aaye, to DB user ko CREATE/ALTER permission chahiye; server ke PHP error log mein `bus_schema`
+wali lines dekhein.
 
-## 3. Self-check
+`tools/` folder **browser se nahi khulta (403 Forbidden — ye suraksha ke liye sahi hai)**. Hath se chalana ho to command line se:
+- XAMPP: Control Panel → **Shell** button → `cd htdocs\sszone` → `php tools\migrate.php`
+- Linux / cPanel Terminal: `cd public_html/sszone && php tools/migrate.php`
+
+## 3. Self-check (optional, command line se)
 ```
 php tools/bus_selfcheck.php
 ```
