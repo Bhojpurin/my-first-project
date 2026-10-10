@@ -334,8 +334,8 @@ try {
   <div id="tripSummary" style="font-size:.84rem;color:#374151;margin:0 0 10px;"></div>
   <div style="background:#fff;border-radius:14px;border:1.5px solid #e5e7eb;overflow:auto;">
     <table class="route-table">
-      <thead><tr><th>Bus</th><th>Shift</th><th>Start</th><th>Duration</th><th>Distance</th><th>Max speed</th><th>Stops</th><th>Ended</th><th></th></tr></thead>
-      <tbody id="tripBody"><tr><td colspan="9" style="text-align:center;padding:30px;color:#94a3b8;">Loading…</td></tr></tbody>
+      <thead><tr><th>Bus</th><th>Shift</th><th>Start</th><th>Duration</th><th>Distance</th><th>Max speed</th><th>Halts</th><th>Students ✔/✖</th><th>Ended</th><th></th></tr></thead>
+      <tbody id="tripBody"><tr><td colspan="10" style="text-align:center;padding:30px;color:#94a3b8;">Loading…</td></tr></tbody>
     </table>
   </div>
   <div id="tripMapWrap" style="display:none;margin-top:12px;">
@@ -1374,7 +1374,7 @@ function exportTrips() {
 async function loadTrips() {
   const body = document.getElementById('tripBody');
   const r = await api('get_trips', tripParams());
-  if (!r.success) { body.innerHTML = '<tr><td colspan="9" style="padding:24px;color:#b91c1c;">' + esc(r.message || 'Error') + '</td></tr>'; return; }
+  if (!r.success) { body.innerHTML = '<tr><td colspan="10" style="padding:24px;color:#b91c1c;">' + esc(r.message || 'Error') + '</td></tr>'; return; }
   const t = r.trips || [];
   const km = t.reduce((s, x) => s + (+x.distance_m || 0), 0) / 1000;
   document.getElementById('tripSummary').innerHTML = '<strong>' + t.length + '</strong> trips · <strong>' + km.toFixed(1) + ' km</strong> total';
@@ -1386,9 +1386,9 @@ async function loadTrips() {
       + '<td>' + Math.floor(m / 60) + 'h ' + (m % 60) + 'm</td>'
       + '<td>' + (x.distance_m != null ? (x.distance_m / 1000).toFixed(1) + ' km' : '—') + '</td>'
       + '<td>' + (x.max_speed_kmh != null ? Math.round(x.max_speed_kmh) + ' km/h' : '—') + '</td>'
-      + '<td>' + (x.stop_count || 0) + '</td><td>' + (x.ended_at ? esc(why[x.end_reason] || x.end_reason) : '<span style="color:#16a34a">● chal rahi</span>') + '</td>'
+      + '<td>' + (x.stop_count || 0) + '</td><td>' + (+x.picked || 0) + ' / ' + (+x.absent || 0) + '</td><td>' + (x.ended_at ? esc(why[x.end_reason] || x.end_reason) : '<span style="color:#16a34a">● chal rahi</span>') + '</td>'
       + '<td>' + (x.ended_at ? '<button class="edu-btn edu-btn-sm edu-btn-secondary" onclick="showTrip(' + x.id + ')"><i class="bi bi-map"></i> Map</button>' : '') + '</td></tr>';
-  }).join('') : '<tr><td colspan="9" style="text-align:center;padding:30px;color:#94a3b8;">Is samay mein koi trip nahi mili.</td></tr>';
+  }).join('') : '<tr><td colspan="10" style="text-align:center;padding:30px;color:#94a3b8;">Is samay mein koi trip nahi mili.</td></tr>';
 }
 async function showTrip(id) {
   const r = await api('get_trip', {id});

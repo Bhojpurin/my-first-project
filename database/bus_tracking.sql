@@ -54,3 +54,16 @@ CREATE TABLE IF NOT EXISTS bus_trips (
   KEY idx_bus_open (bus_id, ended_at),
   KEY idx_school_time (school_id, started_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Stops of a trip = the students of that trip's shift who marked their home. One row per student per trip:
+-- the driver's planned order (seq) and what happened (done = picked up / dropped, absent = did not come).
+CREATE TABLE IF NOT EXISTS bus_trip_stops (
+  trip_id    INT         NOT NULL,
+  student_id INT         NOT NULL,
+  seq        SMALLINT    NULL,                       -- planned order on the driver's phone (1 = first)
+  status     VARCHAR(10) NOT NULL DEFAULT 'pending', -- pending | done | absent
+  marked_by  VARCHAR(10) NULL,                       -- driver | auto
+  marked_at  DATETIME    NULL,
+  PRIMARY KEY (trip_id, student_id),
+  KEY idx_student (student_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

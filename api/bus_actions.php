@@ -602,6 +602,8 @@ function tripFilters(): array {
 
 const TRIP_SELECT = "SELECT t.id, t.bus_id, b.bus_name, b.bus_number, t.shift_no, t.started_at, t.ended_at, t.end_reason,
         t.distance_m, t.max_speed_kmh, t.avg_speed_kmh, t.points, t.stops_json,
+        (SELECT COUNT(*) FROM bus_trip_stops ts WHERE ts.trip_id=t.id AND ts.status='done')   AS picked,
+        (SELECT COUNT(*) FROM bus_trip_stops ts WHERE ts.trip_id=t.id AND ts.status='absent') AS absent,
         TIMESTAMPDIFF(MINUTE, t.started_at, COALESCE(t.ended_at, NOW())) AS minutes
     FROM bus_trips t JOIN school_buses b ON b.id=t.bus_id";
 
@@ -641,12 +643,12 @@ if ($action === 'export_trips') {
     header('Content-Disposition: attachment; filename="bus_trips_' . date('Ymd') . '.csv"');
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF");   // Excel-friendly UTF-8
-    fputcsv($out, ['Bus', 'Number', 'Shift', 'Start', 'End', 'Minutes', 'Distance (km)', 'Max speed (km/h)', 'Avg moving speed (km/h)', 'Stops', 'Ended by']);
+    fputcsv($out, ['Bus', 'Number', 'Shift', 'Start', 'End', 'Minutes', 'Distance (km)', 'Max speed (km/h)', 'Avg moving speed (km/h)', 'Stops', 'Students done', 'Students absent', 'Ended by']);
     foreach ($st->fetchAll() as $r) {
         $csvSafe = function ($v) { return is_string($v) && preg_match('/^[=+\-@]/', $v) ? "'" . $v : $v; };   // no spreadsheet formulas
         fputcsv($out, [$csvSafe($r['bus_name']), $csvSafe($r['bus_number']), $r['shift_no'], $r['started_at'], $r['ended_at'], $r['minutes'],
             $r['distance_m'] !== null ? round($r['distance_m'] / 1000, 1) : '', $r['max_speed_kmh'], $r['avg_speed_kmh'],
-            $r['stops_json'] ? count(json_decode($r['stops_json'], true) ?: []) : 0, $r['end_reason'] ?: 'running']);
+            $r['stops_json'] ? count(json_decode($r['stops_json'], true) ?: []) : 0, $r['picked'], $r['absent'], $r['end_reason'] ?: 'running']);
     }
     exit;
 }

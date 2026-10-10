@@ -81,6 +81,41 @@ try {
     if (!$loc) { echo json_encode(['ok'=>false,'msg'=>'No GPS data yet']); exit; }
 
     $age = max(0, (int)$loc['age_sec']);
+
+    // Running trip of this bus, and — for the logged-in student — their own stop on it
+    // (picked up / marked absent / how many stops the driver still has before theirs).
+    $trip = null;
+    try {
+        require_once __DIR__ . '/../includes/bus_trips.php';
+        $tq = $pdo->prepare("SELECT id, shift_no, started_at FROM bus_trips WHERE bus_id=? AND school_id=? AND ended_at IS NULL ORDER BY id DESC LIMIT 1");
+        $tq->execute([$busId, $schoolId]);
+        if ($t = $tq->fetch()) {
+            $trip = ['running' => true, 'shift' => (int)$t['shift_no'], 'started_at' => $t['started_at'], 'mine' => null];
+            if ($stuId) {
+                $sq = $pdo->prepare("SELECT " . BUS_EFFECTIVE_SHIFT_SQL . " FROM bus_route_assignments bra
+                    JOIN student_van_assignments sva ON sva.van_route_id=bra.route_id AND sva.school_id=bra.school_id
+                    LEFT JOIN bus_student_shifts bss ON bss.student_id=sva.student_id AND bss.route_id=sva.van_route_id AND bss.school_id=sva.school_id
+                    WHERE bra.bus_id=? AND bra.school_id=? AND bra.status='active' AND sva.student_id=? LIMIT 1");
+                $sq->execute([$busId, $schoolId, $stuId]);
+                $myShift = (int)$sq->fetchColumn();
+                $trip['mine'] = $myShift === (int)$t['shift_no'];
+                if ($trip['mine']) {
+                    $mq = $pdo->prepare("SELECT seq, status, marked_at FROM bus_trip_stops WHERE trip_id=? AND student_id=?");
+                    $mq->execute([(int)$t['id'], $stuId]);
+                    $me = $mq->fetch() ?: [];
+                    $trip['status'] = $me['status'] ?? 'pending';
+                    $trip['marked_at'] = $me['marked_at'] ?? null;
+                    $trip['before'] = null;
+                    if ($trip['status'] === 'pending' && isset($me['seq'])) {
+                        $bq = $pdo->prepare("SELECT COUNT(*) FROM bus_trip_stops WHERE trip_id=? AND status='pending' AND seq IS NOT NULL AND seq < ?");
+                        $bq->execute([(int)$t['id'], (int)$me['seq']]);
+                        $trip['before'] = (int)$bq->fetchColumn();
+                    }
+                }
+            }
+        }
+    } catch (\Throwable $e) { $trip = null; }   // trip tables not installed yet
+
     echo json_encode([
         'ok'    => true,
         'lat'   => (float)$loc['lat'],
@@ -91,6 +126,7 @@ try {
         'time'  => $loc['recorded_at'],
         'age'   => $age,
         'live'  => $age < 300,  // online = location in last 5 min
+        'trip'  => $trip,
     ]);
 } catch (\Throwable $e) {
     error_log('bus_location: ' . $e->getMessage());

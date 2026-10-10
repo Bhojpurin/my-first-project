@@ -4,6 +4,9 @@
 //   action=status                 bus name, number, shifts, and the open trip (if any)
 //   action=start  [shift=1..5]    open a trip (idempotent) and push "bus has left" to the students
 //   action=stop                   close the open trip and return its summary (km, max speed, stops)
+//   action=stops  [shift=N]       students of that shift with their marked home (the open trip's shift wins)
+//   action=mark_stop student_id=  status=done|absent|pending [by=auto]   (needs an open trip)
+//   action=set_order order=12,5,9 planned stop order of the open trip (shown to students as "N stops before you")
 
 ob_start();
 require_once __DIR__ . '/../config/db.php';
@@ -39,7 +42,8 @@ try {
         $s = $pdo->prepare("SELECT MAX(shift_count) FROM bus_route_assignments WHERE bus_id=? AND school_id=? AND status='active'");
         $s->execute([$busId, $schoolId]);
         tOut(['ok' => true, 'bus_name' => $bus['bus_name'], 'bus_number' => $bus['bus_number'],
-              'shift_count' => max(1, (int)$s->fetchColumn()), 'trip' => $fmt(busTripGetOpen($pdo, $busId))]);
+              'shift_count' => max(1, (int)$s->fetchColumn()), 'shifts' => busShiftList($pdo, $busId, $schoolId),
+              'trip' => $fmt(busTripGetOpen($pdo, $busId))]);
     }
 
     if ($action === 'start') {
@@ -59,6 +63,24 @@ try {
             'distance_km' => round($sum['distance_m'] / 1000, 1), 'max_speed' => $sum['max_speed'],
             'stops' => count($sum['stops']), 'minutes' => max(1, (int)round((time() - strtotime($open['started_at'])) / 60)),
         ] : null]);
+    }
+
+    if ($action === 'stops') {
+        $open  = busTripGetOpen($pdo, $busId);
+        $shift = $open ? (int)$open['shift_no'] : max(1, min(5, (int)($_REQUEST['shift'] ?? 1)));
+        $list  = busStopsForShift($pdo, $busId, $schoolId, $shift, $open ? (int)$open['id'] : null);
+        tOut(['ok' => true, 'shift' => $shift, 'trip' => $fmt($open)] + $list);
+    }
+
+    if ($action === 'mark_stop' || $action === 'set_order') {
+        $open = busTripGetOpen($pdo, $busId);
+        if (!$open) tOut(['ok' => false, 'msg' => 'Pehle trip shuru karein']);
+        if ($action === 'mark_stop') {
+            $ok = busTripMarkStop($pdo, $open, (int)($_REQUEST['student_id'] ?? 0), (string)($_REQUEST['status'] ?? ''), (string)($_REQUEST['by'] ?? 'driver'));
+            tOut($ok ? ['ok' => true] : ['ok' => false, 'msg' => 'Ye student is shift mein nahi hai']);
+        }
+        $ids = array_filter(array_map('intval', explode(',', (string)($_REQUEST['order'] ?? ''))));
+        tOut(['ok' => true, 'saved' => busTripSetOrder($pdo, $open, array_slice($ids, 0, 300))]);
     }
 
     tOut(['ok' => false, 'msg' => 'Unknown action']);

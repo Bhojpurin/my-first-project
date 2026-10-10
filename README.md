@@ -32,6 +32,15 @@ Driver page: **Trip Shuru** (starts tracking + pushes "bus nikal gayi" to that s
 Forgotten trips are closed automatically by the cron job. To send "Bus nearby" alerts only during a real trip,
 set `BUS_ALERT_REQUIRE_TRIP = true` in `includes/bus_proximity.php` (off by default so nothing stops working).
 
+## Driver page: shift + student stops
+`api/driver_tracker.php?key=...`: the driver ticks a shift → the map shows every student of that shift who marked their home
+(student portal → Bus tab), numbered in a planned order (nearest-neighbour + 2-opt from the bus). Next-stop card with distance,
+ETA and Google Maps directions; voice + vibration at 300 m and on arrival; ✔ picked up / ✖ did not come (auto ✔ after the bus
+stood ≥ 8 s at the stop and drove on). Marks work offline and survive reloads. They show up in the student portal
+("2 stops before yours" / "marked done at 07:42") and in the admin Trips report (Students ✔/✖).
+Privacy: the link has no login, so the driver sees short names ("Rahul K.") + class only (`BUS_DRIVER_FULL_NAMES` in
+`includes/bus_trips.php`). The page sends `Referrer-Policy: no-referrer` so the key never leaks to map tiles / Google Maps.
+
 ## Setup Wizard
 Admin → Fleet → **Setup Wizard**: 1 Bus → 2 Tracking method (driver link with QR + WhatsApp share / GPSLogger / hardware device)
 → 3 **Live test** (turns green only after 3 *new* fixes arrive, shows accuracy and a mini map, troubleshooting tips after 60 s)

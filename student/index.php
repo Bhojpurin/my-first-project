@@ -2238,6 +2238,11 @@ select.fld-input{appearance:auto;}
       </div>
     </div>
 
+    <!-- Trip status from the driver's phone: picked up / stops before you -->
+    <div class="card" id="busTripInfo" style="margin-bottom:12px;display:none;">
+      <div class="card-body" id="busTripInfoBody" style="padding:12px 16px;font-size:.86rem;font-weight:600;"></div>
+    </div>
+
     <!-- Live Map -->
     <div class="card" style="margin-bottom:12px;padding:0;overflow:hidden;border-radius:var(--radius);">
       <div id="busMap" style="height:300px;"></div>
@@ -2630,10 +2635,11 @@ async function pollBusLocation() {
   try {
     const r = await fetch(BUS_LOC_URL + '?bus_id=' + BUS_ID + '&school_id=' + BUS_SCHOOL + '&_=' + Date.now());
     const d = await r.json();
-    if (!d.ok) { updateGpsStatus('offline', null, null, null); return; }
+    if (!d.ok) { updateGpsStatus('offline', null, null, null); renderBusTrip(null); return; }
 
     const status = d.age < 120 ? 'live' : d.age < 300 ? 'recent' : 'offline';
     updateGpsStatus(status, d.age, d.lat, d.speed);
+    renderBusTrip(d.trip);
 
     const latlng = [parseFloat(d.lat), parseFloat(d.lng)];
     _lastBusLatLng = latlng;
@@ -2661,6 +2667,28 @@ async function pollBusLocation() {
       else if (dist > ALERT_R * 1.25) { _inZone = false; stopAlarm(); }   // re-arm only after it has clearly left
     }
   } catch(e) { updateGpsStatus('offline', null, null, null); }
+}
+
+function renderBusTrip(t) {
+  const box = document.getElementById('busTripInfo'), body = document.getElementById('busTripInfoBody');
+  if (!box) return;
+  if (!t || !t.running) { box.style.display = 'none'; return; }
+  const hm = v => v ? String(v).slice(11, 16) : '';
+  let txt, bg = '#eff6ff', fg = '#1e40af';
+  if (t.mine === false) {
+    txt = '🚌 The bus is now running shift ' + t.shift + ' (not your shift).'; bg = '#f8fafc'; fg = '#475569';
+  } else if (t.mine && t.status === 'done') {
+    txt = '✅ Driver marked your stop as done' + (t.marked_at ? ' at ' + hm(t.marked_at) : '') + '.'; bg = '#dcfce7'; fg = '#166534';
+  } else if (t.mine && t.status === 'absent') {
+    txt = '❌ Driver marked you as "did not come"' + (t.marked_at ? ' at ' + hm(t.marked_at) : '') + '. If this is wrong, please inform the school.'; bg = '#fee2e2'; fg = '#991b1b';
+  } else if (t.mine && t.before === 0) {
+    txt = '🚌 Your stop is NEXT — please be ready!'; bg = '#fef9c3'; fg = '#854d0e';
+  } else if (t.mine && t.before > 0) {
+    txt = '🚌 Trip started at ' + hm(t.started_at) + ' · ' + t.before + ' stop' + (t.before > 1 ? 's' : '') + ' before yours.';
+  } else {
+    txt = '🚌 Your shift\'s trip has started' + (t.started_at ? ' (' + hm(t.started_at) + ')' : '') + '.';
+  }
+  body.textContent = txt; box.style.background = bg; body.style.color = fg; box.style.display = '';
 }
 
 function updateGpsStatus(status, age, lat, speed) {

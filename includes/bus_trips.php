@@ -145,3 +145,130 @@ function busTripAutoClose(PDO $pdo): int
     } catch (\Throwable $e) { error_log('bus_trip autoclose: ' . $e->getMessage()); }
     return $n;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stops: students of one shift with their marked home location (for the driver's map)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const BUS_DRIVER_FULL_NAMES = false;   // false: driver sees "Rahul K." instead of the full name (the link has no login)
+
+/** "Rahul Kumar Singh" → "Rahul K." (privacy: the driver page is protected only by the bus key). */
+function busShortName(string $name): string
+{
+    $name = trim(preg_replace('/\s+/u', ' ', $name));
+    if (BUS_DRIVER_FULL_NAMES || $name === '') return $name;
+    $w = explode(' ', $name);
+    return count($w) > 1 ? $w[0] . ' ' . mb_strtoupper(mb_substr($w[1], 0, 1)) . '.' : $w[0];
+}
+
+/** SQL for "this student's effective shift": unassigned → 1, a shift the route no longer has → 1 (same rule as alerts). */
+const BUS_EFFECTIVE_SHIFT_SQL = "CASE WHEN COALESCE(bss.shift_no,1) BETWEEN 1 AND GREATEST(1,bra.shift_count) THEN COALESCE(bss.shift_no,1) ELSE 1 END";
+
+/** Shifts this bus runs, merged over its active routes: [{no, pickup, drop, students, with_home}] */
+function busShiftList(PDO $pdo, int $busId, int $schoolId): array
+{
+    $a = $pdo->prepare("SELECT * FROM bus_route_assignments WHERE bus_id=? AND school_id=? AND status='active' ORDER BY id");
+    $a->execute([$busId, $schoolId]);
+    $rows = $a->fetchAll();
+    $max = 1;
+    foreach ($rows as $r) $max = max($max, min(5, (int)$r['shift_count']));
+
+    $cnt = $pdo->prepare("
+        SELECT " . BUS_EFFECTIVE_SHIFT_SQL . " AS sh, COUNT(DISTINCT s.id) AS n, COUNT(DISTINCT hl.student_id) AS h
+        FROM bus_route_assignments bra
+        JOIN student_van_assignments sva ON sva.van_route_id=bra.route_id AND sva.school_id=bra.school_id
+        JOIN students s ON s.id=sva.student_id AND s.status='active'
+        LEFT JOIN bus_student_shifts bss ON bss.student_id=sva.student_id AND bss.route_id=sva.van_route_id AND bss.school_id=sva.school_id
+        LEFT JOIN student_home_locations hl ON hl.student_id=s.id AND hl.school_id=sva.school_id
+        WHERE bra.bus_id=? AND bra.school_id=? AND bra.status='active'
+        GROUP BY sh");
+    $cnt->execute([$busId, $schoolId]);
+    $counts = [];
+    foreach ($cnt->fetchAll() as $c) $counts[(int)$c['sh']] = $c;
+
+    $out = [];
+    for ($n = 1; $n <= $max; $n++) {
+        $sfx = $n === 1 ? '' : (string)$n;
+        $pick = null; $drop = null;
+        foreach ($rows as $r) {
+            if ((int)$r['shift_count'] < $n) continue;
+            $pick = $pick ?: ($r['pickup_time' . $sfx] ?? null);
+            $drop = $drop ?: ($r['drop_time' . $sfx] ?? null);
+        }
+        $out[] = ['no' => $n, 'pickup' => $pick ? substr($pick, 0, 5) : null, 'drop' => $drop ? substr($drop, 0, 5) : null,
+                  'students' => (int)($counts[$n]['n'] ?? 0), 'with_home' => (int)($counts[$n]['h'] ?? 0)];
+    }
+    return $out;
+}
+
+/**
+ * Students of one shift of this bus. Returns ['stops' => [...with home...], 'missing' => [...no home yet...]].
+ * With $tripId, each stop also carries that trip's status / planned seq.
+ */
+function busStopsForShift(PDO $pdo, int $busId, int $schoolId, int $shift, ?int $tripId = null): array
+{
+    $st = $pdo->prepare("
+        SELECT s.id, s.name, c.class_name, sec.section_name, hl.lat, hl.lng
+        FROM bus_route_assignments bra
+        JOIN student_van_assignments sva ON sva.van_route_id=bra.route_id AND sva.school_id=bra.school_id
+        JOIN students s ON s.id=sva.student_id AND s.status='active'
+        LEFT JOIN classes c ON c.id=s.class_id
+        LEFT JOIN sections sec ON sec.id=s.section_id
+        LEFT JOIN bus_student_shifts bss ON bss.student_id=sva.student_id AND bss.route_id=sva.van_route_id AND bss.school_id=sva.school_id
+        LEFT JOIN student_home_locations hl ON hl.student_id=s.id AND hl.school_id=sva.school_id
+        WHERE bra.bus_id=? AND bra.school_id=? AND bra.status='active' AND " . BUS_EFFECTIVE_SHIFT_SQL . " = ?
+        ORDER BY s.name");
+    $st->execute([$busId, $schoolId, $shift]);
+
+    $marks = [];
+    if ($tripId) {
+        $m = $pdo->prepare("SELECT student_id, seq, status, marked_by, marked_at FROM bus_trip_stops WHERE trip_id=?");
+        $m->execute([$tripId]);
+        foreach ($m->fetchAll() as $r) $marks[(int)$r['student_id']] = $r;
+    }
+
+    $stops = []; $missing = []; $seen = [];
+    foreach ($st->fetchAll() as $r) {
+        $id = (int)$r['id'];
+        if (isset($seen[$id])) continue;          // student on two routes of the same bus → once
+        $seen[$id] = true;
+        $cls = trim(($r['class_name'] ?? '') . ($r['section_name'] ? '-' . $r['section_name'] : ''));
+        $lat = $r['lat'] !== null ? (float)$r['lat'] : null; $lng = $r['lng'] !== null ? (float)$r['lng'] : null;
+        if ($lat === null || $lng === null || ($lat == 0 && $lng == 0)) { $missing[] = ['name' => busShortName($r['name']), 'cls' => $cls]; continue; }
+        $mk = $marks[$id] ?? null;
+        $stops[] = ['id' => $id, 'name' => busShortName($r['name']), 'cls' => $cls,
+                    'lat' => round($lat, 6), 'lng' => round($lng, 6),
+                    'status' => $mk['status'] ?? 'pending', 'seq' => isset($mk['seq']) ? (int)$mk['seq'] : null,
+                    'by' => $mk['marked_by'] ?? null, 'at' => $mk['marked_at'] ?? null];
+    }
+    return ['stops' => $stops, 'missing' => $missing];
+}
+
+/** Driver marks a stop. Only students of the trip's own shift can be marked. */
+function busTripMarkStop(PDO $pdo, array $trip, int $studentId, string $status, string $by): bool
+{
+    if (!in_array($status, ['pending', 'done', 'absent'], true)) return false;
+    $by = $by === 'auto' ? 'auto' : 'driver';
+    $list = busStopsForShift($pdo, (int)$trip['bus_id'], (int)$trip['school_id'], (int)$trip['shift_no']);
+    if (!in_array($studentId, array_column($list['stops'], 'id'), true)) return false;
+    $pdo->prepare("INSERT INTO bus_trip_stops (trip_id, student_id, status, marked_by, marked_at) VALUES (?,?,?,?,NOW())
+                   ON DUPLICATE KEY UPDATE status=VALUES(status), marked_by=VALUES(marked_by), marked_at=VALUES(marked_at)")
+        ->execute([(int)$trip['id'], $studentId, $status, $status === 'pending' ? null : $by]);
+    return true;
+}
+
+/** Store the driver's planned order (list of student ids, first = next). Unknown ids are ignored. */
+function busTripSetOrder(PDO $pdo, array $trip, array $ids): int
+{
+    $list  = busStopsForShift($pdo, (int)$trip['bus_id'], (int)$trip['school_id'], (int)$trip['shift_no']);
+    $valid = array_flip(array_column($list['stops'], 'id'));
+    $up = $pdo->prepare("INSERT INTO bus_trip_stops (trip_id, student_id, seq) VALUES (?,?,?) ON DUPLICATE KEY UPDATE seq=VALUES(seq)");
+    $n = 0; $done = [];
+    foreach ($ids as $id) {
+        $id = (int)$id;
+        if (!isset($valid[$id]) || isset($done[$id])) continue;
+        $done[$id] = true;
+        $up->execute([(int)$trip['id'], $id, ++$n]);
+    }
+    return $n;
+}
