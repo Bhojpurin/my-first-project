@@ -20,6 +20,9 @@ const BUS_ALERT_DEFAULTS = [
 
 function busAlertSettings(PDO $pdo, int $schoolId): array
 {
+    require_once __DIR__ . '/bus_cache.php';
+    $c = busCacheGet('aset:' . $schoolId, $hit);
+    if ($hit) return $c;
     try {
         $q = $pdo->prepare("SELECT * FROM bus_alert_settings WHERE school_id=?");
         $q->execute([$schoolId]);
@@ -30,6 +33,7 @@ function busAlertSettings(PDO $pdo, int $schoolId): array
     foreach (['overspeed_kmh', 'overspeed_sec', 'school_radius_m', 'deviation_m', 'deviation_sec', 'notify_parents', 'halt_ask_min', 'halt_admin_min'] as $k) $s[$k] = (int)$s[$k];
     $s['school_lat'] = $s['school_lat'] !== null ? (float)$s['school_lat'] : null;
     $s['school_lng'] = $s['school_lng'] !== null ? (float)$s['school_lng'] : null;
+    busCacheSet('aset:' . $schoolId, $s, 120);   // save_alert_settings clears it
     return $s;
 }
 
@@ -54,20 +58,26 @@ function busAlertCheck(PDO $pdo, int $busId, int $schoolId, float $lat, float $l
         if ($accM !== null && $accM > 60) return;               // rough fix: no alert decisions on it
         $set = busAlertSettings($pdo, $schoolId);
 
-        $pdo->prepare("INSERT IGNORE INTO bus_alert_state (bus_id, school_id) VALUES (?,?)")->execute([$busId, $schoolId]);
         $q = $pdo->prepare("SELECT *, TIMESTAMPDIFF(SECOND, over_since, NOW()) AS over_s, TIMESTAMPDIFF(SECOND, off_since, NOW()) AS off_s
                             FROM bus_alert_state WHERE bus_id=? AND school_id=?");
         $q->execute([$busId, $schoolId]);
         $st = $q->fetch();
-        if (!$st) return;
+        if (!$st) {   // first fix of this bus ever
+            $pdo->prepare("INSERT IGNORE INTO bus_alert_state (bus_id, school_id) VALUES (?,?)")->execute([$busId, $schoolId]);
+            $q->execute([$busId, $schoolId]);
+            $st = $q->fetch();
+            if (!$st) return;
+        }
 
-        $b = $pdo->prepare("SELECT bus_name, bus_number FROM school_buses WHERE id=? AND school_id=?");
-        $b->execute([$busId, $schoolId]);
-        $bus = $b->fetch() ?: ['bus_name' => 'Bus', 'bus_number' => ''];
-        $label = $bus['bus_name'] . ($bus['bus_number'] ? ' (' . $bus['bus_number'] . ')' : '');
+        $label = busCached('label:' . $busId, 300, function () use ($pdo, $busId, $schoolId) {
+            $b = $pdo->prepare("SELECT bus_name, bus_number FROM school_buses WHERE id=? AND school_id=?");
+            $b->execute([$busId, $schoolId]);
+            $bus = $b->fetch() ?: ['bus_name' => 'Bus', 'bus_number' => ''];
+            return $bus['bus_name'] . ($bus['bus_number'] ? ' (' . $bus['bus_number'] . ')' : '');
+        });
 
         require_once __DIR__ . '/bus_trips.php';
-        $trip = busTripGetOpen($pdo, $busId);
+        $trip = busTripGetOpenCached($pdo, $busId);
         $tripId = $trip && (int)$trip['school_id'] === $schoolId ? (int)$trip['id'] : null;
 
         // ── Overspeed ───────────────────────────────────────────────────────
@@ -109,7 +119,8 @@ function busAlertCheck(PDO $pdo, int $busId, int $schoolId, float $lat, float $l
         $off = false;
         if ($trip && $tripId) {
             $kind = !empty($trip['kind']) ? (string)$trip['kind'] : busTripKind($pdo, $busId, $schoolId, (int)$trip['shift_no'], (string)$trip['started_at']);
-            $lp = busLearnedProfile($pdo, $busId, (int)$trip['shift_no'], $kind);
+            $lp = busCached('learn:' . $busId . ':' . (int)$trip['shift_no'] . ':' . $kind, 300,
+                            function () use ($pdo, $busId, $trip, $kind) { return busLearnedProfile($pdo, $busId, (int)$trip['shift_no'], $kind); });
             if ($lp && count($lp['path']) >= 10) {
                 $dist = busDistToPath($lat, $lng, $lp['path']);
                 $off = $dist > max(150, $set['deviation_m']);

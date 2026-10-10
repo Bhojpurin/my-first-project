@@ -20,9 +20,11 @@ putenv("BUS_TEST_PUSHLOG=$PUSHLOG");
 
 // ── sandbox ──────────────────────────────────────────────────────────────────
 exec('rm -rf ' . escapeshellarg($SB));
+function clearCache(): void { exec('rm -rf ' . escapeshellarg(sys_get_temp_dir()) . '/sszone_bus_cache_*'); if (getenv('BUS_TEST_REDIS')) exec('redis-cli -h ' . escapeshellarg(getenv('BUS_TEST_REDIS')) . ' --scan --pattern "bus:*" | xargs -r redis-cli -h ' . escapeshellarg(getenv('BUS_TEST_REDIS')) . ' del >/dev/null'); }
+clearCache();
 mkdir($SB);
 foreach (['api', 'includes', 'student', 'admin', 'tools', 'database'] as $d) exec('cp -r ' . escapeshellarg("$ROOT/$d") . ' ' . escapeshellarg("$SB/$d"));
-exec('cp -rn ' . escapeshellarg("$ROOT/tests/stubs") . '/. ' . escapeshellarg($SB));   // -n: never overwrite real module files
+exec('cp -r --update=none ' . escapeshellarg("$ROOT/tests/stubs") . '/. ' . escapeshellarg($SB));   // -n: never overwrite real module files
 @unlink($PUSHLOG);
 
 // ── database ─────────────────────────────────────────────────────────────────
@@ -93,7 +95,7 @@ $pdo->exec("INSERT INTO push_subscriptions (student_id, school_id, endpoint, end
    (11,1,'ep-11',SHA2('ep-11',256),'p','a'),(12,1,'ep-12',SHA2('ep-12',256),'p','a'),(13,1,'ep-13',SHA2('ep-13',256),'p','a'),(21,2,'ep-21',SHA2('ep-21',256),'p','a')");
 
 // ── server ───────────────────────────────────────────────────────────────────
-$srv = proc_open(['php', '-S', "127.0.0.1:$PORT", '-t', $SB], [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pp,
+$srv = proc_open(['php', '-d', 'apc.enabled=0', '-S', "127.0.0.1:$PORT", '-t', $SB], [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pp,
                  null, ['BUS_TEST_PUSHLOG' => $PUSHLOG] + getenv());
 usleep(800000);
 
@@ -112,6 +114,7 @@ try {
     [, $j] = admin($A, 'schema_status', ['retry' => 1]);
     ok($j['ready'] === true, '"Dobara koshish" after the cause is fixed → setup completes', $j);
     $pdo->exec("DROP TABLE IF EXISTS bus_schema_version");   // and run the normal first-request path from scratch below
+    clearCache();
     $par = [];
     for ($i = 0; $i < 3; $i++) $par[] = curl_init();   // three admins open the page at the same moment
     $mh = curl_multi_init();
@@ -251,6 +254,7 @@ try {
     section('Safety alerts');
     $pdo->exec("INSERT INTO bus_alert_settings (school_id, overspeed_kmh, overspeed_sec, school_lat, school_lng, school_radius_m, deviation_m, deviation_sec, notify_parents, updated_at)
                 VALUES (1, 40, 5, " . off(2000)[0] . ", " . off(2000)[1] . ", 150, 300, 5, 1, NOW())");
+    clearCache();   // (written straight into the DB here; the admin's Save clears the settings cache the same way)
     gps($dev, off(100)); sleep(3); gps($dev, off(200), 70); sleep(3); gps($dev, off(350), 72); sleep(3); gps($dev, off(500), 75); sleep(1);
     $al = $pdo->query("SELECT type, school_id, message FROM bus_alerts WHERE type='overspeed'")->fetchAll();
     ok(count($al) === 1 && (int)$al[0]['school_id'] === 1, 'sustained overspeed → exactly one alert, for the right school', $al);
@@ -416,7 +420,7 @@ try {
     ok($s === 401, "after the admin removes the phone it gets 401");
     [$s, $j] = gps($dev, off(0));
     ok($s === 401, 'and cannot send GPS any more');
-    $pdo->exec("UPDATE school_buses SET status='inactive' WHERE id=2");
+    admin($B, 'save_bus', ['id' => 2, 'bus_name' => 'B-Bus', 'bus_number' => 'UP32 B', 'status' => 'inactive']);
     [$s] = trip($tokB, 'status');
     ok($s === 401, 'an inactive bus locks its phones out');
 

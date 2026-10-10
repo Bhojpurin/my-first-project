@@ -2640,7 +2640,7 @@ const STU_SW_URL  = <?= json_encode(BASE_URL . '/student/sw.js') ?>;
 
 let _busMap = null, _busMapInit = false;
 let _busMarker = null, _homeMarker = null;
-let _busPoller = null;
+let _busPoller = null, _busPollMs = 10000;
 let _alertOn   = false;
 let _homeLatLng = null;
 let _lastBusLatLng = null;
@@ -2659,7 +2659,7 @@ function initBusTab() {
   document.getElementById('gpsStatusBar').style.display = 'block';
   pollBusLocation();
   if (_busPoller) clearInterval(_busPoller);
-  _busPoller = setInterval(pollBusLocation, 10000);
+  _busPoller = setInterval(pollBusLocation, 10000);   // re-paced after each answer (server says 10 s during a trip, 30 s otherwise)
   loadHomeLocation();
   loadAbsences();
 }
@@ -2675,6 +2675,8 @@ async function pollBusLocation() {
     const status = d.age < 120 ? 'live' : d.age < 300 ? 'recent' : 'offline';
     updateGpsStatus(status, d.age, d.lat, d.speed);
     renderBusTrip(d.trip);
+    const want = (d.poll || 10) * 1000;
+    if (_busPoller && _busPollMs !== want) { clearInterval(_busPoller); _busPoller = setInterval(pollBusLocation, want); _busPollMs = want; }
 
     const latlng = [parseFloat(d.lat), parseFloat(d.lng)];
     _lastBusLatLng = latlng;

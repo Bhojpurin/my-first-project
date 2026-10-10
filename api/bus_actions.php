@@ -155,8 +155,14 @@ if ($action === 'save_bus') {
         $chk = $pdo->prepare("SELECT id FROM school_buses WHERE id=? AND school_id=?");
         $chk->execute([$id, $schoolId]);
         if (!$chk->fetch()) jBus(false, 'Bus not found.');
+        require_once __DIR__ . '/../includes/bus_security.php';
+        busForgetDevices($pdo, ['bus_id=?', 'school_id=?'], [$id, $schoolId]);   // e.g. set inactive → phones stop at once
+        $kq = $pdo->prepare("SELECT gps_api_key FROM school_buses WHERE id=? AND school_id=?"); $kq->execute([$id, $schoolId]);
+        if ($k = $kq->fetchColumn()) busCacheDel('key:' . hash('sha256', (string)$k));
         $pdo->prepare("UPDATE school_buses SET bus_name=?,bus_number=?,capacity=?,gps_device_id=?,notes=?,status=? WHERE id=? AND school_id=?")
             ->execute([$name, $number, $capacity, $deviceId ?: null, $notes ?: null, $status, $id, $schoolId]);
+        busForgetDevices($pdo, ['bus_id=?', 'school_id=?'], [$id, $schoolId]);
+        if ($k) busCacheDel('key:' . hash('sha256', (string)$k));
         _slog("Bus updated: \"$name\" ($number)", 'update');
         jBus(true, 'Bus updated successfully.');
     } else {
@@ -187,6 +193,8 @@ if ($action === 'delete_bus') {
     $pdo->prepare("DELETE FROM bus_gps_locations WHERE bus_id=? AND school_id=?")->execute([$id, $schoolId]);
     try { $pdo->prepare("DELETE FROM bus_live WHERE bus_id=? AND school_id=?")->execute([$id, $schoolId]); } catch (\Throwable $e) {}
     try {   // a deleted bus must not leave working phones or links behind
+        require_once __DIR__ . '/../includes/bus_security.php';
+        busForgetDevices($pdo, ['bus_id=?', 'school_id=?'], [$id, $schoolId]);
         $pdo->prepare("UPDATE bus_driver_devices SET revoked_at=NOW() WHERE bus_id=? AND school_id=? AND revoked_at IS NULL")->execute([$id, $schoolId]);
         $pdo->prepare("UPDATE bus_pair_codes SET used_at=NOW() WHERE bus_id=? AND school_id=? AND used_at IS NULL")->execute([$id, $schoolId]);
     } catch (\Throwable $e) {}
@@ -203,6 +211,10 @@ if ($action === 'regen_key') {
     $chk = $pdo->prepare("SELECT id FROM school_buses WHERE id=? AND school_id=?");
     $chk->execute([$id, $schoolId]);
     if (!$chk->fetch()) jBus(false, 'Bus not found.');
+    require_once __DIR__ . '/../includes/bus_security.php';
+    $old = $pdo->prepare("SELECT gps_api_key FROM school_buses WHERE id=? AND school_id=?");
+    $old->execute([$id, $schoolId]);
+    if ($ok = $old->fetchColumn()) busCacheDel('key:' . hash('sha256', (string)$ok));   // old key stops at once
     $newKey = bin2hex(random_bytes(24));
     $pdo->prepare("UPDATE school_buses SET gps_api_key=? WHERE id=? AND school_id=?")->execute([$newKey, $id, $schoolId]);
     _slog("GPS API key regenerated for bus #$id", 'update');
@@ -245,9 +257,14 @@ if ($action === 'driver_revoke') {
     if (!$isAdmin) jBus(false, 'Admin only.');
     csrfBus();
     $id = (int)($_POST['id'] ?? 0); $busId = (int)($_POST['bus_id'] ?? 0);
+    require_once __DIR__ . '/../includes/bus_security.php';
+    if ($id) busForgetDevices($pdo, ['id=?', 'school_id=?'], [$id, $schoolId]);
+    elseif ($busId) busForgetDevices($pdo, ['bus_id=?', 'school_id=?'], [$busId, $schoolId]);
     if ($id) $pdo->prepare("UPDATE bus_driver_devices SET revoked_at=NOW() WHERE id=? AND school_id=? AND revoked_at IS NULL")->execute([$id, $schoolId]);
     elseif ($busId) $pdo->prepare("UPDATE bus_driver_devices SET revoked_at=NOW() WHERE bus_id=? AND school_id=? AND revoked_at IS NULL")->execute([$busId, $schoolId]);
     else jBus(false, 'Invalid request.');
+    if ($id) busForgetDevices($pdo, ['id=?', 'school_id=?'], [$id, $schoolId]);              // again after the update:
+    else busForgetDevices($pdo, ['bus_id=?', 'school_id=?'], [$busId, $schoolId]);           // no request can re-cache it
     _slog($id ? "Driver phone #$id unpaired" : "All driver phones of bus #$busId unpaired", 'update');
     jBus(true, 'Phone hata diya gaya. Ab wo is bus ka data nahi dekh sakta.');
 }
@@ -400,6 +417,7 @@ if ($action === 'get_live_locations') {
     $st->execute([$schoolId]);
     $rows = $st->fetchAll();
     $loc  = busLatestLocations($pdo, $schoolId);
+    $progress = busTripProgressAll($pdo, $schoolId);   // all running trips of the school in 5 queries
     foreach ($rows as &$r) {
         $l   = $loc[(int)$r['id']] ?? null;
         $age = $l ? max(0, (int)$l['age_seconds']) : null;
@@ -412,7 +430,7 @@ if ($action === 'get_live_locations') {
         $r['age_seconds'] = $age;
         $r['gps_status']  = busGpsStatus($age);
         $r['still_seconds'] = isset($l['still_seconds']) ? (int)$l['still_seconds'] : null;   // standing still for…
-        $r['trip'] = busTripProgress($pdo, (int)$r['id'], $schoolId);
+        $r['trip'] = $progress[(int)$r['id']] ?? null;
     }
     unset($r);
 
@@ -451,6 +469,59 @@ function busTripProgress(PDO $pdo, int $busId, int $schoolId): ?array {
                 'pending' => $c['pending'] + count($list['missing']), 'missing' => count($list['missing']),
                 'next' => $next ? $next['name'] : null];
     } catch (\Throwable $e) { return null; }   // trip tables not installed yet
+}
+
+/**
+ * Pickup progress of EVERY running trip of a school with a fixed number of queries (no per-bus loop),
+ * so the live map stays fast for schools with hundreds of buses. bus_id => {id, shift, total, done, absent, pending, missing, next}
+ */
+function busTripProgressAll(PDO $pdo, int $schoolId): array {
+    require_once __DIR__ . '/../includes/bus_trips.php';
+    try {
+        $t = $pdo->prepare("SELECT id, bus_id, shift_no, started_at FROM bus_trips WHERE school_id=? AND ended_at IS NULL");
+        $t->execute([$schoolId]);
+        $trips = $t->fetchAll();
+        if (!$trips) return [];
+        $busIn  = implode(',', array_map(function ($x) { return (int)$x['bus_id']; }, $trips));
+        $tripIn = implode(',', array_map(function ($x) { return (int)$x['id']; }, $trips));
+
+        $tot = $pdo->prepare("
+            SELECT bra.bus_id, " . BUS_EFFECTIVE_SHIFT_SQL . " AS sh, COUNT(DISTINCT s.id) AS n, COUNT(DISTINCT hl.student_id) AS h
+            FROM bus_route_assignments bra
+            JOIN student_van_assignments sva ON sva.van_route_id=bra.route_id AND sva.school_id=bra.school_id
+            JOIN students s ON s.id=sva.student_id AND s.status='active'
+            LEFT JOIN bus_student_shifts bss ON bss.student_id=sva.student_id AND bss.route_id=sva.van_route_id AND bss.school_id=sva.school_id
+            LEFT JOIN student_home_locations hl ON hl.student_id=s.id AND hl.school_id=sva.school_id
+            WHERE bra.school_id=? AND bra.status='active' AND bra.bus_id IN ($busIn)
+            GROUP BY bra.bus_id, sh");
+        $tot->execute([$schoolId]);
+        $totals = [];
+        foreach ($tot->fetchAll() as $x) $totals[$x['bus_id'] . ':' . $x['sh']] = $x;
+
+        $cnt = [];
+        foreach ($pdo->query("SELECT trip_id, status, COUNT(*) AS n FROM bus_trip_stops WHERE trip_id IN ($tripIn) GROUP BY trip_id, status")->fetchAll() as $x)
+            $cnt[(int)$x['trip_id']][$x['status']] = (int)$x['n'];
+
+        $next = [];
+        foreach ($pdo->query("SELECT trip_id, student_id FROM bus_trip_stops WHERE trip_id IN ($tripIn) AND status='pending' AND seq IS NOT NULL ORDER BY trip_id, seq")->fetchAll() as $x)
+            if (!isset($next[(int)$x['trip_id']])) $next[(int)$x['trip_id']] = (int)$x['student_id'];
+        $names = [];
+        if ($next) {
+            $nq = $pdo->prepare("SELECT id, name FROM students WHERE school_id=? AND id IN (" . implode(',', array_map('intval', $next)) . ")");
+            $nq->execute([$schoolId]);
+            $names = array_column($nq->fetchAll(), 'name', 'id');
+        }
+
+        $out = [];
+        foreach ($trips as $tr) {
+            $tid = (int)$tr['id']; $tt = $totals[$tr['bus_id'] . ':' . (int)$tr['shift_no']] ?? ['n' => 0, 'h' => 0];
+            $done = $cnt[$tid]['done'] ?? 0; $absent = $cnt[$tid]['absent'] ?? 0;
+            $out[(int)$tr['bus_id']] = ['id' => $tid, 'shift' => (int)$tr['shift_no'], 'started_at' => $tr['started_at'],
+                'total' => (int)$tt['n'], 'done' => $done, 'absent' => $absent, 'pending' => max(0, (int)$tt['n'] - $done - $absent),
+                'missing' => max(0, (int)$tt['n'] - (int)$tt['h']), 'next' => isset($next[$tid]) ? ($names[$next[$tid]] ?? null) : null];
+        }
+        return $out;
+    } catch (\Throwable $e) { error_log('bus progress: ' . $e->getMessage()); return []; }
 }
 
 // ── get_bus_live_detail ───────────────────────────────────────────────────────
@@ -529,6 +600,8 @@ if ($action === 'save_alert_settings') {
                        $n('school_radius_m', 50, 1000, 150), $n('deviation_m', 150, 3000, 400), $n('deviation_sec', 30, 900, 90),
                        !empty($_POST['notify_parents']) ? 1 : 0, $askMin, max($askMin + 1, $n('halt_admin_min', 2, 60, 8))]);
     } catch (\Throwable $e) { error_log('bus alert settings: ' . $e->getMessage()); jBus(false, BUS_DB_SETUP_MSG); }
+    require_once __DIR__ . '/../includes/bus_cache.php';
+    busCacheDel('aset:' . $schoolId);
     _slog('Bus alert settings updated', 'update');
     jBus(true, 'Alert settings save ho gayi.');
 }
@@ -578,9 +651,14 @@ if ($action === 'broadcast') {
     require_once __DIR__ . '/../includes/bus_halt.php';
     require_once __DIR__ . '/../includes/bus_security.php';
     if (!busRateHit($pdo, 'bcast:' . $schoolId, 30, 3600)) jBus(false, 'Ek ghante mein bahut zyada messages — thodi der baad.');
-    $r = busBroadcast($pdo, $schoolId, (int)($_POST['alert_id'] ?? 0) ?: null, (int)($_POST['bus_id'] ?? 0) ?: null, (string)($_POST['text'] ?? ''));
-    if ($r['ok']) _slog('Bus message sent to ' . $r['sent'] . ' parents', 'other');
-    jBus($r['ok'], $r['msg'], ['sent' => $r['sent']]);
+    $r = busBroadcast($pdo, $schoolId, (int)($_POST['alert_id'] ?? 0) ?: null, (int)($_POST['bus_id'] ?? 0) ?: null, (string)($_POST['text'] ?? ''), false);
+    if (!$r['ok']) jBus(false, $r['msg']);
+    _slog('Bus message sent to ' . $r['sent'] . ' parents', 'other');
+    echo json_encode(['success' => true, 'message' => $r['msg'], 'sent' => $r['sent']]);
+    busFinishResponse();                      // admin gets the answer at once; pushes go out after it
+    @ignore_user_abort(true);
+    busNotifyStudents($pdo, $schoolId, $r['ids'], 'Bus suchna 🚌', $r['text'], 'Bus suchna');
+    exit;
 }
 
 // ── alerts_seen: mark all alerts up to an id as seen ─────────────────────────

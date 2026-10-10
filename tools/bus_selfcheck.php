@@ -17,7 +17,7 @@ echo "Panel files used by the bus module\n";
 foreach (['config/db.php', 'config/constants.php', 'includes/session.php', 'includes/functions.php', 'includes/activity_log.php',
           'includes/push_sender.php', 'includes/school_message_helper.php', 'student/stu_guard.php', 'student/sw.js'] as $f)
     chk(is_file("$R/$f"), $f, 'missing — the bus module expects it here');
-foreach (['includes/bus_db.php', 'api/bus_trip.php', 'api/driver_tracker.php', 'api/driver_sw.js', 'api/gps_update.php', 'api/bus_actions.php', 'api/bus_location.php',
+foreach (['includes/bus_db.php', 'includes/bus_cache.php', 'includes/bus_schema.php', 'api/bus_trip.php', 'api/driver_tracker.php', 'api/driver_sw.js', 'api/gps_update.php', 'api/bus_actions.php', 'api/bus_location.php',
           'api/student_bus.php', 'includes/bus_security.php', 'includes/bus_trips.php', 'includes/bus_alerts.php', 'includes/bus_halt.php',
           'includes/bus_notify.php', 'includes/bus_message_hook.php', 'includes/bus_privacy.php', 'includes/bus_proximity.php',
           'includes/bus_watchdog.php'] as $f)
@@ -34,6 +34,12 @@ chk(defined('ROLE_SCHOOL_ADMIN') && defined('ROLE_TEACHER'), 'role constants');
 chk(defined('VAPID_PUBLIC_KEY') && VAPID_PUBLIC_KEY, 'VAPID key for push', 'push alerts need it', false);
 $router = defined('BUS_ROUTER_URL') ? BUS_ROUTER_URL : 'https://router.project-osrm.org (default public server)';
 chk(true, "road routing: $router");
+
+echo "Cache\n";
+require_once "$R/includes/bus_cache.php";
+$backend = busRedis() ? 'Redis' : (function_exists('apcu_fetch') && ini_get('apc.enabled') ? 'APCu (web workers)' : 'files');
+chk(true, "cache backend (this CLI): $backend");
+chk(defined('BUS_REDIS_HOST') || true, 'more than one web server? then set BUS_REDIS_HOST (see SCALING.md)', '', false);
 
 echo "Database\n";
 try { $pdo = busDb(Database::connect()); chk(true, 'connected'); }

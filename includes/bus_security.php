@@ -11,6 +11,8 @@
 // Every lookup returns the bus together with ITS school_id; callers must use that school_id and nothing
 // from the request — that is what keeps one school's data away from another school.
 
+require_once __DIR__ . '/bus_cache.php';
+
 const BUS_PAIR_TTL_SEC     = 86400;   // pairing link valid for 24 h, single use
 const BUS_DEVICE_IDLE_DAYS = 120;     // a paired phone unused this long stops working (re-pair)
 
@@ -35,20 +37,37 @@ function busRateHit(PDO $pdo, string $bucket, int $limit, int $windowSec): bool
             ->execute([$k, $win]);
         $q = $pdo->prepare("SELECT n FROM bus_rate_limits WHERE k=?");
         $q->execute([$k]);
-        if (mt_rand(1, 500) === 1) $pdo->prepare("DELETE FROM bus_rate_limits WHERE win < ?")->execute([$now - 86400]);
-        return (int)$q->fetchColumn() <= $limit;
+        $n = (int)$q->fetchColumn();
+        // Remember "blocked" in the cache, so blocked checks on every request cost no database query
+        if ($n >= $limit) busCacheSet('rlb:' . $k . ':' . $win, 1, $windowSec);
+        return $n <= $limit;
     } catch (\Throwable $e) { return true; }
 }
 
 /** Has this bucket already used up its $limit in the current window? (read-only check: hit #limit+1 is refused) */
 function busRateBlocked(PDO $pdo, string $bucket, int $limit, int $windowSec): bool
 {
-    try {
-        $now = time(); $win = $now - ($now % $windowSec);
-        $q = $pdo->prepare("SELECT n FROM bus_rate_limits WHERE k=? AND win=?");
-        $q->execute([hash('sha256', $bucket), $win]);
-        return (int)$q->fetchColumn() >= $limit;
-    } catch (\Throwable $e) { return false; }
+    // No database query: busRateHit() writes the "blocked" flag into the cache when the limit is reached.
+    $now = time(); $win = $now - ($now % $windowSec);
+    busCacheGet('rlb:' . hash('sha256', $bucket) . ':' . $win, $hit);
+    return $hit;
+}
+
+/** High-frequency per-phone limits: counted in the cache only (no database write per request). */
+function busRateHitFast(string $bucket, int $limit, int $windowSec): bool
+{
+    $now = time(); $win = $now - ($now % $windowSec);
+    $k = 'rlf:' . hash('sha256', $bucket) . ':' . $win;
+    if ($rd = busRedis()) {   // atomic across all web servers
+        try { $n = $rd->incr('bus:' . $k); if ($n === 1) $rd->expire('bus:' . $k, $windowSec); return $n <= $limit; } catch (\Throwable $e) { return true; }
+    }
+    if (busApcu()) {
+        apcu_add('bus:' . $k, 0, $windowSec);
+        return apcu_inc('bus:' . $k) <= $limit;
+    }
+    $n = (int)busCacheGet($k) + 1;
+    busCacheSet($k, $n, $windowSec);
+    return $n <= $limit;
 }
 
 function busTooMany(): void
@@ -57,6 +76,16 @@ function busTooMany(): void
     header('Retry-After: 600');
     echo json_encode(['ok' => false, 'msg' => 'Too many attempts. Try again later.']);
     exit;
+}
+
+/** Drop cached device lookups of these device ids (after revoke / unpair / bus deactivated). */
+function busForgetDevices(PDO $pdo, array $where, array $params): void
+{
+    try {
+        $q = $pdo->prepare("SELECT token_hash FROM bus_driver_devices WHERE " . implode(' AND ', $where));
+        $q->execute($params);
+        foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $h) busCacheDel('dev:' . $h);
+    } catch (\Throwable $e) {}
 }
 
 /** Common headers for JSON APIs. */
@@ -72,11 +101,15 @@ function busApiHeaders(): void
 function busByApiKey(PDO $pdo, string $key): ?array
 {
     if ($key === '' || strlen($key) > 128 || !preg_match('/^[A-Za-z0-9_\-]+$/', $key)) return null;
+    $ck = 'key:' . hash('sha256', $key);
+    $c = busCacheGet($ck, $hit);
+    if ($hit && $c) return $c;   // ≤ 30 s; a regenerated key stops working within 30 s
     $q = $pdo->prepare("SELECT id, school_id, bus_name, bus_number, gps_api_key FROM school_buses WHERE gps_api_key=? AND status='active' LIMIT 1");
     $q->execute([$key]);
     $b = $q->fetch();
     if (!$b || !hash_equals((string)$b['gps_api_key'], $key)) return null;
     unset($b['gps_api_key']);
+    busCacheSet($ck, $b, 30);
     return $b;
 }
 
@@ -84,6 +117,9 @@ function busByApiKey(PDO $pdo, string $key): ?array
 function busByDeviceToken(PDO $pdo, string $token): ?array
 {
     if (!preg_match('/^[a-f0-9]{64}$/', $token)) return null;
+    $ck = 'dev:' . hash('sha256', $token);
+    $c = busCacheGet($ck, $hit);
+    if ($hit && $c) return $c;   // cached ≤ 30 s; revoke/unpair also clears it at once (busForgetDevice)
     try {
         $q = $pdo->prepare("
             SELECT d.id AS device_id, d.last_seen_at, b.id, b.school_id, b.bus_name, b.bus_number
@@ -98,6 +134,8 @@ function busByDeviceToken(PDO $pdo, string $token): ?array
         if (strtotime((string)$b['last_seen_at']) < time() - 60) {
             $pdo->prepare("UPDATE bus_driver_devices SET last_seen_at=NOW(), last_ip=? WHERE id=?")->execute([busClientIp(), (int)$b['device_id']]);
         }
+        $b['token_cache_key'] = $ck;
+        busCacheSet($ck, $b, 30);
         return $b;
     } catch (\Throwable $e) { return null; }
 }

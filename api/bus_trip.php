@@ -59,7 +59,7 @@ try {
         tOut(['ok' => false, 'code' => 'unpaired', 'msg' => 'Ye phone pair nahi hai ya admin ne hata diya hai. School admin se naya link lein.'], 401);
     }
     // Generous per-phone limit (a normal trip makes a few requests a minute)
-    if (!busRateHit($pdo, 'dev:' . $bus['device_id'], 240, 60)) busTooMany();
+    if (!busRateHitFast('dev:' . $bus['device_id'], 240, 60)) busTooMany();
 
     $busId = (int)$bus['id']; $schoolId = (int)$bus['school_id'];
     $fmt = function (?array $t) {
@@ -72,6 +72,7 @@ try {
     };
 
     if ($action === 'unpair') {
+        busForgetDevices($pdo, ['id=?', 'school_id=?'], [(int)$bus['device_id'], $schoolId]);
         $pdo->prepare("UPDATE bus_driver_devices SET revoked_at=NOW() WHERE id=? AND school_id=?")->execute([(int)$bus['device_id'], $schoolId]);
         tOut(['ok' => true]);
     }
@@ -85,8 +86,14 @@ try {
     if ($action === 'start') {
         $shift = (int)($_POST['shift'] ?? 1);
         if ($shift < 1 || $shift > $maxShift()) $shift = 1;
-        $r = busTripStart($pdo, $busId, $schoolId, $shift);
-        tOut(['ok' => true, 'trip' => $fmt($r['trip']), 'already' => $r['already'], 'notified' => $r['notified']]);
+        $r = busTripStart($pdo, $busId, $schoolId, $shift, false);
+        echo json_encode(['ok' => true, 'trip' => $fmt($r['trip']), 'already' => $r['already'], 'notified' => $r['notified']]);
+        if (!empty($r['notify_later'])) {   // the driver is not kept waiting while parents are notified
+            busFinishResponse();
+            @ignore_user_abort(true);
+            busTripNotifyStart($pdo, $busId, $schoolId, $shift);
+        }
+        exit;
     }
 
     if ($action === 'stop') {

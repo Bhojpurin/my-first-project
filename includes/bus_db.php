@@ -14,7 +14,20 @@ function busDb(PDO $pdo): PDO
         $done[$id] = true;
         $tz = defined('BUS_DB_TIMEZONE') ? (string)BUS_DB_TIMEZONE : '+05:30';
         if (preg_match('/^[+-](0\d|1[0-4]):[0-5]\d$/', $tz)) {
-            try { $pdo->exec("SET time_zone = '$tz'"); } catch (\Throwable $e) { error_log('bus_db tz: ' . $e->getMessage()); }
+            // If MySQL already runs in the school's zone (set default_time_zone in my.cnf), skip the extra query.
+            require_once __DIR__ . '/bus_cache.php';
+            $same = busCacheGet('dbtz:' . $tz, $hit);
+            if (!$hit) {
+                try {
+                    $off = (int)$pdo->query("SELECT TIMESTAMPDIFF(MINUTE, UTC_TIMESTAMP(), NOW())")->fetchColumn();
+                    [$h, $m] = explode(':', substr($tz, 1));
+                    $same = $off === ($tz[0] === '-' ? -1 : 1) * ((int)$h * 60 + (int)$m);
+                    busCacheSet('dbtz:' . $tz, $same, 3600);
+                } catch (\Throwable $e) { $same = false; }
+            }
+            if (!$same) {
+                try { $pdo->exec("SET time_zone = '$tz'"); } catch (\Throwable $e) { error_log('bus_db tz: ' . $e->getMessage()); }
+            }
         }
         // Tables are created / upgraded automatically on the first request after a deploy
         require_once __DIR__ . '/bus_schema.php';

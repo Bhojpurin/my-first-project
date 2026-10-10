@@ -19,7 +19,7 @@ hain** — wo aapke server par pehle se hain aur waise hi rahengi.
 | `api/` | `driver_sw.js` | **nayi** (driver page ka offline cache) |
 | `api/` | `gps_update.php` | badli |
 | `api/` | `student_bus.php` | badli |
-| `includes/` | `bus_alerts.php`, `bus_db.php`, `bus_schema.php`, `bus_halt.php`, `bus_message_hook.php`, `bus_notify.php`, `bus_privacy.php`, `bus_security.php`, `bus_trips.php`, `bus_watchdog.php` | **nayi** |
+| `includes/` | `bus_alerts.php`, `bus_cache.php`, `bus_db.php`, `bus_schema.php`, `bus_halt.php`, `bus_message_hook.php`, `bus_notify.php`, `bus_privacy.php`, `bus_security.php`, `bus_trips.php`, `bus_watchdog.php` | **nayi** |
 | `includes/` | `bus_proximity.php` | badli |
 | `school/` * | `bus_tracker.php` | badli |
 | `school/` * | `bus_wizard.php` | **nayi** (bus_tracker.php ke bagal mein) |
@@ -75,6 +75,9 @@ Ye ek hi cron sab karta hai: chup bus ka alert, bhooli hui trip band karna, aur 
 - [ ] Parent: Bus tab → "Bus nahi chahiye" (aaj) → driver page par wo stop ✖ "parent ne bataya".
 - [ ] Driver: "⚠️ Problem" → kaaran bhejein → admin feed mein 🛑 + "📣 Parents ko batayein" → parent ke Messages mein "Auto: Bus suchna".
 - [ ] Trip Khatam → Trips tab mein trip, km, ✔/✖.
+
+## Bade paimaane par (500 schools / 20 lakh students)
+`SCALING.md` dekhein — maapa hua load test, server plan aur production settings (Redis zaroori jab ek se zyada web server).
 
 ## Wapas purane version par (rollback)
 Backup wali files wapas daalein. Nayi tables purane code ko nuksan nahi karti, unhe rehne dein.

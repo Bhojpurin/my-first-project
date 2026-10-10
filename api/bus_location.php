@@ -40,9 +40,16 @@ if (BUS_LOCATION_REQUIRE_LOGIN) {
 
 try {
     $pdo = busDb(Database::connect());
+    require_once __DIR__ . '/../includes/bus_cache.php';
+    require_once __DIR__ . '/../includes/bus_trips.php';
 
-    // Bus must be active, belong to the school — and (when login is required) be this student's bus
-    if (BUS_LOCATION_REQUIRE_LOGIN) {
+    // Bus must be active, belong to the school — and (when login is required) be this student's bus.
+    // The answer is cached per student+bus for 2 min (many parents poll every few seconds).
+    $authKey = 'locauth:' . $schoolId . ':' . $busId . ':' . $stuId;
+    $authOk = busCacheGet($authKey, $authHit);
+    if ($authHit && $authOk) {
+        $check = null;
+    } elseif (BUS_LOCATION_REQUIRE_LOGIN) {
         $check = $pdo->prepare("
             SELECT b.id
             FROM school_buses b
@@ -56,8 +63,17 @@ try {
         $check = $pdo->prepare("SELECT id FROM school_buses WHERE id=? AND school_id=? AND status='active'");
         $check->execute([$busId, $schoolId]);
     }
-    if (!$check->fetch()) { echo json_encode(['ok'=>false,'msg'=>'Bus not found']); exit; }
+    if ($check !== null) {
+        if (!$check->fetch()) { echo json_encode(['ok'=>false,'msg'=>'Bus not found']); exit; }
+        busCacheSet($authKey, 1, 120);
+    }
 
+    // The bus's position is the same for all its parents: shared for 3 s (one query per bus, not per parent)
+    $loc = busCacheGet('busloc:' . $busId);
+    if ($loc && (int)$loc['school_id'] === $schoolId) {
+        $loc['age_sec'] = (int)$loc['age_sec'] + (time() - (int)$loc['_at']);
+        goto have_loc;
+    }
     // Age is computed by MySQL itself, so it is correct even when PHP and MySQL use different timezones
     // (the old PHP strtotime() version showed a stale bus as "live" when PHP's clock zone was behind MySQL's).
     // Fast path: bus_live holds exactly one row per bus. Falls back to the history table
@@ -81,6 +97,9 @@ try {
     }
 
     if (!$loc) { echo json_encode(['ok'=>false,'msg'=>'No GPS data yet']); exit; }
+    $loc['_at'] = time();
+    busCacheSet('busloc:' . $busId, $loc, 3);
+    have_loc:
 
     $age = max(0, (int)$loc['age_sec']);
 
@@ -88,41 +107,39 @@ try {
     // (picked up / marked absent / how many stops the driver still has before theirs).
     $trip = null;
     try {
-        require_once __DIR__ . '/../includes/bus_trips.php';
-        $tq = $pdo->prepare("SELECT id, shift_no, started_at FROM bus_trips WHERE bus_id=? AND school_id=? AND ended_at IS NULL ORDER BY id DESC LIMIT 1");
-        $tq->execute([$busId, $schoolId]);
-        if ($t = $tq->fetch()) {
+        $t = busTripGetOpenCached($pdo, $busId);
+        if ($t && (int)$t['school_id'] !== $schoolId) $t = null;
+        if ($t) {
             $trip = ['running' => true, 'shift' => (int)$t['shift_no'], 'started_at' => $t['started_at'], 'mine' => null];
-            if ($stuId) {
-                $sq = $pdo->prepare("SELECT " . BUS_EFFECTIVE_SHIFT_SQL . " FROM bus_route_assignments bra
-                    JOIN student_van_assignments sva ON sva.van_route_id=bra.route_id AND sva.school_id=bra.school_id
-                    LEFT JOIN bus_student_shifts bss ON bss.student_id=sva.student_id AND bss.route_id=sva.van_route_id AND bss.school_id=sva.school_id
-                    WHERE bra.bus_id=? AND bra.school_id=? AND bra.status='active' AND sva.student_id=? LIMIT 1");
-                $sq->execute([$busId, $schoolId, $stuId]);
-                $myShift = (int)$sq->fetchColumn();
+            $mine = $stuId ? busCacheGet('stutrip:' . (int)$t['id'] . ':' . $stuId, $mineHit) : null;
+            if ($stuId && !empty($mineHit)) {
+                $trip = $mine;   // this student's stop status / ETA, at most 8 s old
+            } elseif ($stuId) {
+                $myShift = (int)busCached('stushift:' . $schoolId . ':' . $busId . ':' . $stuId, 300, function () use ($pdo, $busId, $schoolId, $stuId) {
+                    $sq = $pdo->prepare("SELECT " . BUS_EFFECTIVE_SHIFT_SQL . " FROM bus_route_assignments bra
+                        JOIN student_van_assignments sva ON sva.van_route_id=bra.route_id AND sva.school_id=bra.school_id
+                        LEFT JOIN bus_student_shifts bss ON bss.student_id=sva.student_id AND bss.route_id=sva.van_route_id AND bss.school_id=sva.school_id
+                        WHERE bra.bus_id=? AND bra.school_id=? AND bra.status='active' AND sva.student_id=? LIMIT 1");
+                    $sq->execute([$busId, $schoolId, $stuId]);
+                    return (int)$sq->fetchColumn();
+                });
                 $trip['mine'] = $myShift === (int)$t['shift_no'];
                 if ($trip['mine']) {
-                    $mq = $pdo->prepare("SELECT seq, status, marked_at FROM bus_trip_stops WHERE trip_id=? AND student_id=?");
+                    // One query: my mark, how many pending stops are planned before mine, and my ETA
+                    $mq = $pdo->prepare("SELECT me.seq, me.status, me.marked_at,
+                            IF(me.eta_at > NOW() - INTERVAL 3 MINUTE, TIMESTAMPDIFF(SECOND, NOW(), me.eta_at), NULL) AS eta_s,
+                            (SELECT COUNT(*) FROM bus_trip_stops o WHERE o.trip_id=me.trip_id AND o.status='pending' AND o.seq IS NOT NULL AND o.seq < me.seq) AS before_n
+                        FROM bus_trip_stops me WHERE me.trip_id=? AND me.student_id=?");
                     $mq->execute([(int)$t['id'], $stuId]);
                     $me = $mq->fetch() ?: [];
                     $trip['status'] = $me['status'] ?? 'pending';
                     $trip['marked_at'] = $me['marked_at'] ?? null;
-                    $trip['before'] = null;
-                    if ($trip['status'] === 'pending' && isset($me['seq'])) {
-                        $bq = $pdo->prepare("SELECT COUNT(*) FROM bus_trip_stops WHERE trip_id=? AND status='pending' AND seq IS NOT NULL AND seq < ?");
-                        $bq->execute([(int)$t['id'], (int)$me['seq']]);
-                        $trip['before'] = (int)$bq->fetchColumn();
-                    }
+                    $trip['before'] = ($trip['status'] === 'pending' && isset($me['seq'])) ? (int)$me['before_n'] : null;
                     // ETA: the driver phone's estimate (road distance, planned order) while it is fresh,
                     // else a rough one from here: straight distance × 1.35 at 20 km/h + 1 min per stop before.
                     $trip['eta_min'] = null;
                     if ($trip['status'] === 'pending') {
-                        try {
-                            $eq = $pdo->prepare("SELECT TIMESTAMPDIFF(SECOND, NOW(), eta_at) FROM bus_trip_stops WHERE trip_id=? AND student_id=? AND eta_at > NOW() - INTERVAL 3 MINUTE");
-                            $eq->execute([(int)$t['id'], $stuId]);
-                            $sec = $eq->fetchColumn();
-                            if ($sec !== false && $sec !== null) $trip['eta_min'] = max(0, (int)round($sec / 60));
-                        } catch (\Throwable $e) {}
+                        if (isset($me['eta_s']) && $me['eta_s'] !== null) $trip['eta_min'] = max(0, (int)round($me['eta_s'] / 60));
                         if ($trip['eta_min'] === null && $age < 300) {
                             $hq = $pdo->prepare("SELECT lat, lng FROM student_home_locations WHERE student_id=? AND school_id=?");
                             $hq->execute([$stuId, $schoolId]);
@@ -135,6 +152,7 @@ try {
                     }
                 }
             }
+            if ($stuId && empty($mineHit)) busCacheSet('stutrip:' . (int)$t['id'] . ':' . $stuId, $trip, 8);
         }
     } catch (\Throwable $e) { $trip = null; }   // trip tables not installed yet
 
@@ -146,6 +164,7 @@ try {
         'hdg'   => (float)$loc['heading'],
         'acc'   => isset($loc['accuracy']) ? (float)$loc['accuracy'] : null,   // metres (column is optional)
         'time'  => $loc['recorded_at'],
+        'poll'  => $trip ? 10 : 30,   // seconds until the next poll: fast only while a trip runs
         'age'   => $age,
         'live'  => $age < 300,  // online = location in last 5 min
         'trip'  => $trip,

@@ -243,6 +243,26 @@ const BUS_SCHEMA_ADD_COLUMNS = [
     ['student_home_locations', 'bus_lost_at', 'DATETIME NULL'],       // privacy grace period
 ];
 
+/** Indexes on the PANEL's own tables that the bus module queries at high volume (bus tables have theirs in the SQL). */
+const BUS_SCHEMA_INDEXES = [
+    ['bus_gps_locations',       'idx_bus_school_time', '(school_id, bus_id, recorded_at)'],
+    ['bus_route_assignments',   'idx_bra_bus',         '(bus_id, school_id, status)'],
+    ['bus_route_assignments',   'idx_bra_route',       '(route_id, school_id)'],
+    ['student_van_assignments', 'idx_sva_route',       '(van_route_id, school_id)'],
+    ['student_van_assignments', 'idx_sva_student',     '(student_id, school_id)'],
+    ['bus_student_shifts',      'idx_bss_student',     '(student_id, route_id, school_id)'],
+    ['push_subscriptions',      'idx_ps_student',      '(student_id, school_id)'],
+    ['student_home_locations',  'idx_shl_school',      '(school_id)'],
+];
+const BUS_INDEX_WEB_MAX_ROWS = 300000;   // bigger tables get their index from the command line (no long web request)
+
+function busIndexExists(PDO $pdo, string $t, string $idx): bool
+{
+    $q = $pdo->prepare("SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND INDEX_NAME=?");
+    $q->execute([$t, $idx]);
+    return (bool)$q->fetchColumn();
+}
+
 function busColumnExists(PDO $pdo, string $t, string $c): bool
 {
     $q = $pdo->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?");
@@ -257,6 +277,7 @@ function busRunMigration(PDO $pdo, ?callable $log = null): bool
 {
     $log = $log ?: function ($l) {};
     $ok = true;
+    if (PHP_SAPI !== 'cli') { @ignore_user_abort(true); @set_time_limit(300); }   // finish even if the browser closes
     $mode = $pdo->getAttribute(PDO::ATTR_ERRMODE);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     try {
@@ -277,6 +298,20 @@ function busRunMigration(PDO $pdo, ?callable $log = null): bool
                 $log("✔ added $t.$c");
             } catch (\Throwable $e) { $ok = false; $log("✖ $t.$c → " . $e->getMessage()); }
         }
+        // Indexes for 500+ schools. On the web only for small tables; the CLI (tools/migrate.php) does all of them.
+        foreach (BUS_SCHEMA_INDEXES as [$t, $idx, $cols]) {
+            try {
+                if (busIndexExists($pdo, $t, $idx)) { $log("✔ index $t.$idx exists"); continue; }
+                $r = $pdo->prepare("SELECT TABLE_ROWS FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?");
+                $r->execute([$t]);
+                $rows = $r->fetchColumn();
+                if ($rows === false) { $log("✔ $t not present — skipped"); continue; }
+                if (PHP_SAPI !== 'cli' && (int)$rows > BUS_INDEX_WEB_MAX_ROWS) { $log("! index $t.$idx: big table — run php tools/migrate.php"); continue; }
+                $pdo->exec("ALTER TABLE `$t` ADD INDEX `$idx` $cols");
+                $log("✔ added index $t.$idx");
+            } catch (\Throwable $e) { $log("! index $t.$idx → " . $e->getMessage()); }   // performance only: never blocks setup
+        }
+
         // bus_route_learn got a "kind" (pickup/drop) column in its primary key
         try {
             $q = $pdo->query("SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA=DATABASE()
@@ -299,13 +334,16 @@ function busEnsureSchema(PDO $pdo, bool $force = false): void
     static $checked = false;
     if ($checked && !$force) return;
     $checked = true;
+    require_once __DIR__ . '/bus_cache.php';
+    if (!$force && busCacheGet('schema_v') === BUS_SCHEMA_VERSION) return;      // normal case: no query at all
     try {
         $v = (int)$pdo->query("SELECT MAX(v) FROM bus_schema_version")->fetchColumn();
-        if ($v >= BUS_SCHEMA_VERSION) return;
+        if ($v >= BUS_SCHEMA_VERSION) { busCacheSet('schema_v', BUS_SCHEMA_VERSION, 600); return; }
     } catch (\Throwable $e) { /* table missing → first run */ }
 
     try {
-        if ((int)$pdo->query("SELECT GET_LOCK('bus_schema_migrate', 25)")->fetchColumn() !== 1) return;   // someone else is on it
+        // Non-blocking: if another request is already upgrading, carry on instead of making hundreds of requests wait
+        if ((int)$pdo->query("SELECT GET_LOCK('bus_schema_migrate', 0)")->fetchColumn() !== 1) return;
         try {
             $pdo->exec("CREATE TABLE IF NOT EXISTS bus_schema_version (v INT NOT NULL, updated_at DATETIME NOT NULL) ENGINE=InnoDB");
             $v = (int)$pdo->query("SELECT MAX(v) FROM bus_schema_version")->fetchColumn();
@@ -316,6 +354,7 @@ function busEnsureSchema(PDO $pdo, bool $force = false): void
             if ($okRun) {
                 $pdo->exec("DELETE FROM bus_schema_version");
                 $pdo->prepare("INSERT INTO bus_schema_version (v, updated_at) VALUES (?, NOW())")->execute([BUS_SCHEMA_VERSION]);
+                busCacheSet('schema_v', BUS_SCHEMA_VERSION, 600);
                 error_log('bus_schema: upgraded to v' . BUS_SCHEMA_VERSION);
             } else {
                 error_log("bus_schema: migration incomplete —\n" . implode("\n", array_filter($lines, function ($l) { return strpos($l, '✖') === 0; })));

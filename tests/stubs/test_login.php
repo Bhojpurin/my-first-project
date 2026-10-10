@@ -1,6 +1,7 @@
 <?php // TEST STUB (sandbox only, never deployed): log in as admin/teacher/student of a school
 // Hard lock: works ONLY under PHP's built-in test server started by tests/integration.php — never on Apache/Nginx/FPM.
-if (PHP_SAPI !== 'cli-server' || getenv('BUS_TEST_PUSHLOG') === false) { http_response_code(404); exit; }
+// (The load test runs it under PHP-FPM with BUS_LOADTEST=1 set in its own test pool.)
+if ((PHP_SAPI !== 'cli-server' && getenv('BUS_LOADTEST') !== '1') || getenv('BUS_TEST_PUSHLOG') === false) { http_response_code(404); exit; }
 session_start();
 require_once __DIR__ . '/includes/functions.php';
 $_SESSION = [];

@@ -18,6 +18,17 @@ function busTripDist(float $la1, float $lo1, float $la2, float $lo2): float
     return 2 * 6371000 * asin(min(1.0, sqrt($a)));
 }
 
+/** Open trip, cached for 15 s (GPS updates call this on every fix). Start/stop clear the cache at once. */
+function busTripGetOpenCached(PDO $pdo, int $busId): ?array
+{
+    require_once __DIR__ . '/bus_cache.php';
+    $v = busCacheGet('trip:' . $busId, $hit);
+    if ($hit) return $v ?: null;
+    $t = busTripGetOpen($pdo, $busId);
+    busCacheSet('trip:' . $busId, $t ?: false, 15);
+    return $t;
+}
+
 function busTripGetOpen(PDO $pdo, int $busId): ?array
 {
     $st = $pdo->prepare("SELECT * FROM bus_trips WHERE bus_id=? AND ended_at IS NULL ORDER BY id DESC LIMIT 1");
@@ -42,10 +53,17 @@ function busTripSummarize(array $rows): array
         if ($d > 1500 && $dt < 60) continue;          // GPS jump, not driving
         if ($d >= 3) $dist += $d;
         if ($dt >= BUS_TRIP_STOP_SEC && ($d / $dt) * 3.6 < 5) {
-            $stops[] = ['lat' => round((float)$a['lat'], 6), 'lng' => round((float)$a['lng'], 6),
-                        'at' => date('Y-m-d H:i:s', $a['t']), 'min' => (int)round($dt / 60)];
+            // A long stand-still is stored as one row every few minutes: join those pieces into ONE stop
+            $k = count($stops) - 1;
+            if ($k >= 0 && $stops[$k]['_end'] === $a['t'] && busTripDist($stops[$k]['lat'], $stops[$k]['lng'], (float)$a['lat'], (float)$a['lng']) < 40) {
+                $stops[$k]['_sec'] += $dt; $stops[$k]['_end'] = $b['t']; $stops[$k]['min'] = (int)round($stops[$k]['_sec'] / 60);
+            } else {
+                $stops[] = ['lat' => round((float)$a['lat'], 6), 'lng' => round((float)$a['lng'], 6),
+                            'at' => date('Y-m-d H:i:s', $a['t']), 'min' => (int)round($dt / 60), '_sec' => $dt, '_end' => $b['t']];
+            }
         }
     }
+    $stops = array_map(function ($s) { unset($s['_sec'], $s['_end']); return $s; }, $stops);
     $dur = $n > 1 ? max(1, $rows[$n - 1]['t'] - $rows[0]['t']) : 0;
     $moving = max(1, $dur - array_sum(array_map(function ($s) { return $s['min'] * 60; }, $stops)));
     $step = max(1, (int)ceil($n / BUS_TRIP_PATH_POINTS));
@@ -75,6 +93,8 @@ function busTripFinish(PDO $pdo, int $tripId, string $reason): ?array
     $rows = array_map(function ($r) { $r['t'] = (int)$r['t']; return $r; }, $g->fetchAll());
     $sum  = busTripSummarize($rows);
 
+    require_once __DIR__ . '/bus_cache.php';
+    busCacheDel('trip:' . (int)$trip['bus_id']);
     $pdo->prepare("UPDATE bus_trips SET ended_at=NOW(), end_reason=?, distance_m=?, max_speed_kmh=?, avg_speed_kmh=?,
                    points=?, stops_json=?, path_json=? WHERE id=? AND ended_at IS NULL")
         ->execute([$reason, $sum['distance_m'], $sum['max_speed'], $sum['avg_speed'], $sum['points'],
@@ -84,7 +104,7 @@ function busTripFinish(PDO $pdo, int $tripId, string $reason): ?array
 }
 
 /** Start a trip (idempotent: returns the already-open one) and push "bus has left" to the students. */
-function busTripStart(PDO $pdo, int $busId, int $schoolId, int $shift): array
+function busTripStart(PDO $pdo, int $busId, int $schoolId, int $shift, bool $notifyNow = true): array
 {
     $open = busTripGetOpen($pdo, $busId);
     if ($open && strtotime($open['started_at']) > time() - BUS_TRIP_MAX_HOURS * 3600 - 7200) {
@@ -101,8 +121,14 @@ function busTripStart(PDO $pdo, int $busId, int $schoolId, int $shift): array
         $pdo->prepare("INSERT INTO bus_trips (school_id, bus_id, shift_no, started_at) VALUES (?,?,?,NOW())")
             ->execute([$schoolId, $busId, $shift]);
     }
+    require_once __DIR__ . '/bus_cache.php';
+    busCacheDel('trip:' . $busId);
     $trip = busTripGetOpen($pdo, $busId);
     busApplyAbsences($pdo, $trip);   // parents' "not today" → ✖ before the driver even starts
+    if (!$notifyNow) {   // caller answers the phone first, then calls busTripNotifyStart()
+        $l = busStopsForShift($pdo, $busId, $schoolId, $shift);
+        return ['trip' => $trip, 'already' => false, 'notified' => count($l['stops']) + count($l['missing']), 'notify_later' => true];
+    }
     return ['trip' => $trip, 'already' => false, 'notified' => busTripNotifyStart($pdo, $busId, $schoolId, $shift)];
 }
 
@@ -306,13 +332,19 @@ function busTripSetEtas(PDO $pdo, array $trip, array $etas): int
     if (!$etas) return 0;
     $list  = busStopsForShift($pdo, (int)$trip['bus_id'], (int)$trip['school_id'], (int)$trip['shift_no']);
     $valid = array_flip(array_column($list['stops'], 'id'));
-    $up = $pdo->prepare("INSERT INTO bus_trip_stops (trip_id, student_id, eta_at) VALUES (?,?, NOW() + INTERVAL ? SECOND)
-                         ON DUPLICATE KEY UPDATE eta_at=VALUES(eta_at)");
-    $n = 0;
+    // One multi-row statement for the whole bus (not one query per student)
+    $vals = []; $par = [];
     foreach ($etas as $id => $sec) {
         if (!isset($valid[(int)$id])) continue;
-        try { $up->execute([(int)$trip['id'], (int)$id, max(0, min(7200, (int)$sec))]); $n++; }
-        catch (\PDOException $e) { if ((int)($e->errorInfo[1] ?? 0) === 1054) return 0; throw $e; }   // eta_at not migrated
+        $vals[] = '(?,?, NOW() + INTERVAL ? SECOND)';
+        array_push($par, (int)$trip['id'], (int)$id, max(0, min(7200, (int)$sec)));
+    }
+    $n = count($vals);
+    if ($n) {
+        try {
+            $pdo->prepare("INSERT INTO bus_trip_stops (trip_id, student_id, eta_at) VALUES " . implode(',', $vals) . " ON DUPLICATE KEY UPDATE eta_at=VALUES(eta_at)")
+                ->execute($par);
+        } catch (\PDOException $e) { if ((int)($e->errorInfo[1] ?? 0) === 1054) return 0; throw $e; }   // eta_at not migrated
     }
     busEtaNotify($pdo, $trip);
     return $n;

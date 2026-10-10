@@ -23,6 +23,9 @@ const GPS_STILL_METERS      = 5;       // movement below this = "parked": refres
 const GPS_MAX_BACKFILL_SEC  = 21600;   // buffered points older than 6 h are dropped
 const GPS_BACKFILL_MIN_SEC  = 20;      // 'age' below this is treated as a normal live point
 const GPS_MAX_JUMP_MS       = 70.0;    // m/s (~250 km/h): faster than this between two fixes = GPS glitch
+const GPS_HIST_EVERY_M      = 100;     // history row at least every 100 m …
+const GPS_HIST_EVERY_SEC    = 15;      // … or every 15 s while driving …
+const GPS_HIST_STILL_SEC    = 120;     // … or every 2 min while standing (live position still updates every fix)
 
 ignore_user_abort(true); // finish background work even if the device hangs up
 
@@ -159,8 +162,6 @@ try {
     $pdo = busDb(Database::connect());
 
     $bus = gpsAuth($pdo, $key, $token);
-    // Per-bus flood guard (a stolen key cannot fill the database): 60 requests a minute is plenty
-    if (!busRateHit($pdo, 'gpsbus:' . $bus['id'], 60, 60)) busTooMany();
     $busId    = (int)$bus['id'];
     $schoolId = (int)$bus['school_id'];
 
@@ -170,40 +171,49 @@ try {
         jOut(['ok'=>true,'bus_id'=>$busId,'saved'=>'backfilled']);
     }
 
-    // Latest stored fix for this bus (used for rate-limit, glitch filter and parked-bus detection)
-    $ls = $pdo->prepare("
-        SELECT id, lat, lng, TIMESTAMPDIFF(SECOND, recorded_at, NOW()) AS age
-        FROM bus_gps_locations
-        WHERE school_id=? AND bus_id=?
-        ORDER BY recorded_at DESC, id DESC
-        LIMIT 1
-    ");
-    $ls->execute([$schoolId, $busId]);
-    $last = $ls->fetch();
+    // Last accepted position of this bus: from the cache (no query), else from bus_live (1-row lookup).
+    // The big history table is never read on the hot path.
+    $now  = time();
+    $last = busCacheGet('gpslast:' . $busId);
+    if (!$last) {
+        try {
+            $q = $pdo->prepare("SELECT lat, lng, heading, UNIX_TIMESTAMP(recorded_at) AS t FROM bus_live WHERE bus_id=? AND school_id=?");
+            $q->execute([$busId, $schoolId]);
+            if ($r = $q->fetch()) $last = ['lat' => (float)$r['lat'], 'lng' => (float)$r['lng'], 't' => (int)$r['t'], 'hdg' => (float)$r['heading'],
+                                         'hlat' => (float)$r['lat'], 'hlng' => (float)$r['lng'], 'ht' => (int)$r['t'], 'hdg_h' => (float)$r['heading']];
+        } catch (\Throwable $e) { $last = null; }
+    }
+    $age = $last ? max(0, $now - (int)$last['t']) : null;
 
-    if ($last && (int)$last['age'] < GPS_MIN_INTERVAL_SEC) {
+    if ($last && $age < GPS_MIN_INTERVAL_SEC) {
         jOut(['ok'=>false,'msg'=>'Too frequent — minimum '.GPS_MIN_INTERVAL_SEC.'s between updates']);
     }
+    // Per-bus flood guard (a stolen key cannot fill the database), counted in the cache
+    if (!busRateHitFast('gpsbus:' . $busId, 60, 60)) busTooMany();
 
-    $dist = $last ? distanceM((float)$last['lat'], (float)$last['lng'], $lat, $lng) : 0.0;
+    $dist = $last ? distanceM($last['lat'], $last['lng'], $lat, $lng) : 0.0;
 
     // Glitch filter: a teleport (> ~250 km/h) shortly after the previous fix is a bad GPS reading.
     // The window is short (2 min), so a genuinely moved device is never blocked for long.
-    if ($last && (int)$last['age'] < 120 && $dist > 300 && $dist / max(1, (int)$last['age']) > GPS_MAX_JUMP_MS) {
+    if ($last && $age < 120 && $dist > 300 && $dist / max(1, $age) > GPS_MAX_JUMP_MS) {
         jOut(['ok'=>false,'msg'=>'Implausible jump ignored']);
     }
 
-    // Parked bus: just refresh the timestamp of the last row instead of piling up identical rows.
-    $mode = 'inserted';
-    if ($last && (int)$last['age'] < 300 && $dist < GPS_STILL_METERS) {
-        $pdo->prepare("UPDATE bus_gps_locations SET recorded_at=NOW(), speed=?, heading=? WHERE id=?")
-            ->execute([$speed, $heading, (int)$last['id']]);
-        $mode = 'refreshed';
-    } else {
-        insertFix($pdo, $busId, $schoolId, $lat, $lng, $speed, $heading, $acc, null);
-    }
+    // History (trail, trip report) keeps a row only when it adds information: a turn, 100 m of road,
+    // 15 s of driving or 2 min of standing. Every fix still updates bus_live (what everyone sees live).
+    $hDist = $last ? distanceM($last['hlat'], $last['hlng'], $lat, $lng) : INF;
+    $hAge  = $last ? $now - (int)$last['ht'] : PHP_INT_MAX;
+    $turn  = $last ? abs(fmod(abs($heading - (float)$last['hdg_h']) + 180, 360) - 180) : 0;
+    $store = !$last || $hDist >= GPS_HIST_EVERY_M || ($speed >= 3 && $hAge >= GPS_HIST_EVERY_SEC)
+          || $hAge >= GPS_HIST_STILL_SEC || ($turn >= 30 && $hDist >= 20 && $speed >= 3);
+    $mode = 'live';
+    if ($store) { insertFix($pdo, $busId, $schoolId, $lat, $lng, $speed, $heading, $acc, null); $mode = 'inserted'; }
 
-    upsertLive($pdo, $busId, $schoolId, $lat, $lng, $speed, $heading, $acc, $mode === 'refreshed' || ($speed < 3 && $dist < 25));
+    $still = $speed < 3 && $dist < 25;
+    upsertLive($pdo, $busId, $schoolId, $lat, $lng, $speed, $heading, $acc, $still);
+    busCacheSet('gpslast:' . $busId, ['lat' => $lat, 'lng' => $lng, 't' => $now, 'hdg' => $heading,
+        'hlat' => $store ? $lat : $last['hlat'], 'hlng' => $store ? $lng : $last['hlng'], 'ht' => $store ? $now : (int)$last['ht'],
+        'hdg_h' => $store ? $heading : (float)$last['hdg_h']], 3600);
 
     jDone(['ok'=>true,'bus_id'=>$busId,'ts'=>date('Y-m-d H:i:s'),'saved'=>$mode]);
 } catch (\Throwable $e) {
@@ -213,10 +223,13 @@ try {
 
 // ── Everything below runs AFTER the device already got its response ──────────
 
-// Proximity push — never let a push/crypto hiccup break GPS ingestion.
+// Proximity push — never let a push/crypto hiccup break GPS ingestion. At most every 8 s per bus.
 try {
-    require_once __DIR__ . '/../includes/bus_proximity.php';
-    checkBusProximityPush($pdo, $busId, $schoolId, $lat, $lng, $speed, $acc);
+    if (!busCacheGet('prox:' . $busId)) {
+        busCacheSet('prox:' . $busId, 1, 8);
+        require_once __DIR__ . '/../includes/bus_proximity.php';
+        checkBusProximityPush($pdo, $busId, $schoolId, $lat, $lng, $speed, $acc);
+    }
 } catch (\Throwable $e) {
     error_log('gps_update proximity: ' . $e->getMessage());
 }
@@ -232,7 +245,7 @@ try {
 // Retention: delete history older than GPS_KEEP_HOURS. Runs on ~1 in 50 requests,
 // in small batches, so it never slows down or locks the table on a single update.
 try {
-    if (mt_rand(1, 50) === 1) {
+    if (mt_rand(1, 200) === 1) {
         $pdo->prepare("
             DELETE FROM bus_gps_locations
             WHERE school_id=? AND bus_id=? AND recorded_at < (NOW() - INTERVAL ".GPS_KEEP_HOURS." HOUR)

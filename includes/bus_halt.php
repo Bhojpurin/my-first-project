@@ -60,6 +60,7 @@ function busHaltReport(PDO $pdo, array $bus, array $in): ?int
                    VALUES (?,?,?,?,?,?,?,?,?,?,NOW())")
         ->execute([$schoolId, $busId, $tripId, $bus['device_id'] ?? null, $code, $text ?: null, $delay, $lat, $lng, $halt]);
     $rid = (int)$pdo->lastInsertId();
+    busCacheSet('haltopen:' . $busId, 1, 3600);
 
     $why = $code === 'other' && $text !== '' ? $text : BUS_HALT_LABELS[$code] . ($text !== '' ? ' — ' . $text : '');
     $msg = '🛑 ' . $bus['bus_name'] . ' raaste mein ruki: ' . $why . ($delay ? ' · ~' . $delay . ' min der' : '') . ($halt >= 60 ? ' (' . round($halt / 60) . ' min se)' : '');
@@ -70,12 +71,16 @@ function busHaltReport(PDO $pdo, array $bus, array $in): ?int
 function busHaltServerCheck(PDO $pdo, array $set, array $state, int $schoolId, int $busId, ?array $trip, string $label,
                             float $lat, float $lng, float $speedKmh): void
 {
-    // Resume: an open driver report and the bus is clearly driving again
+    // Resume: an open driver report and the bus is clearly driving again (flag in the cache → no query normally)
     if ($speedKmh >= 8) {
+        if (busCacheGet('haltopen:' . $busId) === 0) return;
         $o = $pdo->prepare("SELECT id, TIMESTAMPDIFF(MINUTE, created_at, NOW()) + FLOOR(COALESCE(halt_sec,0)/60) AS stood FROM bus_halt_reports
                             WHERE bus_id=? AND school_id=? AND resolved_at IS NULL ORDER BY id DESC LIMIT 1");
         $o->execute([$busId, $schoolId]);
-        if ($r = $o->fetch()) {
+        $r = $o->fetch();
+        busCacheSet('haltopen:' . $busId, $r ? 1 : 0, 3600);
+        if ($r) {
+            busCacheSet('haltopen:' . $busId, 0, 3600);
             $pdo->prepare("UPDATE bus_halt_reports SET resolved_at=NOW() WHERE bus_id=? AND school_id=? AND resolved_at IS NULL")->execute([$busId, $schoolId]);
             busAdminAlert($pdo, $schoolId, $busId, $trip ? (int)$trip['id'] : null, 'halt_resolved',
                 '▶️ ' . $label . ' phir chal padi (lagbhag ' . max(1, (int)$r['stood']) . ' min ruki)', $lat, $lng, null, 0, (int)$r['id']);
@@ -133,7 +138,7 @@ function busBroadcastDefault(PDO $pdo, array $alert): string
  * Admin broadcast to the parents of one alert's trip (or the bus's running trip).
  * Returns ['ok'=>bool, 'msg'=>string, 'sent'=>n]. Everything is limited to $schoolId.
  */
-function busBroadcast(PDO $pdo, int $schoolId, ?int $alertId, ?int $busId, string $text): array
+function busBroadcast(PDO $pdo, int $schoolId, ?int $alertId, ?int $busId, string $text, bool $sendNow = true): array
 {
     $text = busHaltClean($text, 500);
     if (mb_strlen($text) < 5) return ['ok' => false, 'msg' => 'Message bahut chhota hai.', 'sent' => 0];
@@ -158,7 +163,7 @@ function busBroadcast(PDO $pdo, int $schoolId, ?int $alertId, ?int $busId, strin
     if (!$trip) return ['ok' => false, 'msg' => 'Is bus ki koi trip nahi mili — kis shift ko bhejein, pata nahi.', 'sent' => 0];
     $ids = busTripRecipients($pdo, $trip);
     if (!$ids) return ['ok' => false, 'msg' => 'Is shift mein koi student nahi.', 'sent' => 0];
-    busNotifyStudents($pdo, $schoolId, $ids, 'Bus suchna 🚌', $text, 'Bus suchna');
     if ($alert) $pdo->prepare("UPDATE bus_alerts SET broadcast_at=NOW(), broadcast_n=broadcast_n+1 WHERE id=? AND school_id=?")->execute([(int)$alert['id'], $schoolId]);
-    return ['ok' => true, 'msg' => count($ids) . ' parents ko message bhej diya gaya.', 'sent' => count($ids)];
+    if ($sendNow) busNotifyStudents($pdo, $schoolId, $ids, 'Bus suchna 🚌', $text, 'Bus suchna');
+    return ['ok' => true, 'msg' => count($ids) . ' parents ko message bhej diya gaya.', 'sent' => count($ids), 'ids' => $ids, 'text' => $text];
 }
