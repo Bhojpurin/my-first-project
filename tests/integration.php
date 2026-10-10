@@ -214,6 +214,12 @@ try {
     [, $j] = req('GET', '/api/bus_location.php', ['bus_id' => 1, 'school_id' => 1], $S11[0]);
     ok(($j['trip']['eta_min'] ?? null) !== null && $j['trip']['eta_min'] <= 4, 'student portal shows the ETA', $j['trip'] ?? $j);
     ok(!array_filter(pushes(), function ($x) { return $x->endpoint === 'ep-21'; }), 'no push ever went to the other school');
+    $msgs = $pdo->query("SELECT school_id, recipient_id, auto_event, is_auto FROM school_messages WHERE auto_event='Bus ETA'")->fetchAll();
+    ok(count($msgs) === 1 && (int)$msgs[0]['school_id'] === 1 && (int)$msgs[0]['recipient_id'] === 11 && (int)$msgs[0]['is_auto'] === 1,
+       'the ETA also lands in that parent\'s Messages tab as an Auto message', $msgs);
+    $start = $pdo->query("SELECT COUNT(*) FROM school_messages WHERE auto_event='Bus trip shuru' AND school_id=1")->fetchColumn();
+    ok((int)$start === 3, '"trip started" auto message for every student of the shift (incl. the one without home)', $start);
+    ok(!(int)$pdo->query("SELECT COUNT(*) FROM school_messages WHERE school_id=2 OR recipient_id=21")->fetchColumn(), 'no message ever went to the other school');
 
     section('Safety alerts');
     $pdo->exec("INSERT INTO bus_alert_settings (school_id, overspeed_kmh, overspeed_sec, school_lat, school_lng, school_radius_m, deviation_m, deviation_sec, notify_parents, updated_at)

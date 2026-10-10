@@ -78,8 +78,9 @@ Privacy: the link has no login, so the driver sees short names ("Rahul K.") + cl
 - **No third-party messaging / webhooks:** the old global webhook was removed (it would have mixed schools' alerts).
 
 ## Alerts & parent messages (own channels only)
-`includes/bus_notify.php` sends to parents by Web Push **and** the panel's own Messages (create
-`includes/bus_message_hook.php` from the `.example` file to connect your messages table). Admin alerts go to the Live Map feed
+`includes/bus_notify.php` sends to parents by Web Push **and** the panel's own Messages: `includes/bus_message_hook.php`
+writes an auto message (`school_messages`, `is_auto=1`, `auto_event`) — shown as "Auto: Bus ETA" etc. Only the events in
+`BUS_MESSAGE_EVENTS` go to Messages (trip start, ETA, school arrive/leave); the frequent "nearby" alert stays push-only. Admin alerts go to the Live Map feed
 (sound + desktop notification while open). Per-school settings: Live Map → **Alert settings**.
 | Event | Admin | Parents |
 |---|---|---|

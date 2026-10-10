@@ -23,3 +23,6 @@ CREATE TABLE push_subscriptions (id INT AUTO_INCREMENT PRIMARY KEY, student_id I
 CREATE TABLE users (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(80), phone VARCHAR(20) NULL);
 CREATE TABLE teachers (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT, school_id INT, status VARCHAR(10) DEFAULT 'active', post VARCHAR(40),
   employee_code VARCHAR(20) NULL, photo VARCHAR(120) NULL);
+CREATE TABLE school_messages (id INT AUTO_INCREMENT PRIMARY KEY, school_id INT NOT NULL, sender_type VARCHAR(10), sender_id INT,
+  recipient_type VARCHAR(20), recipient_id INT, body TEXT, image VARCHAR(200) NULL, is_auto TINYINT NOT NULL DEFAULT 0,
+  auto_event VARCHAR(60) NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
