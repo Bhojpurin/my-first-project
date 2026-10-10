@@ -5,6 +5,7 @@
 const BUS_TRIP_MAX_HOURS   = 14;    // an unfinished trip older than this is closed automatically
 const BUS_TRIP_SILENT_MIN  = 30;    // ...and so is one whose bus has sent nothing for this long
 const BUS_TRIP_STOP_SEC    = 120;   // a stand-still of at least this long counts as a "stop"
+const BUS_SCHOOL_TZ        = 'Asia/Kolkata';   // "today" for parents' absence notes
 const BUS_TRIP_PATH_POINTS = 400;   // enough to draw the real road shape of a school route
 const BUS_LEARN_MIN_TRIPS  = 4;     // after this many consistent trips the learned order becomes the default
 const BUS_LEARN_KEEP_TRIPS = 7;     // learn from the last N trips (old habits fade out)
@@ -101,7 +102,35 @@ function busTripStart(PDO $pdo, int $busId, int $schoolId, int $shift): array
             ->execute([$schoolId, $busId, $shift]);
     }
     $trip = busTripGetOpen($pdo, $busId);
+    busApplyAbsences($pdo, $trip);   // parents' "not today" → ✖ before the driver even starts
     return ['trip' => $trip, 'already' => false, 'notified' => busTripNotifyStart($pdo, $busId, $schoolId, $shift)];
+}
+
+function busToday(): string { return (new DateTime('now', new DateTimeZone(BUS_SCHOOL_TZ)))->format('Y-m-d'); }
+
+/** Does a parent's absence kind (pickup/drop/both) cover a trip of this direction? */
+function busAbsenceCovers(?string $absence, string $tripKind): bool
+{
+    if (!$absence) return false;
+    return $absence === 'both' || $tripKind === 'any' || $absence === $tripKind;
+}
+
+/** Mark today's parent-reported absences of the trip's shift as ✖ (by 'parent'), if still pending. */
+function busApplyAbsences(PDO $pdo, ?array $trip): int
+{
+    if (!$trip) return 0;
+    $kind = !empty($trip['kind']) ? (string)$trip['kind'] : busTripKind($pdo, (int)$trip['bus_id'], (int)$trip['school_id'], (int)$trip['shift_no'], (string)$trip['started_at']);
+    $l = busStopsForShift($pdo, (int)$trip['bus_id'], (int)$trip['school_id'], (int)$trip['shift_no'], (int)$trip['id']);
+    $n = 0;
+    foreach (array_merge($l['stops'], $l['missing']) as $s) {
+        if (($s['status'] ?? 'pending') !== 'pending' || !busAbsenceCovers($s['absence'] ?? null, $kind)) continue;
+        $pdo->prepare("INSERT INTO bus_trip_stops (trip_id, student_id, status, marked_by, marked_at) VALUES (?,?,'absent','parent',NOW())
+                       ON DUPLICATE KEY UPDATE status=IF(status='pending','absent',status), marked_by=IF(status='absent' AND marked_by IS NULL,'parent',marked_by),
+                         marked_at=COALESCE(marked_at, NOW())")
+            ->execute([(int)$trip['id'], (int)$s['id']]);
+        $n++;
+    }
+    return $n;
 }
 
 /** "Bus has left" to every student of this bus + shift — push and the panel's own Messages (bus_notify.php). */
@@ -218,6 +247,14 @@ function busStopsForShift(PDO $pdo, int $busId, int $schoolId, int $shift, ?int 
         $st->execute([$busId, $schoolId, $shift]);
     }
 
+    // Parents' notes for today ("will not take the bus")
+    $absent = [];
+    try {
+        $a = $pdo->prepare("SELECT student_id, kind, note FROM bus_absences WHERE school_id=? AND on_date=?");
+        $a->execute([$schoolId, busToday()]);
+        foreach ($a->fetchAll() as $r) $absent[(int)$r['student_id']] = $r;
+    } catch (\Throwable $e) {}   // table not migrated yet
+
     $marks = [];
     if ($tripId) {
         $m = $pdo->prepare("SELECT student_id, seq, status, marked_by, marked_at FROM bus_trip_stops WHERE trip_id=?");
@@ -233,11 +270,12 @@ function busStopsForShift(PDO $pdo, int $busId, int $schoolId, int $shift, ?int 
         $cls = trim(($r['class_name'] ?? '') . ($r['section_name'] ? '-' . $r['section_name'] : ''));
         $lat = $r['lat'] !== null ? (float)$r['lat'] : null; $lng = $r['lng'] !== null ? (float)$r['lng'] : null;
         $nm  = $fullNames ? trim((string)$r['name']) : busShortName((string)$r['name']);
-        if ($lat === null || $lng === null || ($lat == 0 && $lng == 0)) { $missing[] = ['id' => $id, 'name' => $nm, 'cls' => $cls]; continue; }
+        if ($lat === null || $lng === null || ($lat == 0 && $lng == 0)) { $missing[] = ['id' => $id, 'name' => $nm, 'cls' => $cls, 'absence' => $absent[$id]['kind'] ?? null]; continue; }
         $mk = $marks[$id] ?? null;
         $stops[] = ['id' => $id, 'name' => $nm, 'cls' => $cls,
                     'lat' => round($lat, 6), 'lng' => round($lng, 6),
                     'note' => trim((string)($r['note'] ?? '')),
+                    'absence' => $absent[$id]['kind'] ?? null, 'absence_note' => $absent[$id]['note'] ?? null,
                     'status' => $mk['status'] ?? 'pending', 'seq' => isset($mk['seq']) ? (int)$mk['seq'] : null,
                     'by' => $mk['marked_by'] ?? null, 'at' => $mk['marked_at'] ?? null];
     }
@@ -252,7 +290,7 @@ function busTripMarkStop(PDO $pdo, array $trip, int $studentId, string $status, 
 {
     $agoSec = max(0, min(6 * 3600, $agoSec));
     if (!in_array($status, ['pending', 'done', 'absent'], true)) return false;
-    $by = $by === 'auto' ? 'auto' : 'driver';
+    $by = in_array($by, ['auto', 'parent'], true) ? $by : 'driver';
     $list = busStopsForShift($pdo, (int)$trip['bus_id'], (int)$trip['school_id'], (int)$trip['shift_no']);
     if (!in_array($studentId, array_column($list['stops'], 'id'), true)) return false;
     $pdo->prepare("INSERT INTO bus_trip_stops (trip_id, student_id, status, marked_by, marked_at)

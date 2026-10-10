@@ -191,3 +191,16 @@ CREATE TABLE IF NOT EXISTS bus_halt_reports (
   KEY idx_bus_open (bus_id, resolved_at),
   KEY idx_school_time (school_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Parent: "my child will not take the bus on this day" (pickup / drop / both). The stop is pre-marked ✖ on the
+-- driver's phone. One row per student per day. Deleted automatically when old (privacy cleanup).
+CREATE TABLE IF NOT EXISTS bus_absences (
+  student_id INT         NOT NULL,
+  on_date    DATE        NOT NULL,
+  school_id  INT         NOT NULL,
+  kind       VARCHAR(6)  NOT NULL DEFAULT 'both',   -- pickup | drop | both
+  note       VARCHAR(120) NULL,
+  created_at DATETIME    NOT NULL,
+  PRIMARY KEY (student_id, on_date),
+  KEY idx_school_date (school_id, on_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

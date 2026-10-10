@@ -694,6 +694,9 @@ async function loadStops() {
   const pend = {}; marks.forEach(m => { pend[m.id] = m.status; });
   stops = (r.stops || []).map(s => {
     if (!sameTrip) { s.status = 'pending'; s.seq = null; s.by = null; }
+    // Before the trip starts, show the parents' "not today" right away (the server marks it at trip start)
+    const ab = s.absence && (s.absence === 'both' || tripKind === 'any' || s.absence === tripKind);
+    if (!tripOpen && ab && s.status === 'pending') { s.status = 'absent'; s.by = 'parent'; }
     return Object.assign(s, pend[s.id] ? {status: pend[s.id]} : {});
   });
   missing = r.missing || [];
@@ -1022,7 +1025,8 @@ function drawLearned() {
 function popupHtml(s) {
   const rd = s.status === 'pending' ? roadDistTo(s) : null, d = rd != null ? rd : distTo(s), can = canMark();
   const nav = 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + s.lat + ',' + s.lng;
-  const st = s.status === 'done' ? '<span style="color:#16a34a">✔ ho gaya' + (s.by === 'auto' ? ' (auto)' : '') + '</span>' : s.status === 'absent' ? '<span style="color:#64748b">✖ nahi aaya</span>' : '';
+  const st = s.status === 'done' ? '<span style="color:#16a34a">✔ ho gaya' + (s.by === 'auto' ? ' (auto)' : '') + '</span>'
+    : s.status === 'absent' ? '<span style="color:#64748b">✖ ' + (s.by === 'parent' ? 'parent ne bataya: aaj nahi aayega' + (s.absence_note ? ' (' + esc(s.absence_note) + ')' : '') : 'nahi aaya') + '</span>' : '';
   return '<div class="pp"><b>' + esc(s.name) + '</b> ' + esc(s.cls)
     + (s.note ? '<div style="margin:4px 0;padding:5px 7px;background:#fef9c3;color:#713f12;border-radius:6px;font-size:.8rem">📌 ' + esc(s.note) + '</div>' : '<br>')
     + fmtDist(d) + (rd != null ? ' (sadak se)' : '') + ' door ' + st
@@ -1098,7 +1102,7 @@ function renderStops() {
   list.innerHTML = os.map(s => {
     const p = s.status === 'pending', cls = s.status === 'done' ? 'dn' : s.status === 'absent' ? 'ab' : s === nx ? 'nx' : '';
     const lab = s.status === 'done' ? '✔' : s.status === 'absent' ? '✖' : ++i;
-    const tail = s.status === 'done' ? (s.by === 'auto' ? 'auto ✔' : '✔') : s.status === 'absent' ? 'nahi aaya' : fmtDist(distTo(s));
+    const tail = s.status === 'done' ? (s.by === 'auto' ? 'auto ✔' : '✔') : s.status === 'absent' ? (s.by === 'parent' ? '👪 nahi aayega' : 'nahi aaya') : fmtDist(distTo(s));
     return '<div class="row' + (p ? '' : ' dim') + '" onclick="focusStop(' + s.id + ')"><div class="no ' + cls + '">' + lab + '</div>'
       + '<div class="t"><b>' + esc(s.name) + '</b><small>' + esc(s.cls) + '</small></div><div class="d">' + tail + '</div></div>';
   }).join('');

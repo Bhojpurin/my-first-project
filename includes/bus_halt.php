@@ -102,8 +102,10 @@ function busHaltServerCheck(PDO $pdo, array $set, array $state, int $schoolId, i
 function busTripRecipients(PDO $pdo, array $trip): array
 {
     $l = busStopsForShift($pdo, (int)$trip['bus_id'], (int)$trip['school_id'], (int)$trip['shift_no'], (int)$trip['id']);
-    $ids = array_column(array_filter($l['stops'], function ($s) { return $s['status'] !== 'absent'; }), 'id');
-    return array_values(array_unique(array_merge($ids, array_column($l['missing'], 'id'))));
+    $ids = array_merge(array_column($l['stops'], 'id'), array_column($l['missing'], 'id'));
+    $ab = $pdo->prepare("SELECT student_id FROM bus_trip_stops WHERE trip_id=? AND status='absent'");
+    $ab->execute([(int)$trip['id']]);
+    return array_values(array_diff(array_unique($ids), array_map('intval', $ab->fetchAll(PDO::FETCH_COLUMN))));
 }
 
 /** Suggested parent message for an alert (the admin can edit it before sending). */

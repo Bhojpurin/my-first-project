@@ -1541,7 +1541,7 @@ async function loadBusDetail(id, fit) {
     .map(s => {
       const c = s.id === nextId ? '#f59e0b' : col[s.status];
       const lab = s.status === 'done' ? '✔' : s.status === 'absent' ? '✖' : (s.seq ?? '•');
-      const tail = s.status === 'done' ? String(s.at || '').slice(11, 16) + (s.by === 'auto' ? ' auto' : '') : s.status === 'absent' ? 'nahi aaya' : s.id === nextId ? '<b style="color:#b45309">agla</b>' : '';
+      const tail = s.status === 'done' ? String(s.at || '').slice(11, 16) + (s.by === 'auto' ? ' auto' : '') : s.status === 'absent' ? (s.by === 'parent' ? '👪 parent ne bataya' : 'nahi aaya') : s.id === nextId ? '<b style="color:#b45309">agla</b>' : '';
       return `<div class="bd-row" onclick="_map.setView([${s.lat},${s.lng}],17)"><span class="bd-dot" style="background:${c}">${lab}</span><span style="flex:1;min-width:0">${esc(s.name)} <small style="color:#94a3b8">${esc(s.cls)}</small></span><small>${tail}</small></div>`;
     }).join('');
   const halts = (r.halts || []).map(h => `<div class="bd-row" onclick="_map.setView([${h.lat},${h.lng}],17)"><span class="bd-dot" style="background:#fbbf24;color:#78350f">⏸</span><span style="flex:1">${String(h.at).slice(11, 16)}</span><small>${h.min} min</small></div>`).join('');

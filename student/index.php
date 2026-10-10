@@ -2243,6 +2243,30 @@ select.fld-input{appearance:auto;}
       <div class="card-body" id="busTripInfoBody" style="padding:12px 16px;font-size:.86rem;font-weight:600;"></div>
     </div>
 
+    <!-- Absence: "my child will not take the bus" -->
+    <div class="card" id="busAbsCard" style="margin-bottom:12px;">
+      <div class="card-body" style="padding:12px 16px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="font-weight:700;font-size:.88rem;flex:1;">🚫 Bus nahi chahiye?</div>
+          <button type="button" onclick="toggleAbsForm()" id="absToggle" style="padding:6px 12px;border:1.5px solid #fecaca;background:#fef2f2;color:#b91c1c;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;">Batayein</button>
+        </div>
+        <div id="absList" style="margin-top:6px;font-size:.8rem;"></div>
+        <div id="absForm" style="display:none;margin-top:10px;">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <select id="absDate" style="flex:1;min-width:140px;padding:8px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.82rem;"></select>
+            <select id="absKind" style="flex:1;min-width:140px;padding:8px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.82rem;">
+              <option value="both">Poora din (subah + dopahar)</option>
+              <option value="pickup">Sirf subah (ghar → school)</option>
+              <option value="drop">Sirf dopahar (school → ghar)</option>
+            </select>
+          </div>
+          <input id="absNote" maxlength="120" placeholder="Kaaran (optional) — jaise: tabiyat kharab" style="width:100%;margin-top:6px;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.82rem;box-sizing:border-box;">
+          <button type="button" onclick="saveAbsence()" style="width:100%;margin-top:8px;padding:10px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-size:.84rem;font-weight:700;cursor:pointer;">Driver ko batayein</button>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:4px;">Us din driver ke phone par aapka stop pehle se ✖ rahega.</div>
+        </div>
+      </div>
+    </div>
+
     <!-- Live Map -->
     <div class="card" style="margin-bottom:12px;padding:0;overflow:hidden;border-radius:var(--radius);">
       <div id="busMap" style="height:300px;"></div>
@@ -2636,6 +2660,7 @@ function initBusTab() {
   if (_busPoller) clearInterval(_busPoller);
   _busPoller = setInterval(pollBusLocation, 10000);
   loadHomeLocation();
+  loadAbsences();
 }
 
 async function pollBusLocation() {
@@ -2806,6 +2831,46 @@ function showHomeStatus(text) {
   document.getElementById('homeLocStatusText').textContent = text;
   st.style.display = 'flex';
   setTimeout(() => { st.style.display = 'none'; }, 5000);
+}
+
+// ── Absence notes ("bus nahi chahiye") ─────────────────────────────────────────
+const ABS_KIND = {both: 'poora din', pickup: 'sirf subah', drop: 'sirf dopahar'};
+function absDayLabel(d, today) {
+  const t = new Date(today + 'T00:00:00'), x = new Date(d + 'T00:00:00'), diff = Math.round((x - t) / 864e5);
+  return diff === 0 ? 'Aaj' : diff === 1 ? 'Kal' : x.toLocaleDateString('en-IN', {weekday: 'short', day: 'numeric', month: 'short'});
+}
+async function loadAbsences() {
+  try {
+    const d = await (await fetch(STU_BUS_URL + '?action=list_absences&_=' + Date.now())).json();
+    const sel = document.getElementById('absDate');
+    if (sel && !sel.options.length) {
+      const t = new Date(d.today + 'T00:00:00');
+      for (let i = 0; i <= 14; i++) { const x = new Date(t); x.setDate(t.getDate() + i);
+        const iso = x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
+        sel.add(new Option(absDayLabel(iso, d.today), iso)); }
+    }
+    document.getElementById('absList').innerHTML = (d.absences || []).map(a =>
+      `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;color:#b91c1c;">✖ <b>${escHtml(absDayLabel(a.on_date, d.today))}</b> · ${escHtml(ABS_KIND[a.kind] || a.kind)}${a.note ? ' · ' + escHtml(a.note) : ''}
+        <button type="button" onclick="cancelAbsence('${escHtml(a.on_date)}')" style="margin-left:auto;padding:3px 8px;border:1px solid #e5e7eb;background:#fff;border-radius:6px;font-size:.72rem;cursor:pointer;">Cancel</button></div>`).join('');
+  } catch (e) {}
+}
+function toggleAbsForm() { const f = document.getElementById('absForm'); f.style.display = f.style.display === 'none' ? '' : 'none'; }
+async function saveAbsence() {
+  const fd = new FormData();
+  fd.append('action', 'set_absence');
+  fd.append('date', document.getElementById('absDate').value);
+  fd.append('kind', document.getElementById('absKind').value);
+  fd.append('note', document.getElementById('absNote').value.trim().slice(0, 120));
+  try {
+    const d = await (await fetch(STU_BUS_URL, {method: 'POST', body: fd})).json();
+    if (!d.success) { stuAlert(d.message || 'Save nahi hua.'); return; }
+    document.getElementById('absNote').value = ''; document.getElementById('absForm').style.display = 'none';
+    showHomeStatus(d.message); loadAbsences();
+  } catch (e) { stuAlert('Network error. Please try again.'); }
+}
+async function cancelAbsence(date) {
+  const fd = new FormData(); fd.append('action', 'cancel_absence'); fd.append('date', date);
+  try { await fetch(STU_BUS_URL, {method: 'POST', body: fd}); loadAbsences(); } catch (e) {}
 }
 
 async function saveHomeNote() {
