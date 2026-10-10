@@ -27,7 +27,8 @@ $addCols = [
     ['bus_alerts', 'broadcast_at', 'DATETIME NULL'],
     ['bus_alerts', 'broadcast_n', 'INT NOT NULL DEFAULT 0'],
     ['bus_alert_state', 'halt_alerted_for', 'DATETIME NULL'],
-    ['student_home_locations', 'note', 'VARCHAR(120) NULL'],   // "mandir ke saamne, neela gate" — shown to the driver
+    ['student_home_locations', 'note', 'VARCHAR(120) NULL'],
+    ['student_home_locations', 'bus_lost_at', 'DATETIME NULL'],   // privacy: student has no bus since (grace period)   // "mandir ke saamne, neela gate" — shown to the driver
 ];
 foreach ($addCols as [$t, $c, $def]) {
     $q = $pdo->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?");

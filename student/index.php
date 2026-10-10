@@ -2321,6 +2321,7 @@ select.fld-input{appearance:auto;}
             <button onclick="saveHomeNote()" style="padding:9px 12px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:.8rem;font-weight:700;cursor:pointer;">Save</button>
           </div>
           <div style="font-size:.72rem;color:var(--muted);margin-top:3px;">Ye sirf aapki bus ke driver ko stop par dikhega.</div>
+          <button type="button" onclick="deleteMyBusData()" style="margin-top:10px;padding:6px 10px;border:1px solid #e5e7eb;background:#fff;color:#b91c1c;border-radius:8px;font-size:.74rem;cursor:pointer;">🗑 Meri location aur bus alerts ka data hatayein</button>
         </div>
       </div>
     </div>
@@ -2871,6 +2872,16 @@ async function saveAbsence() {
 async function cancelAbsence(date) {
   const fd = new FormData(); fd.append('action', 'cancel_absence'); fd.append('date', date);
   try { await fetch(STU_BUS_URL, {method: 'POST', body: fd}); loadAbsences(); } catch (e) {}
+}
+
+async function deleteMyBusData() {
+  if (!(await stuConfirm('Ghar ki location, note aur bus alerts hata dein? Alerts band ho jayenge; dobara lagane ke liye location phir set karni hogi.', {okLabel: 'Hatayein'}))) return;
+  try {
+    const fd = new FormData(); fd.append('action', 'delete_my_data');
+    const d = await (await fetch(STU_BUS_URL, {method: 'POST', body: fd})).json();
+    if (d.success) { try { const reg = await navigator.serviceWorker.getRegistration(STU_SW_URL); const sub = reg && await reg.pushManager.getSubscription(); if (sub) await sub.unsubscribe(); } catch (e) {}
+      await stuAlert(d.message); location.reload(); }
+  } catch (e) { stuAlert('Network error. Please try again.'); }
 }
 
 async function saveHomeNote() {

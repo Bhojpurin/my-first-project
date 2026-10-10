@@ -141,6 +141,13 @@ if ($action === 'list_absences') {
     } catch (\Throwable $e) { echo json_encode(['success'=>true,'absences'=>[],'today'=>busToday()]); exit; }
 }
 
+// ── delete_my_data: parent erases home, note, alerts and absence notes (privacy) ──
+if ($action === 'delete_my_data') {
+    require_once __DIR__ . '/../includes/bus_privacy.php';
+    busEraseStudentData($pdo, $schoolId, $stuId);
+    echo json_encode(['success'=>true,'message'=>'Aapki ghar ki location aur bus alerts ka data hata diya gaya.']); exit;
+}
+
 // ── get_home ──────────────────────────────────────────────────────────────────
 if ($action === 'get_home') {
     try {

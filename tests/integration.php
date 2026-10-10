@@ -361,6 +361,28 @@ try {
     [, $j] = req('GET', '/api/student_bus.php', ['action' => 'get_home'], $S11[0]);
     ok(!empty($j['success']) && strpos($j['note'], 'Mandir') === 0, 'student: get_home returns the note');
 
+    section('Data privacy');
+    $pdo->exec("INSERT INTO students (id, school_id, name, status) VALUES (14,1,'Left School',  'active'), (15,1,'No Bus Kid','active')");
+    $pdo->exec("INSERT INTO student_home_locations (student_id, school_id, lat, lng, updated_at) VALUES (14,1,28.6,77.2,NOW()), (15,1,28.6,77.2,NOW())");
+    $pdo->exec("INSERT INTO student_van_assignments (student_id, van_route_id, school_id) VALUES (14,1,1)");
+    $pdo->exec("INSERT INTO push_subscriptions (student_id, school_id, endpoint, endpoint_hash, p256dh, auth) VALUES (14,1,'ep-14',SHA2('ep-14',256),'p','a')");
+    $pdo->exec("INSERT INTO bus_absences (student_id, on_date, school_id, kind, created_at) VALUES (14, CURDATE(), 1, 'both', NOW()), (11, CURDATE() - INTERVAL 40 DAY, 1, 'both', NOW())");
+    $pdo->exec("UPDATE students SET status='inactive' WHERE id=14");          // TC / admission ended
+    shell_exec('php ' . escapeshellarg("$SB/tools/bus_privacy_cleanup.php"));
+    $cnt = function ($t, $id) use ($pdo) { return (int)$pdo->query("SELECT COUNT(*) FROM $t WHERE student_id=$id")->fetchColumn(); };
+    ok(!$cnt('student_home_locations', 14) && !$cnt('push_subscriptions', 14) && !$cnt('bus_absences', 14), 'admission ended → home, push and notes deleted');
+    ok($cnt('student_home_locations', 11) === 1 && $cnt('push_subscriptions', 11) === 1, 'active bus students are untouched');
+    ok(!(int)$pdo->query("SELECT COUNT(*) FROM bus_absences WHERE on_date < CURDATE() - INTERVAL 30 DAY")->fetchColumn(), 'old absence notes are purged');
+    ok($cnt('student_home_locations', 15) === 1 && $pdo->query("SELECT bus_lost_at FROM student_home_locations WHERE student_id=15")->fetchColumn(), 'no bus → kept for the grace period, clock started');
+    $pdo->exec("UPDATE student_home_locations SET bus_lost_at = NOW() - INTERVAL 31 DAY WHERE student_id=15");
+    shell_exec('php ' . escapeshellarg("$SB/tools/bus_privacy_cleanup.php"));
+    ok($cnt('student_home_locations', 15) === 0, '…and deleted after 30 days without a bus');
+    ok($cnt('student_home_locations', 21) === 1, "school B's data untouched by school A's changes");
+    $S11c = login('student', 1, 11);
+    [, $j] = req('POST', '/api/student_bus.php', ['action' => 'delete_my_data'], $S11c[0]);
+    ok(!empty($j['success']) && !$cnt('student_home_locations', 11) && !$cnt('push_subscriptions', 11) && $cnt('student_home_locations', 12) === 1,
+       'parent erases own data — only their own');
+
     section('Unpair / revoke');
     admin($A, 'driver_revoke', ['id' => $devA]);
     [$s] = trip($tokA, 'status');

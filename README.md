@@ -94,6 +94,24 @@ writes an auto message (`school_messages`, `is_auto=1`, `auto_event`) — shown 
 Student portal shows "Bus will reach your home in about N min" and parents can add a landmark note for the driver
 ("mandir ke saamne, neela gate"), shown in the driver's popup / next-stop card and read out on arrival.
 
+## Unplanned halt on the road
+During a trip, if the bus stands ≥ 3 min (setting) away from every student's home and the school gate, the driver's
+phone pops up "Bus N min se ruki hai — kya hua?" (puncture, breakdown, jam, fuel, road closed, checking, other + expected
+delay; also the "⚠️ Problem" button any time; works offline). The admin feed shows it with **📣 Parents ko batayein**: a
+ready-made, editable message goes with one click to every parent of that shift (push + Messages, absent students skipped).
+No answer from the driver within 8 min → admin alert anyway; the bus moves again → "phir chal padi" alert (also one click).
+
+## Parent absence ("aaj bachcha nahi aayega")
+Student portal → Bus → "Bus nahi chahiye": today … +14 days, morning / afternoon / both, optional reason, cancel any time.
+That stop is pre-marked ✖ "parent ne bataya" on the driver's phone (also during a running trip); a parent's cancel never
+undoes the driver's own ✖.
+
+## Data privacy
+`includes/bus_privacy.php` (every 15 min from the watchdog cron, or `php tools/bus_privacy_cleanup.php`):
+student no longer active → home location, note, push subscriptions and absence notes deleted; student without a bus →
+home deleted after 30 days; trips/marks kept 1 year, alerts 6 months, absence notes 30 days, used pairing links 7 days,
+removed phones 90 days. Parents can erase their own bus data any time (Bus tab → "Meri location … hatayein").
+
 ## Tests
 `php tests/integration.php` (needs MySQL/MariaDB; env `BUS_TEST_DB`, `BUS_TEST_USER`, `BUS_TEST_PASS`; it DROPS and
 recreates that database). `tests/stubs/` stand in for the panel's core files, `tests/fixtures/base_schema.sql` holds the
