@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS bus_live (
   heading     DECIMAL(6,2) NOT NULL DEFAULT 0,
   accuracy    DECIMAL(8,2) NULL,
   recorded_at DATETIME     NOT NULL,
+  still_since DATETIME     NULL,                 -- bus standing still since (NULL = moving)
   KEY idx_school (school_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -66,4 +67,20 @@ CREATE TABLE IF NOT EXISTS bus_trip_stops (
   marked_at  DATETIME    NULL,
   PRIMARY KEY (trip_id, student_id),
   KEY idx_student (student_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Learned route per bus + shift + direction (morning pickup and afternoon drop run in opposite order): the order in which the driver really picks the students up (last 7 trips)
+-- and the road path the bus really drives. After BUS_LEARN_MIN_TRIPS consistent trips it becomes the default
+-- order on the driver's phone, and its path is drawn as "roz ka raasta" (works offline).
+CREATE TABLE IF NOT EXISTS bus_route_learn (
+  bus_id        INT      NOT NULL,
+  shift_no      TINYINT  NOT NULL,
+  kind          VARCHAR(6) NOT NULL DEFAULT 'any',   -- pickup (home → school) | drop (school → home) | any
+  school_id     INT      NOT NULL,
+  trips_json    MEDIUMTEXT NULL,      -- [{t: trip_id, d: date, o: [student ids in visit order]}, ...]
+  learned_order MEDIUMTEXT NULL,      -- [student ids]
+  confidence    DECIMAL(4,2) NULL,    -- 0..1: how consistently the driver follows that order
+  path_json     MEDIUMTEXT NULL,      -- [[lat,lng], ...] real road path of a good recent trip
+  updated_at    DATETIME NOT NULL,
+  PRIMARY KEY (bus_id, shift_no, kind)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

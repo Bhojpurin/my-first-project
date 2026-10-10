@@ -50,9 +50,15 @@ function busLatestLocations(PDO $pdo, int $schoolId): array {
     // Fast path: bus_live (one row per bus). Falls back to scanning history if the table is missing/empty.
     try {
         $st = $pdo->prepare("SELECT l.*, TIMESTAMPDIFF(SECOND, l.recorded_at, NOW()) AS age_seconds FROM bus_live l WHERE l.school_id=?");
+        // still_since (when the bus stopped) exists from migration v2 on; read it separately so older tables keep working
+        try {
+            $ss = $pdo->prepare("SELECT bus_id, TIMESTAMPDIFF(SECOND, still_since, NOW()) AS s FROM bus_live WHERE school_id=? AND still_since IS NOT NULL");
+            $ss->execute([$schoolId]);
+            $stillSec = array_column($ss->fetchAll(), 's', 'bus_id');
+        } catch (\Throwable $e) { $stillSec = []; }
         $st->execute([$schoolId]);
         $out = [];
-        foreach ($st->fetchAll() as $r) $out[(int)$r['bus_id']] = $r;
+        foreach ($st->fetchAll() as $r) { $r['still_seconds'] = $stillSec[$r['bus_id']] ?? null; $out[(int)$r['bus_id']] = $r; }
         if ($out) return $out;
     } catch (\Throwable $e) { /* table not created yet */ }
 
@@ -345,6 +351,8 @@ if ($action === 'get_live_locations') {
         $r['recorded_at'] = $l['recorded_at'] ?? null;
         $r['age_seconds'] = $age;
         $r['gps_status']  = busGpsStatus($age);
+        $r['still_seconds'] = isset($l['still_seconds']) ? (int)$l['still_seconds'] : null;   // standing still for…
+        $r['trip'] = busTripProgress($pdo, (int)$r['id'], $schoolId);
     }
     unset($r);
 
@@ -356,6 +364,71 @@ if ($action === 'get_live_locations') {
         runBusWatchdog($pdo, $schoolId);
     }
     jBus(true, '', ['buses' => $rows, 'watchdog' => busWatchdogOpenAlerts($pdo, $schoolId)]);
+}
+
+// Running trip of one bus with pickup progress: {id, shift, started_at, total, done, absent, pending, missing, next}
+function busTripProgress(PDO $pdo, int $busId, int $schoolId): ?array {
+    static $ready = null;
+    if ($ready === null) { require_once __DIR__ . '/../includes/bus_trips.php'; $ready = true; }
+    try {
+        $t = busTripGetOpen($pdo, $busId);
+        if (!$t || (int)$t['school_id'] !== $schoolId) return null;
+        $list = busStopsForShift($pdo, $busId, $schoolId, (int)$t['shift_no'], (int)$t['id'], true);
+        $c = ['done' => 0, 'absent' => 0, 'pending' => 0]; $next = null;
+        foreach ($list['stops'] as $s) {
+            $c[$s['status']] = ($c[$s['status']] ?? 0) + 1;
+            if ($s['status'] === 'pending' && $s['seq'] !== null && (!$next || $s['seq'] < $next['seq'])) $next = $s;
+        }
+        return ['id' => (int)$t['id'], 'shift' => (int)$t['shift_no'], 'started_at' => $t['started_at'],
+                'total' => count($list['stops']) + count($list['missing']), 'done' => $c['done'], 'absent' => $c['absent'],
+                'pending' => $c['pending'] + count($list['missing']), 'missing' => count($list['missing']),
+                'next' => $next ? $next['name'] : null];
+    } catch (\Throwable $e) { return null; }   // trip tables not installed yet
+}
+
+// ── get_bus_live_detail ───────────────────────────────────────────────────────
+// Everything the admin map needs for ONE bus: students of the running shift with status, where the bus stood
+// (halts) and the path driven so far, plus the learned everyday route.
+if ($action === 'get_bus_live_detail') {
+    require_once __DIR__ . '/../includes/bus_trips.php';
+    $busId = (int)($_REQUEST['bus_id'] ?? 0);
+    $chk = $pdo->prepare("SELECT id, bus_name, bus_number FROM school_buses WHERE id=? AND school_id=?");
+    $chk->execute([$busId, $schoolId]);
+    $bus = $chk->fetch();
+    if (!$bus) jBus(false, 'Bus not found.');
+    try {
+        $trip  = busTripGetOpen($pdo, $busId);
+        $shift = $trip ? (int)$trip['shift_no'] : max(1, (int)($_REQUEST['shift'] ?? 1));
+        $list  = busStopsForShift($pdo, $busId, $schoolId, $shift, $trip ? (int)$trip['id'] : null, true);
+        $halts = []; $path = [];
+        if ($trip) {
+            $g = $pdo->prepare("SELECT lat, lng, speed, UNIX_TIMESTAMP(recorded_at) AS t FROM bus_gps_locations
+                                WHERE school_id=? AND bus_id=? AND recorded_at >= ? ORDER BY recorded_at, id LIMIT 20000");
+            $g->execute([$schoolId, $busId, $trip['started_at']]);
+            $rows = array_map(function ($r) { $r['t'] = (int)$r['t']; return $r; }, $g->fetchAll());
+            $sum = busTripSummarize($rows);
+            $halts = $sum['stops']; $path = $sum['path'];
+        }
+        $kind  = busTripKind($pdo, $busId, $schoolId, $shift, $trip ? (string)$trip['started_at'] : (string)$pdo->query("SELECT NOW()")->fetchColumn());
+        $learn = busLearnedProfile($pdo, $busId, $shift, $kind);
+    } catch (\Throwable $e) {
+        jBus(false, 'Trip tables not installed yet — run tools/migrate.php.');
+    }
+    jBus(true, '', ['bus' => $bus, 'shift' => $shift, 'kind' => $kind,
+        'trip' => $trip ? ['id' => (int)$trip['id'], 'started_at' => $trip['started_at']] : null,
+        'stops' => $list['stops'], 'missing' => $list['missing'], 'halts' => $halts, 'path' => $path,
+        'learned' => $learn ? array_diff_key($learn, ['order' => 1]) + ['order_len' => count($learn['order'])] : null]);
+}
+
+// ── learn_reset (forget a learned route, e.g. after the route changed) ────────
+if ($action === 'learn_reset') {
+    if (!$isAdmin) jBus(false, 'Admin only.');
+    csrfBus();
+    $busId = (int)($_POST['bus_id'] ?? 0); $shift = (int)($_POST['shift'] ?? 0);
+    $kind  = in_array($_POST['kind'] ?? '', ['pickup', 'drop', 'any'], true) ? $_POST['kind'] : 'any';
+    $pdo->prepare("DELETE FROM bus_route_learn WHERE bus_id=? AND shift_no=? AND kind=? AND school_id=?")->execute([$busId, $shift, $kind, $schoolId]);
+    _slog("Learned route reset for bus #$busId shift $shift ($kind)", 'update');
+    jBus(true, 'Seekha hua raasta hata diya. Agli trips se phir seekhega.');
 }
 
 // ── get_bus_trail ─────────────────────────────────────────────────────────────

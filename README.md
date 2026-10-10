@@ -22,7 +22,8 @@ shifts, student portal, push alerts when the bus is near home.
 are not in this repo yet.
 
 ## Upgrade steps
-1. Run `database/bus_tracking.sql`.
+1. Run `php tools/migrate.php` (XAMPP: `C:\xampp\php\php.exe tools\migrate.php`). It runs `database/bus_tracking.sql`
+   and adds new columns to tables created by older versions. Safe to run again after every update.
 2. Cron: `* * * * * php /path/to/tools/bus_watchdog_cron.php`
 3. Optional: `define('BUS_WATCHDOG_WEBHOOK', 'https://...');` in `config/constants.php` for instant messages.
 
@@ -40,6 +41,22 @@ stood ≥ 8 s at the stop and drove on). Marks work offline and survive reloads.
 ("2 stops before yours" / "marked done at 07:42") and in the admin Trips report (Students ✔/✖).
 Privacy: the link has no login, so the driver sees short names ("Rahul K.") + class only (`BUS_DRIVER_FULL_NAMES` in
 `includes/bus_trips.php`). The page sends `Referrer-Policy: no-referrer` so the key never leaks to map tiles / Google Maps.
+
+## Real roads, learning, offline (driver page)
+- **Road routing:** the visiting order and the line on the map come from OSRM (real roads; `router.project-osrm.org` by
+  default — for many buses set `define('BUS_ROUTER_URL', 'https://your-osrm');` in `config/constants.php`, or `''` to switch
+  it off). Leaving the planned road for 3 fixes re-routes from the current position. Distance / ETA to the next stop are
+  measured along the road. Without internet: the last saved road route, else straight lines.
+- **Learning:** when a trip ends, the order in which the students were really marked ✔ and the road the bus really drove
+  are stored per bus + shift + direction (morning pickup and afternoon drop are learned separately). After 4 trips that
+  agree ≥ 60 %, that order becomes the default on the driver's phone and its path is drawn as "roz ka raasta". New students
+  are inserted where they add the least distance. Admin can reset it (Live Map → bus → "Seekha hua raasta hatayein").
+- **Offline:** `api/driver_sw.js` keeps the page, Leaflet and every map tile the driver has seen (max ~3000, refreshed after
+  14 days). Students list, route and learned path are kept on the phone too. GPS points and ✔/✖ marks wait offline and are
+  sent with their real time; marks work even before the server confirmed the trip.
+- **Admin Live Map:** every bus shows the running shift, ✔ picked / ✖ absent / ⏳ remaining, next stop and "⏸ stopped for
+  N min". Clicking a bus shows each student on the map with status and time, where the bus stood (2+ min) today, today's
+  path and the learned route.
 
 ## Setup Wizard
 Admin → Fleet → **Setup Wizard**: 1 Bus → 2 Tracking method (driver link with QR + WhatsApp share / GPSLogger / hardware device)

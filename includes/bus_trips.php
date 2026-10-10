@@ -5,7 +5,10 @@
 const BUS_TRIP_MAX_HOURS   = 14;    // an unfinished trip older than this is closed automatically
 const BUS_TRIP_SILENT_MIN  = 30;    // ...and so is one whose bus has sent nothing for this long
 const BUS_TRIP_STOP_SEC    = 120;   // a stand-still of at least this long counts as a "stop"
-const BUS_TRIP_PATH_POINTS = 200;
+const BUS_TRIP_PATH_POINTS = 400;   // enough to draw the real road shape of a school route
+const BUS_LEARN_MIN_TRIPS  = 4;     // after this many consistent trips the learned order becomes the default
+const BUS_LEARN_KEEP_TRIPS = 7;     // learn from the last N trips (old habits fade out)
+const BUS_LEARN_MIN_CONF   = 0.6;   // ...and only if the driver follows it at least this consistently
 
 function busTripDist(float $la1, float $lo1, float $la2, float $lo2): float
 {
@@ -75,6 +78,7 @@ function busTripFinish(PDO $pdo, int $tripId, string $reason): ?array
                    points=?, stops_json=?, path_json=? WHERE id=? AND ended_at IS NULL")
         ->execute([$reason, $sum['distance_m'], $sum['max_speed'], $sum['avg_speed'], $sum['points'],
                    json_encode($sum['stops']), json_encode($sum['path']), $tripId]);
+    try { busLearnFromTrip($pdo, $trip, $sum['path']); } catch (\Throwable $e) { error_log('bus_learn: ' . $e->getMessage()); }
     return $sum;
 }
 
@@ -205,7 +209,7 @@ function busShiftList(PDO $pdo, int $busId, int $schoolId): array
  * Students of one shift of this bus. Returns ['stops' => [...with home...], 'missing' => [...no home yet...]].
  * With $tripId, each stop also carries that trip's status / planned seq.
  */
-function busStopsForShift(PDO $pdo, int $busId, int $schoolId, int $shift, ?int $tripId = null): array
+function busStopsForShift(PDO $pdo, int $busId, int $schoolId, int $shift, ?int $tripId = null, bool $fullNames = false): array
 {
     $st = $pdo->prepare("
         SELECT s.id, s.name, c.class_name, sec.section_name, hl.lat, hl.lng
@@ -234,9 +238,10 @@ function busStopsForShift(PDO $pdo, int $busId, int $schoolId, int $shift, ?int 
         $seen[$id] = true;
         $cls = trim(($r['class_name'] ?? '') . ($r['section_name'] ? '-' . $r['section_name'] : ''));
         $lat = $r['lat'] !== null ? (float)$r['lat'] : null; $lng = $r['lng'] !== null ? (float)$r['lng'] : null;
-        if ($lat === null || $lng === null || ($lat == 0 && $lng == 0)) { $missing[] = ['name' => busShortName($r['name']), 'cls' => $cls]; continue; }
+        $nm  = $fullNames ? trim((string)$r['name']) : busShortName((string)$r['name']);
+        if ($lat === null || $lng === null || ($lat == 0 && $lng == 0)) { $missing[] = ['id' => $id, 'name' => $nm, 'cls' => $cls]; continue; }
         $mk = $marks[$id] ?? null;
-        $stops[] = ['id' => $id, 'name' => busShortName($r['name']), 'cls' => $cls,
+        $stops[] = ['id' => $id, 'name' => $nm, 'cls' => $cls,
                     'lat' => round($lat, 6), 'lng' => round($lng, 6),
                     'status' => $mk['status'] ?? 'pending', 'seq' => isset($mk['seq']) ? (int)$mk['seq'] : null,
                     'by' => $mk['marked_by'] ?? null, 'at' => $mk['marked_at'] ?? null];
@@ -244,16 +249,21 @@ function busStopsForShift(PDO $pdo, int $busId, int $schoolId, int $shift, ?int 
     return ['stops' => $stops, 'missing' => $missing];
 }
 
-/** Driver marks a stop. Only students of the trip's own shift can be marked. */
-function busTripMarkStop(PDO $pdo, array $trip, int $studentId, string $status, string $by): bool
+/**
+ * Driver marks a stop. Only students of the trip's own shift can be marked.
+ * $agoSec: the mark was made this long ago on the phone (it waited offline) — stored at its real time.
+ */
+function busTripMarkStop(PDO $pdo, array $trip, int $studentId, string $status, string $by, int $agoSec = 0): bool
 {
+    $agoSec = max(0, min(6 * 3600, $agoSec));
     if (!in_array($status, ['pending', 'done', 'absent'], true)) return false;
     $by = $by === 'auto' ? 'auto' : 'driver';
     $list = busStopsForShift($pdo, (int)$trip['bus_id'], (int)$trip['school_id'], (int)$trip['shift_no']);
     if (!in_array($studentId, array_column($list['stops'], 'id'), true)) return false;
-    $pdo->prepare("INSERT INTO bus_trip_stops (trip_id, student_id, status, marked_by, marked_at) VALUES (?,?,?,?,NOW())
+    $pdo->prepare("INSERT INTO bus_trip_stops (trip_id, student_id, status, marked_by, marked_at)
+                   VALUES (?,?,?,?, IF(?='pending', NULL, GREATEST(?, NOW() - INTERVAL ? SECOND)))
                    ON DUPLICATE KEY UPDATE status=VALUES(status), marked_by=VALUES(marked_by), marked_at=VALUES(marked_at)")
-        ->execute([(int)$trip['id'], $studentId, $status, $status === 'pending' ? null : $by]);
+        ->execute([(int)$trip['id'], $studentId, $status, $status === 'pending' ? null : $by, $status, $trip['started_at'], $agoSec]);
     return true;
 }
 
@@ -271,4 +281,113 @@ function busTripSetOrder(PDO $pdo, array $trip, array $ids): int
         $up->execute([(int)$trip['id'], $id, ++$n]);
     }
     return $n;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Route learning: "the order the driver really follows" + "the road the bus really drives"
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Consensus order of several visit orders: average relative position of each student (0 = first, 1 = last). */
+function busLearnConsensus(array $orders): array
+{
+    $sum = []; $cnt = [];
+    foreach ($orders as $o) {
+        $n = count($o);
+        foreach (array_values($o) as $i => $id) {
+            $pos = $n > 1 ? $i / ($n - 1) : 0.5;
+            $sum[$id] = ($sum[$id] ?? 0) + $pos; $cnt[$id] = ($cnt[$id] ?? 0) + 1;
+        }
+    }
+    $ids = array_keys($sum);
+    usort($ids, function ($a, $b) use ($sum, $cnt) {
+        $d = $sum[$a] / $cnt[$a] <=> $sum[$b] / $cnt[$b];
+        return $d ?: ($cnt[$b] <=> $cnt[$a]) ?: ($a <=> $b);
+    });
+    return $ids;
+}
+
+/** 0..1 — share of student pairs that each trip visited in the same relative order as $learned (Kendall agreement). */
+function busLearnConfidence(array $orders, array $learned): float
+{
+    $rank = array_flip($learned); $agree = 0; $pairs = 0;
+    foreach ($orders as $o) {
+        $o = array_values(array_filter($o, function ($id) use ($rank) { return isset($rank[$id]); }));
+        for ($i = 0; $i < count($o); $i++) for ($j = $i + 1; $j < count($o); $j++) {
+            $pairs++; if ($rank[$o[$i]] < $rank[$o[$j]]) $agree++;
+        }
+    }
+    return $pairs ? round($agree / $pairs, 2) : 0.0;
+}
+
+/**
+ * Direction of a trip from its start time: closer to the shift's pickup time → 'pickup', to its drop time → 'drop'.
+ * The two run in opposite order, so they are learned separately. No times set → 'any'.
+ */
+function busTripKind(PDO $pdo, int $busId, int $schoolId, int $shift, string $at): string
+{
+    $sh = null;
+    foreach (busShiftList($pdo, $busId, $schoolId) as $s) if ($s['no'] === $shift) $sh = $s;
+    if (!$sh || (!$sh['pickup'] && !$sh['drop'])) return 'any';
+    $m = function ($hm) { $p = explode(':', $hm); return (int)$p[0] * 60 + (int)($p[1] ?? 0); };
+    $now = $m(substr($at, 11, 5));
+    $dp = $sh['pickup'] ? abs($now - $m($sh['pickup'])) : PHP_INT_MAX;
+    $dd = $sh['drop']   ? abs($now - $m($sh['drop']))   : PHP_INT_MAX;
+    return $dp <= $dd ? 'pickup' : 'drop';
+}
+
+/** Called when a trip ends: add its real visit order (and road path) to the bus+shift+direction profile. */
+function busLearnFromTrip(PDO $pdo, array $trip, array $path): void
+{
+    $kind = busTripKind($pdo, (int)$trip['bus_id'], (int)$trip['school_id'], (int)$trip['shift_no'], (string)$trip['started_at']);
+    $q = $pdo->prepare("SELECT student_id FROM bus_trip_stops WHERE trip_id=? AND status='done' AND marked_at IS NOT NULL ORDER BY marked_at, seq, student_id");
+    $q->execute([(int)$trip['id']]);
+    $order = array_map('intval', $q->fetchAll(PDO::FETCH_COLUMN));
+    if (count($order) < 2) return;                          // nothing to learn from
+
+    $p = $pdo->prepare("SELECT trips_json, path_json FROM bus_route_learn WHERE bus_id=? AND shift_no=? AND kind=?");
+    $p->execute([(int)$trip['bus_id'], (int)$trip['shift_no'], $kind]);
+    $row   = $p->fetch() ?: [];
+    $trips = json_decode($row['trips_json'] ?? '[]', true) ?: [];
+    $trips = array_values(array_filter($trips, function ($t) use ($trip) { return (int)$t['t'] !== (int)$trip['id']; }));
+    $trips[] = ['t' => (int)$trip['id'], 'd' => substr((string)$trip['started_at'], 0, 10), 'o' => $order];
+    $trips = array_slice($trips, -BUS_LEARN_KEEP_TRIPS);
+
+    $orders  = array_column($trips, 'o');
+    $learned = busLearnConsensus($orders);
+    $conf    = busLearnConfidence($orders, $learned);
+
+    // Keep the road path of the trip that covered most students (the newest one on a tie).
+    $bestN = max(array_map('count', $orders));
+    $usePath = count($order) >= $bestN && count($path) >= 10;
+    $pathJson = $usePath ? json_encode($path) : ($row['path_json'] ?? null);
+
+    $pdo->prepare("INSERT INTO bus_route_learn (bus_id, shift_no, kind, school_id, trips_json, learned_order, confidence, path_json, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,NOW())
+                   ON DUPLICATE KEY UPDATE trips_json=VALUES(trips_json), learned_order=VALUES(learned_order),
+                       confidence=VALUES(confidence), path_json=VALUES(path_json), updated_at=NOW()")
+        ->execute([(int)$trip['bus_id'], (int)$trip['shift_no'], $kind, (int)$trip['school_id'], json_encode($trips),
+                   json_encode($learned), $conf, $pathJson]);
+}
+
+/** Learned profile for the driver page / admin map. 'active' = strong enough to be the default order. */
+function busLearnedProfile(PDO $pdo, int $busId, int $shift, string $kind): ?array
+{
+    try {
+        $p = $pdo->prepare("SELECT trips_json, learned_order, confidence, path_json, updated_at FROM bus_route_learn WHERE bus_id=? AND shift_no=? AND kind=?");
+        $p->execute([$busId, $shift, $kind]);
+        $r = $p->fetch();
+    } catch (\Throwable $e) { return null; }   // table not created yet
+    if (!$r) return null;
+    $trips = json_decode($r['trips_json'] ?: '[]', true) ?: [];
+    $conf  = (float)$r['confidence'];
+    return [
+        'kind'       => $kind,
+        'active'     => count($trips) >= BUS_LEARN_MIN_TRIPS && $conf >= BUS_LEARN_MIN_CONF,
+        'trips'      => count($trips),
+        'need'       => BUS_LEARN_MIN_TRIPS,
+        'confidence' => $conf,
+        'order'      => array_map('intval', json_decode($r['learned_order'] ?: '[]', true) ?: []),
+        'path'       => json_decode($r['path_json'] ?: '[]', true) ?: [],
+        'updated_at' => $r['updated_at'],
+    ];
 }

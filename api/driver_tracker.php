@@ -15,6 +15,14 @@ header('Cache-Control: no-store');
 header('X-Robots-Tag: noindex, nofollow');
 header('Referrer-Policy: no-referrer');   // the key is in the URL: never leak it to map tiles / Google Maps
 $key = preg_replace('/[^A-Za-z0-9_\-]/', '', (string)($_GET['key'] ?? ''));
+
+// Road routing (real roads, best stop order). Public OSRM demo server by default — fine for a few buses; for
+// many buses define BUS_ROUTER_URL in config/constants.php (your own OSRM server), or '' to switch it off.
+$router = 'https://router.project-osrm.org';
+if (is_file(__DIR__ . '/../config/constants.php')) {
+    ob_start(); require_once __DIR__ . '/../config/constants.php'; ob_end_clean();
+    if (defined('BUS_ROUTER_URL')) $router = rtrim((string)BUS_ROUTER_URL, '/');
+}
 ?><!DOCTYPE html>
 <html lang="hi">
 <head>
@@ -124,6 +132,7 @@ $key = preg_replace('/[^A-Za-z0-9_\-]/', '', (string)($_GET['key'] ?? ''));
     <div class="mapbtns">
       <button type="button" id="followBtn" class="on">🎯 Bus</button>
       <button type="button" id="fitBtn">🗺️ Sab</button>
+      <button type="button" id="replanBtn" title="Yahan se naya kram (sadak ke hisaab se)">🔄 Kram</button>
     </div>
   </div>
 
@@ -164,6 +173,7 @@ $key = preg_replace('/[^A-Za-z0-9_\-]/', '', (string)($_GET['key'] ?? ''));
 const KEY = <?= json_encode($key) ?>;
 const ENDPOINT = 'gps_update.php';
 const TRIP = 'bus_trip.php';
+const ROUTER = <?= json_encode($router) ?>;
 
 // ── Tuning ────────────────────────────────────────────────────────────────
 const CFG = {
@@ -181,7 +191,9 @@ const CFG = {
   ARRIVE_M: 45,          // "at the stop" radius (+ up to 25 m of GPS accuracy)
   DWELL_S: 8,            // standing this long at a stop (slow) = stopped there
   LEAVE_M: 60,           // ...and once this much further away again → auto ✔
-  STOPS_REFRESH_MS: 300000
+  STOPS_REFRESH_MS: 300000,
+  ROUTE_MAX: 90,         // stops per routing request
+  OFFROUTE_M: 60         // this far from the planned road (3 fixes in a row) → re-route
 };
 const $ = id => document.getElementById(id);
 const sleepMs = ms => new Promise(r => setTimeout(r, ms));
@@ -199,6 +211,7 @@ let stops = [], missing = [], order = [], orderFromPos = false, stopsLoadedAt = 
 let marks = [];                 // stop marks waiting to reach the server (offline-safe)
 let near = {};                  // per stop: {in, dwell, stopped, annArr, ann}
 let voiceOn = true, follow = true;
+let learned = null, tripKind = 'any', planSrc = 'local', dataCached = false, ignoreLearned = false, spdEma = 0;
 
 function store(k, v) { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }
 function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -415,9 +428,11 @@ function onPos(p) {
 
   const first = !accepted;
   accepted = {lat, lng, acc: raw.acc, speed, heading, t: raw.t};
+  if (speed > 2) spdEma = spdEma ? spdEma * 0.92 + speed * 0.08 : speed;   // typical driving speed → ETA
   if (first && running) sendLive();   // first good fix goes out immediately
   if (first && stops.length && !orderFromPos) planOrder();
-  drawBus(); checkStops(dt); renderStops();
+  else if (first && stops.length) requestRoute(false);
+  roadTrack(); drawBus(); checkStops(dt); renderStops();
   render();
 }
 
@@ -447,6 +462,7 @@ function loop() {
   if (queue.length && !flushing && now - lastSentAt > 30000) flushQueue();
   if (marks.length && now % 15000 < 1000) flushMarks();
   if (shifts.length && now - stopsLoadedAt > CFG.STOPS_REFRESH_MS) loadStops();   // students may move their pin
+  if (road.cached && now % 30000 < 1000) requestRoute(true);                        // offline route → refresh when net is back
   render();
 }
 
@@ -512,20 +528,37 @@ async function checkPermission() {
 }
 
 // ── Trip (start / stop) ───────────────────────────────────────────────────
+// Read-only answers (status / stops) are cached on the phone: with no or slow internet the page still opens
+// with the last known students, order and route of that shift.
+const CACHEABLE = {status: 1, stops: 1};
+function cacheKey(action, extra) { return 'trk_c_' + KEY + '_' + action + (action === 'stops' ? '_' + ((extra && extra.shift) || 1) : ''); }
 async function tripCall(action, extra) {
   const body = new URLSearchParams(Object.assign({key: KEY, action}, extra || {}));
+  const ck = cacheKey(action, extra);
   const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), 12000);
   try {
     const r = await fetch(TRIP, {method: 'POST', body, cache: 'no-store', signal: ctrl.signal});
-    return await r.json();
-  } catch (e) { return null; } finally { clearTimeout(to); }
+    const j = await r.json();
+    if (CACHEABLE[action] && j && j.ok) store(ck, JSON.stringify(j));
+    return j;
+  } catch (e) {
+    if (CACHEABLE[action]) { try { const c = JSON.parse(load(ck) || 'null'); if (c) { c.cached = true; return c; } } catch (x) {} }
+    return null;
+  } finally { clearTimeout(to); }
 }
+function patchStatusCache() {   // keep the cached "status" in step with trips started / ended on this phone
+  try { const k = cacheKey('status'), c = JSON.parse(load(k) || 'null'); if (c) { c.trip = tripOpen; store(k, JSON.stringify(c)); } } catch (e) {}
+}
+const KIND_TXT = {pickup: '🌅 Pickup (ghar → school)', drop: '🏫 Drop (school → ghar)', any: ''};
 function showTrip() {
   const b = $('tripBox');
   b.style.display = '';
   if (tripOpen) {
     b.className = 'pill live';
-    $('tripText').textContent = 'Shift ' + tripOpen.shift + ' ki trip chal rahi hai (' + (tripOpen.started_at || '').slice(11, 16) + ' se)';
+    $('tripText').textContent = 'Shift ' + tripOpen.shift + ' ki trip chal rahi hai (' + (tripOpen.started_at || '').slice(11, 16) + ' se)' + (KIND_TXT[tripKind] ? ' · ' + KIND_TXT[tripKind] : '');
+  } else if (running) {
+    b.className = 'pill warn';
+    $('tripText').textContent = 'Trip server par shuru ho rahi hai… (✔ phone mein jama ho rahe hain)';
   } else {
     b.className = 'pill';
     $('tripText').textContent = 'Trip shuru nahi hui';
@@ -539,29 +572,33 @@ async function tripStartNow() {
   let r;
   try { r = await tripCall('start', {shift: selShift}); } finally { tripStarting = false; }
   if (r && r.ok && r.trip) {
-    tripOpen = r.trip; selShift = tripOpen.shift; showTrip();
+    tripOpen = r.trip; selShift = tripOpen.shift; patchStatusCache(); showTrip();
     if (!r.already) {
       say(r.notified ? 'Trip shuru. ' + r.notified + ' students ko "bus nikal gayi" ka message gaya.' : 'Trip shuru ho gayi.', 15000);
-      near = {};
+      near = {}; ignoreLearned = false;
     }
     await loadStops();
     if (!r.already) planOrder(true);
+    flushMarks();
   } else {
-    say('Trip shuru nahi ho paayi (internet?) — tracking chal rahi hai, net aate hi dobara koshish hogi.');
+    showTrip();
+    say('Trip server par shuru nahi ho paayi (internet?) — tracking aur ✔ chal rahe hain, net aate hi apne aap judega.', 15000);
     setTimeout(() => { if (running && !tripOpen) tripStartNow(); }, 20000);
   }
 }
 async function tripStopNow() {
   await flushMarks();
   const r = await tripCall('stop');
-  tripOpen = null; showTrip();
+  tripOpen = null; patchStatusCache(); showTrip();
   if (r && r.ok && r.summary) {
     const s = r.summary;
     const dn = stops.filter(x => x.status === 'done').length, ab = stops.filter(x => x.status === 'absent').length;
     say('Trip khatam ✔  ' + s.distance_km + ' km · ' + s.minutes + ' min · max ' + Math.round(s.max_speed) + ' km/h · '
       + dn + ' bachche ✔' + (ab ? ' · ' + ab + ' nahi aaye' : ''), 60000);
+  } else if (!r) {
+    say('Net nahi hai — trip server par apne aap band ho jayegi (30 min baad).', 30000);
   }
-  stops.forEach(s => { s.status = 'pending'; }); near = {};
+  stops.forEach(s => { s.status = 'pending'; }); near = {}; ignoreLearned = false;
   loadStops();
 }
 
@@ -579,9 +616,10 @@ function renderShifts() {
 }
 function pickShift(n) {
   if (tripOpen && n !== tripOpen.shift) { say('Shift ' + tripOpen.shift + ' ki trip chal rahi hai. Shift badalne ke liye pehle Trip Khatam karein.'); vibe(true); return; }
+  if (running && !tripOpen && n !== selShift) { say('Trip shuru ho rahi hai — shift badalne ke liye pehle Trip Khatam karein.'); vibe(true); return; }
   if (n === selShift && stopsShift === n) return;
   selShift = n; store('trk_shift_' + KEY, String(n));
-  renderShifts(); near = {}; orderFromPos = false;
+  renderShifts(); near = {}; orderFromPos = false; road.coords = null; road.key = '';
   loadStops();
 }
 
@@ -590,35 +628,41 @@ async function loadStops() {
   stopsLoadedAt = Date.now();
   const r = await tripCall('stops', {shift: selShift});
   if (!r || !r.ok) { if (!stops.length) say('Students ki list nahi aayi (internet?) — thodi der mein dobara koshish hogi.'); stopsLoadedAt = Date.now() - CFG.STOPS_REFRESH_MS + 30000; return; }
-  if (r.trip && !tripOpen) { tripOpen = r.trip; showTrip(); }
+  if (r.cached) stopsLoadedAt = Date.now() - CFG.STOPS_REFRESH_MS + 30000;   // offline copy: try the server again soon
+  if (!r.cached && r.trip && !tripOpen) { tripOpen = r.trip; showTrip(); }
+  // A cached answer of an older trip must not bring back its ✔ marks
+  const sameTrip = !r.cached || (tripOpen && r.trip && r.trip.id === tripOpen.id);
   const shiftChanged = stopsShift !== r.shift;
-  stopsShift = r.shift; selShift = r.shift;
+  stopsShift = r.shift; selShift = r.shift; tripKind = r.kind || 'any'; dataCached = !!r.cached;
+  learned = r.learned || null;
   // Local marks not yet on the server win over the server's (older) state
   const pend = {}; marks.forEach(m => { pend[m.id] = m.status; });
-  stops = (r.stops || []).map(s => Object.assign(s, pend[s.id] ? {status: pend[s.id]} : {}));
+  stops = (r.stops || []).map(s => {
+    if (!sameTrip) { s.status = 'pending'; s.seq = null; s.by = null; }
+    return Object.assign(s, pend[s.id] ? {status: pend[s.id]} : {});
+  });
   missing = r.missing || [];
   const ids = new Set(stops.map(s => s.id));
   const serverOrder = stops.filter(s => s.seq != null).sort((a, b) => a.seq - b.seq).map(s => s.id);
   if (!shiftChanged && order.length && order.every(id => ids.has(id)) && stops.every(s => order.includes(s.id))) {
-    /* keep the current plan (same students) */
-  } else if (tripOpen && serverOrder.length === stops.length && stops.length) {
+    /* same students: keep the current plan */
+  } else if (tripOpen && sameTrip && serverOrder.length === stops.length && stops.length) {
     order = serverOrder; orderFromPos = true;       // reload in the middle of a trip: same order as before
+    planSrc = load('trk_src_' + KEY) || 'local';
   } else {
     planOrder();
   }
-  drawStops(shiftChanged); renderStops(); renderWarn();
+  showTrip(); drawLearned(); drawStops(shiftChanged); renderStops(); renderWarn();
+  requestRoute(false);
 }
 
-/**
- * Plan the visiting order of the pending stops: nearest-neighbour from the bus, then 2-opt to remove
- * crossings. Straight-line distances (no road data) — good enough to order nearby homes.
- * Done/absent stops keep their place at the end.
- */
-function planOrder(push) {
-  const pend = stops.filter(s => s.status === 'pending');
-  let start = accepted ? {lat: accepted.lat, lng: accepted.lng} : null;
-  orderFromPos = !!start;
-  if (!start && pend.length) {   // no GPS yet: start from the stop farthest from the centre
+// ── Visiting order ────────────────────────────────────────────────────────
+// 1) learned: the order this driver really followed on the last trips (default after 4 consistent trips)
+// 2) road:    OSRM "trip" — best order by real road distance (needs internet)
+// 3) local:   nearest-neighbour + 2-opt by straight distance (always available)
+function localOrder(pend, start) {
+  if (!pend.length) return [];
+  if (!start) {   // no GPS yet: start from the stop farthest from the centre
     const c = pend.reduce((a, s) => ({lat: a.lat + s.lat / pend.length, lng: a.lng + s.lng / pend.length}), {lat: 0, lng: 0});
     start = pend.reduce((f, s) => dist(c.lat, c.lng, s.lat, s.lng) > dist(c.lat, c.lng, f.lat, f.lng) ? s : f, pend[0]);
   }
@@ -629,7 +673,6 @@ function planOrder(push) {
     left.forEach((s, i) => { const d = dist(cur.lat, cur.lng, s.lat, s.lng); if (d < bd) { bd = d; bi = i; } });
     cur = left.splice(bi, 1)[0]; path.push(cur);
   }
-  // 2-opt on an open path with a fixed start point
   const P = [start].concat(path), D = (a, b) => dist(P[a].lat, P[a].lng, P[b].lat, P[b].lng);
   for (let it = 0, better = true; better && it < 60; it++) {
     better = false;
@@ -639,9 +682,51 @@ function planOrder(push) {
       if (after + 0.5 < before) { const seg = P.slice(i, k + 1).reverse(); P.splice(i, seg.length, ...seg); better = true; }
     }
   }
-  order = P.slice(1).map(s => s.id).concat(stops.filter(s => s.status !== 'pending').map(s => s.id));
+  return P.slice(1).map(s => s.id);
+}
+function learnedOrder(pend, start) {
+  const rank = {}; learned.order.forEach((id, i) => { rank[id] = i; });
+  const seq = pend.filter(s => rank[s.id] != null).sort((a, b) => rank[a.id] - rank[b.id]);
+  // Students that joined after the route was learned: insert where they add the least distance
+  pend.filter(s => rank[s.id] == null).forEach(s => {
+    let best = seq.length, bc = Infinity;
+    for (let i = 0; i <= seq.length; i++) {
+      const a = i ? seq[i - 1] : start, b = seq[i];
+      const c = (a ? dist(a.lat, a.lng, s.lat, s.lng) : 0) + (b ? dist(s.lat, s.lng, b.lat, b.lng) : 0) - (a && b ? dist(a.lat, a.lng, b.lat, b.lng) : 0);
+      if (c < bc) { bc = c; best = i; }
+    }
+    seq.splice(best, 0, s);
+  });
+  return seq.map(s => s.id);
+}
+let planSeq = 0;
+function planOrder(push, noLearned) {
+  const pend = stops.filter(s => s.status === 'pending');
+  const start = accepted ? {lat: accepted.lat, lng: accepted.lng} : null;
+  orderFromPos = !!start;
+  planSeq++;
+  if (!noLearned && !ignoreLearned && learned && learned.active && learned.order.length) {
+    setOrder(learnedOrder(pend, start), 'learned', push);
+    return;
+  }
+  setOrder(localOrder(pend, start), 'local', push);
+  if (start && ROUTER && pend.length >= 2 && pend.length <= CFG.ROUTE_MAX && navigator.onLine) roadOrder(pend, start, planSeq, push);
+}
+async function roadOrder(pend, start, seq, push) {
+  const j = await osrm('/trip/v1/driving/' + coordStr([start].concat(pend)) + '?source=first&roundtrip=false&destination=any&overview=full&geometries=geojson');
+  if (!j || seq !== planSeq || !j.trips || !j.trips[0] || !j.waypoints) return;
+  const now = stops.filter(s => s.status === 'pending').map(s => s.id).sort().join();
+  if (now !== pend.map(s => s.id).sort().join()) return;               // something was marked meanwhile
+  const ids = j.waypoints.slice(1).map((w, i) => ({id: pend[i].id, k: w.waypoint_index})).sort((a, b) => a.k - b.k).map(x => x.id);
+  setRoad(j.trips[0].geometry.coordinates, ids.slice(0, CFG.ROUTE_MAX).join(','));
+  setOrder(ids, 'road', push);
+}
+function setOrder(ids, src, push) {
+  planSrc = src; store('trk_src_' + KEY, src);
+  order = ids.concat(stops.filter(s => s.status !== 'pending').map(s => s.id));
   drawStops(false); renderStops();
   if (tripOpen && (push || orderFromPos)) pushOrder();
+  requestRoute(false);
 }
 let orderTimer = null;
 function pushOrder() {
@@ -650,9 +735,98 @@ function pushOrder() {
 }
 
 function stopById(id) { return stops.find(s => s.id === id); }
-function orderedStops() { const m = {}; stops.forEach(s => m[s.id] = s); return order.map(id => m[id]).filter(Boolean); }
+function orderedStops() {   // pending in planned order first, then the finished ones
+  const m = {}; stops.forEach(s => m[s.id] = s);
+  const all = order.map(id => m[id]).filter(Boolean);
+  stops.forEach(s => { if (!order.includes(s.id)) all.push(s); });
+  return all.filter(s => s.status === 'pending').concat(all.filter(s => s.status !== 'pending'));
+}
 function nextStop() { return orderedStops().find(s => s.status === 'pending') || null; }
 function distTo(s) { return accepted ? dist(accepted.lat, accepted.lng, s.lat, s.lng) : null; }
+
+// ── Road route (real roads via OSRM, cached on the phone for offline use) ──
+const road = {coords: null, cum: null, key: '', busy: false, off: 0, idx: 0, t: 0, lastReq: 0, cached: false};
+function coordStr(pts) { return pts.map(p => (+p.lng).toFixed(6) + ',' + (+p.lat).toFixed(6)).join(';'); }
+async function osrm(path) {
+  if (!ROUTER) return null;
+  const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), 9000);
+  try {
+    const r = await fetch(ROUTER + path, {signal: ctrl.signal, cache: 'no-store'});
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j && j.code === 'Ok' ? j : null;
+  } catch (e) { return null; } finally { clearTimeout(to); }
+}
+function setRoad(lngLatCoords, key, cachedAt) {
+  const c = lngLatCoords.map(p => [p[1], p[0]]);
+  road.coords = c; road.key = key; road.off = 0; road.idx = 0; road.t = 0; road.cached = !!cachedAt;
+  road.cum = [0]; for (let i = 1; i < c.length; i++) road.cum.push(road.cum[i - 1] + dist(c[i - 1][0], c[i - 1][1], c[i][0], c[i][1]));
+  if (!cachedAt) saveRoute(key, lngLatCoords);
+  roadTrack(); drawRoad();
+}
+function routeCache() { try { return JSON.parse(load('trk_rt_' + KEY) || '{}') || {}; } catch (e) { return {}; } }
+function saveRoute(key, coords) {
+  const step = Math.max(1, Math.ceil(coords.length / 1500));
+  const thin = coords.filter((p, i) => i % step === 0 || i === coords.length - 1).map(p => [+p[0].toFixed(5), +p[1].toFixed(5)]);
+  const c = routeCache(); c[key] = {c: thin, at: Date.now()};
+  const keys = Object.keys(c).sort((a, b) => c[a].at - c[b].at);
+  while (keys.length > 8) delete c[keys.shift()];
+  store('trk_rt_' + KEY, JSON.stringify(c));
+}
+// Offline: a saved route for exactly these stops, or a longer saved one that ends with them (stops already done)
+function useCachedRoute(key) {
+  const c = routeCache();
+  let hit = c[key];
+  if (!hit) for (const k in c) if (k.endsWith(',' + key) && (!hit || c[k].at > hit.at)) hit = c[k];
+  if (!hit) return false;
+  setRoad(hit.c, key, hit.at);
+  return true;
+}
+async function requestRoute(force) {
+  const pend = orderedStops().filter(s => s.status === 'pending').slice(0, CFG.ROUTE_MAX);
+  if (!pend.length) { road.coords = null; road.key = ''; drawRoad(); return; }
+  const key = pend.map(s => s.id).join(',');
+  const have = road.coords && road.key === key;
+  if (!force && have && !road.cached) return;
+  if (!accepted || !ROUTER || !navigator.onLine) { if (!have) useCachedRoute(key); drawRoad(); return; }
+  if (road.busy || (have && Date.now() - road.lastReq < 10000)) return;   // at most one re-route per 10 s
+  road.busy = true; road.lastReq = Date.now();
+  try {
+    const j = await osrm('/route/v1/driving/' + coordStr([accepted].concat(pend)) + '?overview=full&geometries=geojson');
+    const cur = orderedStops().filter(s => s.status === 'pending').slice(0, CFG.ROUTE_MAX).map(s => s.id).join(',');
+    if (cur !== key) return;                                            // plan changed while waiting
+    if (j && j.routes && j.routes[0]) setRoad(j.routes[0].geometry.coordinates, key);
+    else if (!have) useCachedRoute(key);
+  } finally { road.busy = false; drawRoad(); }
+}
+// Where on the route is the bus? (projection on the nearest segment, never jumping far back)
+function roadTrack() {
+  if (!road.coords || !accepted || road.coords.length < 2) return;
+  const c = road.coords, p = accepted, kx = Math.cos(p.lat * Math.PI / 180) * 111320, ky = 110540;
+  let best = {i: road.idx, t: road.t, d: Infinity};
+  for (let i = Math.max(0, road.idx - 30); i < c.length - 1; i++) {
+    const ax = (c[i][1] - p.lng) * kx, ay = (c[i][0] - p.lat) * ky, bx = (c[i + 1][1] - p.lng) * kx, by = (c[i + 1][0] - p.lat) * ky;
+    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+    const t = l2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l2)) : 0;
+    const d = Math.hypot(ax + t * dx, ay + t * dy);
+    if (d < best.d) best = {i, t, d};
+  }
+  road.idx = best.i; road.t = best.t;
+  // Off the planned road for 3 fixes in a row → the driver took another road: re-route from here
+  if (best.d > CFG.OFFROUTE_M + Math.min(p.acc || 0, 30)) road.off++; else road.off = 0;
+  // (the counter is only reset when a request really goes out — a throttled attempt is retried on the next fix)
+  if (road.off >= 3 && navigator.onLine && ROUTER && !road.busy && Date.now() - road.lastReq >= 10000) { road.off = 0; requestRoute(true); }
+}
+function roadDistTo(s) {
+  if (!road.coords || !accepted) return null;
+  const c = road.coords, i0 = road.idx;
+  let bj = -1, bd = Infinity;
+  for (let j = i0; j < c.length; j++) { const d = dist(c[j][0], c[j][1], s.lat, s.lng); if (d < bd) { bd = d; bj = j; } }
+  if (bj < 0 || bd > 150) return null;                                  // route doesn't pass this home
+  const segLen = i0 + 1 < c.length ? road.cum[i0 + 1] - road.cum[i0] : 0;
+  return Math.max(0, road.cum[bj] - (road.cum[i0] + road.t * segLen)) + bd;
+}
+function etaMin(m) { const v = Math.max(4, Math.min(14, spdEma || 6.5)); return Math.max(1, Math.round(m / v / 60)); }
 
 // Arrival / auto-done detection. Runs on every accepted GPS fix.
 function checkStops(dt) {
@@ -672,26 +846,28 @@ function checkStops(dt) {
       if (st.dwell >= CFG.DWELL_S) st.stopped = true;
     } else if (st.in && d > arriveR + CFG.LEAVE_M) {
       // Left the stop: if the bus really stood there, the child was picked up / dropped.
-      if (st.stopped && tripOpen) { markStop(s.id, 'done', 'auto'); speak(s.name + ' ho gaya'); }
+      if (st.stopped && (tripOpen || running)) { markStop(s.id, 'done', 'auto'); speak(s.name + ' ho gaya'); }
       st.in = false; st.dwell = 0; st.stopped = false; st.annArr = false;
     }
   });
 }
 
-// ── Marking (offline-safe) ────────────────────────────────────────────────
+// ── Marking (offline-safe; works even before the server confirmed the trip) ──
 function saveMarks() { store('trk_marks_' + KEY, marks.length ? JSON.stringify(marks) : null); }
 function loadMarks() { try { marks = JSON.parse(load('trk_marks_' + KEY) || '[]').filter(m => m && m.id && m.trip); } catch (e) { marks = []; } }
+function canMark() { return !!tripOpen || running; }
 function markStop(id, status, by) {
   const s = stopById(id);
   if (!s) return;
-  if (!tripOpen) { say('Pehle shift tick karke Trip Shuru Karein — tabhi ✔ lag sakta hai.'); vibe(true); return; }
+  if (!canMark()) { say('Pehle shift tick karke Trip Shuru Karein — tabhi ✔ lag sakta hai.'); vibe(true); return; }
   s.status = status; s.by = by || 'driver';
-  marks = marks.filter(m => m.id !== id); marks.push({id, status, by: s.by, trip: tripOpen.id});
+  marks = marks.filter(m => m.id !== id);
+  marks.push({id, status, by: s.by, trip: tripOpen ? tripOpen.id : 'pending', at: Date.now()});
   saveMarks();
-  if (status === 'pending') near[id] = null;
-  // Re-plan the remaining stops from where the bus is now
-  if (accepted) planOrder(true); else { order = order.filter(x => x !== id).concat(status === 'pending' ? [] : [id]); if (status === 'pending') order.unshift(id); pushOrder(); }
+  if (status === 'pending') { near[id] = null; if (!order.includes(id)) order.push(id); }
   if (map) map.closePopup();
+  // The plan stays (done stops just drop out); an undone stop is re-inserted where it fits best.
+  if (status === 'pending') planOrder(true); else { pushOrder(); requestRoute(false); }
   drawStops(false); renderStops(); render();
   flushMarks();
 }
@@ -702,9 +878,10 @@ async function flushMarks() {
   try {
     while (marks.length) {
       const m = marks[0];
-      if (!tripOpen || m.trip !== tripOpen.id) { marks.shift(); continue; }   // trip already over
-      const r = await tripCall('mark_stop', {student_id: m.id, status: m.status, by: m.by});
-      if (!r) break;                                                          // offline — retry later
+      if (m.trip === 'pending') { if (!tripOpen) break; m.trip = tripOpen.id; }   // trip confirmed now
+      if (!tripOpen || m.trip !== tripOpen.id) { marks.shift(); continue; }       // trip already over
+      const r = await tripCall('mark_stop', {student_id: m.id, status: m.status, by: m.by, ago: Math.max(0, Math.round((Date.now() - (m.at || Date.now())) / 1000))});
+      if (!r) break;                                                              // offline — retry later
       if (!r.ok) say(r.msg || 'Mark save nahi hua');
       marks.shift();
     }
@@ -712,13 +889,17 @@ async function flushMarks() {
 }
 
 // ── Map ───────────────────────────────────────────────────────────────────
-let map = null, busMk = null, accCirc = null, planLine = null, trail = null, stopMks = {}, trailPts = [];
+let map = null, busMk = null, accCirc = null, planLine = null, roadLine = null, learnLine = null, trail = null, stopMks = {}, trailPts = [];
 function ensureMap() {
   if (map || typeof L === 'undefined') return !!map;
   $('mapBox').style.display = 'block';
   map = L.map('map', {zoomControl: true, attributionControl: false}).setView([20.59, 78.96], 5);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19}).addTo(map);
+  // crossOrigin: tiles can be cached by the service worker for offline use.
+  // referrerPolicy origin: OSM needs a Referer, but only the site name — never the page URL with the bus key.
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, crossOrigin: 'anonymous', referrerPolicy: 'origin'}).addTo(map);
+  learnLine = L.polyline([], {color: '#a78bfa', weight: 7, opacity: .35}).addTo(map);
   trail = L.polyline([], {color: '#22c55e', weight: 4, opacity: .8}).addTo(map);
+  roadLine = L.polyline([], {color: '#f59e0b', weight: 5, opacity: .9}).addTo(map);
   planLine = L.polyline([], {color: '#f59e0b', weight: 3, dashArray: '6 8', opacity: .9}).addTo(map);
   map.on('dragstart', () => setFollow(false));
   return true;
@@ -739,27 +920,39 @@ function drawBus() {
   else { busMk.setLatLng(ll).setIcon(icon); accCirc.setLatLng(ll).setRadius(accepted.acc); }
   const lp = trailPts[trailPts.length - 1];
   if (!lp || dist(lp[0], lp[1], ll[0], ll[1]) > 8) { trailPts.push(ll); if (trailPts.length > 800) trailPts.shift(); trail.setLatLngs(trailPts); }
-  drawPlan();
+  drawRoad();
   if (follow) map.panTo(ll, {animate: true});
 }
-function drawPlan() {
+// Road route from the bus onwards; straight dashed lines only when no road route is known.
+function drawRoad() {
   if (!map) return;
-  const pts = orderedStops().filter(s => s.status === 'pending').map(s => [s.lat, s.lng]);
-  if (accepted) pts.unshift([accepted.lat, accepted.lng]);
-  planLine.setLatLngs(pts);
+  if (road.coords && road.coords.length > 1) {
+    const rest = road.coords.slice(road.idx + 1);
+    roadLine.setLatLngs(accepted ? [[accepted.lat, accepted.lng]].concat(rest) : road.coords);
+    planLine.setLatLngs([]);
+  } else {
+    roadLine.setLatLngs([]);
+    const pts = orderedStops().filter(s => s.status === 'pending').map(s => [s.lat, s.lng]);
+    if (accepted) pts.unshift([accepted.lat, accepted.lng]);
+    planLine.setLatLngs(pts);
+  }
+}
+function drawLearned() {
+  if (!ensureMap()) return;
+  learnLine.setLatLngs(learned && learned.path && learned.path.length > 1 ? learned.path : []);
 }
 function popupHtml(s) {
-  const d = distTo(s), can = !!tripOpen;
+  const rd = s.status === 'pending' ? roadDistTo(s) : null, d = rd != null ? rd : distTo(s), can = canMark();
   const nav = 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + s.lat + ',' + s.lng;
   const st = s.status === 'done' ? '<span style="color:#16a34a">✔ ho gaya' + (s.by === 'auto' ? ' (auto)' : '') + '</span>' : s.status === 'absent' ? '<span style="color:#64748b">✖ nahi aaya</span>' : '';
-  return '<div class="pp"><b>' + esc(s.name) + '</b> ' + esc(s.cls) + '<br>' + fmtDist(d) + ' door ' + st
+  return '<div class="pp"><b>' + esc(s.name) + '</b> ' + esc(s.cls) + '<br>' + fmtDist(d) + (rd != null ? ' (sadak se)' : '') + ' door ' + st
     + '<div class="acts">' + (s.status === 'pending'
       ? '<button class="b-done"' + (can ? '' : ' disabled') + ' onclick="markStop(' + s.id + ',\'done\')">✔ Ho gaya</button><button class="b-abs"' + (can ? '' : ' disabled') + ' onclick="markStop(' + s.id + ',\'absent\')">✖ Nahi aaya</button>'
       : '<button class="b-undo" onclick="markStop(' + s.id + ',\'pending\')">↺ Wapas</button>')
     + '<a class="b-nav" target="_blank" rel="noopener noreferrer" href="' + nav + '">🧭 Raasta</a></div></div>';
 }
 function drawStops(fit) {
-  if (!stops.length) { Object.values(stopMks).forEach(m => m.remove()); stopMks = {}; if (planLine) planLine.setLatLngs([]); return; }
+  if (!stops.length) { Object.values(stopMks).forEach(m => m.remove()); stopMks = {}; drawRoad(); return; }
   if (!ensureMap()) return;
   const nx = nextStop(), seqOf = {};
   orderedStops().filter(s => s.status === 'pending').forEach((s, i) => seqOf[s.id] = i + 1);
@@ -776,7 +969,7 @@ function drawStops(fit) {
     m.setZIndexOffset(cls === 'nx' ? 900 : cls ? 0 : 500);
   });
   Object.keys(stopMks).forEach(id => { if (!keep.has(+id)) { stopMks[id].remove(); delete stopMks[id]; } });
-  drawPlan();
+  drawRoad();
   if (fit && !accepted) fitAll();
 }
 function focusStop(id) {
@@ -786,20 +979,25 @@ function focusStop(id) {
 }
 
 // ── Next-stop card + list ─────────────────────────────────────────────────
+function planLabel() {
+  if (planSrc === 'learned' && learned) return '📘 Roz ka kram (' + learned.trips + ' trips, ' + Math.round(learned.confidence * 100) + '% pakka)';
+  if (planSrc === 'road') return '🛣️ Sadak ke hisaab se kram';
+  return '📏 Andaaze ka kram (seedhi doori)';
+}
 function renderStops() {
   const card = $('nextCard'), list = $('stopList');
   if (!stops.length) { card.style.display = 'none'; $('listWrap').style.display = 'none'; $('dimNext').textContent = ''; return; }
-  const os = orderedStops(), nx = nextStop(), can = !!tripOpen;
+  const os = orderedStops(), nx = nextStop(), can = canMark();
   const dn = stops.filter(s => s.status === 'done').length, ab = stops.filter(s => s.status === 'absent').length;
   if (nx) {
-    const d = distTo(nx), here = d != null && d <= CFG.ARRIVE_M + Math.min(accepted.acc || 0, 25);
-    const eta = d != null && accepted.speed > 2 ? Math.max(1, Math.round(d / accepted.speed / 60)) + ' min' : '';
+    const sd = distTo(nx), rd = roadDistTo(nx), d = rd != null ? rd : sd;
+    const here = sd != null && sd <= CFG.ARRIVE_M + Math.min(accepted.acc || 0, 25);
     const pos = os.filter(s => s.status === 'pending').indexOf(nx) + 1;
     const nav = 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + nx.lat + ',' + nx.lng;
     card.className = 'next' + (here ? ' here' : '');
     card.innerHTML = '<div class="lbl">' + (here ? '📍 Stop aa gaya' : 'Agla stop #' + pos) + '</div>'
       + '<div class="nm">' + esc(nx.name) + ' <span style="font-size:.85rem;color:#94a3b8;font-weight:600">' + esc(nx.cls) + '</span></div>'
-      + '<div class="meta">' + (d == null ? 'GPS ka intezaar…' : fmtDist(d) + ' door' + (eta ? ' · ~' + eta : '')) + ' · ' + dn + '/' + stops.length + ' ✔' + (ab ? ' · ' + ab + ' ✖' : '') + '</div>'
+      + '<div class="meta">' + (d == null ? 'GPS ka intezaar…' : fmtDist(d) + (rd != null ? ' sadak se' : ' door') + ' · ~' + etaMin(d) + ' min') + ' · ' + dn + '/' + stops.length + ' ✔' + (ab ? ' · ' + ab + ' ✖' : '') + '</div>'
       + '<div class="acts"><button class="b-done"' + (can ? '' : ' disabled') + ' onclick="markStop(' + nx.id + ',\'done\')">✔ Ho gaya</button>'
       + '<button class="b-abs"' + (can ? '' : ' disabled') + ' onclick="markStop(' + nx.id + ',\'absent\')">✖ Nahi aaya</button>'
       + '<a class="b-nav" target="_blank" rel="noopener noreferrer" href="' + nav + '">🧭 Raasta</a></div>'
@@ -813,7 +1011,8 @@ function renderStops() {
   }
   card.style.display = '';
   $('listWrap').style.display = '';
-  $('listTitle').textContent = 'Shift ' + selShift + ' · ' + stops.length + ' stops (raaste ke kram se)';
+  const learnTxt = learned && !learned.active && planSrc !== 'learned' ? ' · 📘 seekh raha hai ' + Math.min(learned.trips, learned.need) + '/' + learned.need : '';
+  $('listTitle').textContent = 'Shift ' + selShift + ' · ' + stops.length + ' stops · ' + planLabel() + learnTxt + (dataCached ? ' · 📦 offline data' : '');
   let i = 0;
   list.innerHTML = os.map(s => {
     const p = s.status === 'pending', cls = s.status === 'done' ? 'dn' : s.status === 'absent' ? 'ab' : s === nx ? 'nx' : '';
@@ -835,6 +1034,7 @@ function renderWarn() {
     if (odd.length) w.push('⚠️ In students ki location baaki sab se bahut door hai — shayad galat lagi hai: ' + odd.map(s => esc(s.name)).join(', ') + '. School ko batayein.');
   }
   if (stopsShift !== null && !stops.length && !missing.length) w.push('Is shift mein koi student nahi hai.');
+  if (dataCached) w.push('📦 Internet nahi mila — pichhli baar ki students list aur raasta dikha rahe hain. Net aate hi apne aap update hoga.');
   $('stopWarn').innerHTML = w.map(t => '<div class="warnbox">' + t + '</div>').join('');
 }
 
@@ -850,6 +1050,14 @@ $('dimBtn').addEventListener('click', () => { if (running) $('dim').classList.ad
 $('dim').addEventListener('click', () => $('dim').classList.remove('show'));
 $('followBtn').addEventListener('click', () => setFollow(!follow));
 $('fitBtn').addEventListener('click', fitAll);
+$('replanBtn').addEventListener('click', () => {
+  if (!stops.some(s => s.status === 'pending')) return;
+  if (!accepted) { say('GPS milne ke baad kram banega.'); return; }
+  ignoreLearned = true;                     // this trip: driver wants a fresh plan from here
+  road.coords = null; road.key = '';
+  planOrder(true, true);
+  say(navigator.onLine && ROUTER ? 'Yahan se sadak ke hisaab se naya kram ban raha hai…' : 'Net nahi — andaaze se naya kram banaya.', 8000);
+});
 $('voiceBtn').addEventListener('click', () => {
   voiceOn = !voiceOn; store('trk_voice_' + KEY, voiceOn ? '1' : '0');
   $('voiceBtn').textContent = voiceOn ? '🔊' : '🔇';
@@ -863,7 +1071,13 @@ document.addEventListener('visibilitychange', () => {
     say('Page background mein gaya tha — tracking ke liye screen ON aur page khula rakhein.');
   }
 });
-window.addEventListener('online', () => { if (queue.length) flushQueue(); flushMarks(); if (running && !tripOpen) tripStartNow(); });
+window.addEventListener('online', () => {
+  if (queue.length) flushQueue();
+  flushMarks();
+  if (running && !tripOpen) tripStartNow();
+  if (dataCached) loadStops();
+  requestRoute(true);
+});
 window.addEventListener('beforeunload', e => { if (running) { e.preventDefault(); e.returnValue = ''; } });
 
 if (navigator.getBattery) {
@@ -879,27 +1093,28 @@ if (navigator.getBattery) {
 // ── Boot ──────────────────────────────────────────────────────────────────
 async function loadInfo() {
   if (!KEY) { setState('err', 'Link galat hai'); say('Is link mein bus ki key nahi hai. School admin se naya link lein.'); return 'bad'; }
+  let j = null;
   try {
-    const r = await fetch(ENDPOINT + '?info=1&key=' + encodeURIComponent(KEY), {cache: 'no-store'});
-    const j = await r.json();
-    if (!j.ok) { setState('err', 'Key galat ya bus inactive'); say(j.msg || ''); $('busName').textContent = 'Bus nahi mili'; return 'bad'; }
-    $('busName').textContent = j.bus_name;
-    $('busNum').textContent = j.bus_number || '';
-    const t = await tripCall('status');
-    if (t && t.ok) {
-      tripOpen = t.trip || null;
-      shifts = t.shifts || [];
-      const sv = +load('trk_shift_' + KEY);
-      selShift = tripOpen ? tripOpen.shift : (shifts.some(s => s.no === sv) ? sv : 1);
-      showTrip();
-      if (shifts.length) await loadStops();
-    }
-    return 'ok';
-  } catch (e) {
-    $('busName').textContent = 'Bus';
-    say('Server se connect nahi ho paaya — internet check karein.');
-    return 'net';
+    const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), 10000);
+    const r = await fetch(ENDPOINT + '?info=1&key=' + encodeURIComponent(KEY), {cache: 'no-store', signal: ctrl.signal});
+    clearTimeout(to);
+    j = await r.json();
+  } catch (e) { j = null; }
+  if (j && !j.ok) { setState('err', 'Key galat ya bus inactive'); say(j.msg || ''); $('busName').textContent = 'Bus nahi mili'; return 'bad'; }
+  // Offline: tripCall('status') answers from the phone's copy, so the page still works without internet
+  const t = await tripCall('status');
+  $('busName').textContent = (j && j.bus_name) || (t && t.bus_name) || 'Bus';
+  $('busNum').textContent = (j && j.bus_number) || (t && t.bus_number) || '';
+  if (t && t.ok) {
+    tripOpen = t.trip || null;
+    shifts = t.shifts || [];
+    const sv = +load('trk_shift_' + KEY);
+    selShift = tripOpen ? tripOpen.shift : (shifts.some(s => s.no === sv) ? sv : 1);
+    showTrip();
+    if (shifts.length) await loadStops();
   }
+  if (!j || (t && t.cached)) { say('📦 Internet nahi — pichhli baar ka data dikha rahe hain. Tracking phir bhi chalegi.', 12000); return 'net'; }
+  return 'ok';
 }
 
 (async () => {
@@ -908,6 +1123,8 @@ async function loadInfo() {
   loadQueue(); loadMarks();
   render();
   checkPermission();
+  // Offline support: the page, map library and viewed map tiles are kept on the phone by a service worker
+  if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('driver_sw.js').catch(() => {});
   const st = await loadInfo();
   if (st !== 'bad') {
     $('go').disabled = false;

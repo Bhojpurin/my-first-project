@@ -5,7 +5,7 @@
 //   action=start  [shift=1..5]    open a trip (idempotent) and push "bus has left" to the students
 //   action=stop                   close the open trip and return its summary (km, max speed, stops)
 //   action=stops  [shift=N]       students of that shift with their marked home (the open trip's shift wins)
-//   action=mark_stop student_id=  status=done|absent|pending [by=auto]   (needs an open trip)
+//   action=mark_stop student_id=  status=done|absent|pending [by=auto] [ago=sec]   (needs an open trip)
 //   action=set_order order=12,5,9 planned stop order of the open trip (shown to students as "N stops before you")
 
 ob_start();
@@ -69,14 +69,16 @@ try {
         $open  = busTripGetOpen($pdo, $busId);
         $shift = $open ? (int)$open['shift_no'] : max(1, min(5, (int)($_REQUEST['shift'] ?? 1)));
         $list  = busStopsForShift($pdo, $busId, $schoolId, $shift, $open ? (int)$open['id'] : null);
-        tOut(['ok' => true, 'shift' => $shift, 'trip' => $fmt($open)] + $list);
+        $kind  = busTripKind($pdo, $busId, $schoolId, $shift, $open ? (string)$open['started_at'] : (string)$pdo->query("SELECT NOW()")->fetchColumn());
+        tOut(['ok' => true, 'shift' => $shift, 'kind' => $kind, 'trip' => $fmt($open), 'learned' => busLearnedProfile($pdo, $busId, $shift, $kind)] + $list);
     }
 
     if ($action === 'mark_stop' || $action === 'set_order') {
         $open = busTripGetOpen($pdo, $busId);
         if (!$open) tOut(['ok' => false, 'msg' => 'Pehle trip shuru karein']);
         if ($action === 'mark_stop') {
-            $ok = busTripMarkStop($pdo, $open, (int)($_REQUEST['student_id'] ?? 0), (string)($_REQUEST['status'] ?? ''), (string)($_REQUEST['by'] ?? 'driver'));
+            $ok = busTripMarkStop($pdo, $open, (int)($_REQUEST['student_id'] ?? 0), (string)($_REQUEST['status'] ?? ''),
+                                  (string)($_REQUEST['by'] ?? 'driver'), (int)($_REQUEST['ago'] ?? 0));
             tOut($ok ? ['ok' => true] : ['ok' => false, 'msg' => 'Ye student is shift mein nahi hai']);
         }
         $ids = array_filter(array_map('intval', explode(',', (string)($_REQUEST['order'] ?? ''))));

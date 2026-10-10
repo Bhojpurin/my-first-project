@@ -52,7 +52,20 @@ $pageExtraHead = <<<HTML
 .assign-badge.no  { background:#fef2f2; color:#dc2626; }
 .map-wrap       { border-radius:14px; overflow:hidden; border:1.5px solid #e5e7eb; box-shadow:0 2px 8px rgba(0,0,0,.07); }
 #liveMap        { height:520px; }
-.map-layout     { display:grid; grid-template-columns:260px 1fr; gap:14px; }
+.map-layout     { display:grid; grid-template-columns:300px 1fr; gap:14px; }
+.bl-trip  { font-size:.72rem; color:#334155; margin-top:4px; }
+.bl-bar   { display:flex; height:6px; border-radius:4px; overflow:hidden; background:#e5e7eb; margin-top:4px; }
+.bl-bar i { display:block; height:100%; }
+.bl-halt  { font-size:.72rem; color:#b45309; margin-top:3px; font-weight:600; }
+.bd-box   { border-top:1.5px solid #e5e7eb; margin-top:10px; padding-top:10px; font-size:.8rem; color:#334155; }
+.bd-box h4 { margin:0 0 6px; font-size:.88rem; color:#1e293b; display:flex; align-items:center; gap:6px; }
+.bd-row   { display:flex; gap:8px; align-items:center; padding:5px 4px; border-radius:7px; cursor:pointer; }
+.bd-row:hover { background:#f8fafc; }
+.bd-dot   { width:20px; height:20px; border-radius:50%; color:#fff; font-size:.66rem; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.bd-sec   { font-size:.7rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.04em; margin:10px 0 4px; }
+.bd-kpi   { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin:6px 0; }
+.bd-kpi div { background:#f8fafc; border-radius:8px; padding:6px; text-align:center; }
+.bd-kpi b { display:block; font-size:1.05rem; }
 .bus-list-panel { background:#fff; border-radius:12px; border:1.5px solid #e5e7eb; padding:12px;
                   height:520px; overflow-y:auto; }
 .bus-list-item  { display:flex; align-items:center; gap:10px; padding:10px 8px; border-radius:10px;
@@ -113,7 +126,7 @@ $pageExtraHead = <<<HTML
   transition:opacity .2s ease, transform .2s ease; max-width:90vw; }
 .bt-toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
 .bt-toast.err { background:#dc2626; }
-@media(max-width:640px) { .map-layout{grid-template-columns:1fr;} #liveMap{height:320px;} .bus-list-panel{height:200px;} }
+@media(max-width:640px) { .map-layout{grid-template-columns:1fr;} #liveMap{height:320px;} .bus-list-panel{height:auto;max-height:none;} }
 
 /* ══════════════════════════════════════════════════════════════════════
    Mobile native pass — 4 tabs, each needed a different fix: the tab bar
@@ -314,6 +327,7 @@ try {
     <div class="bus-list-panel" id="mapBusList">
       <div style="font-weight:600;font-size:.82rem;color:#374151;margin-bottom:8px;padding:4px 8px;">Buses</div>
       <div id="mapBusItems" style="color:#94a3b8;font-size:.82rem;padding:8px;">Loading…</div>
+      <div id="busDetail"></div>
     </div>
     <div class="map-wrap"><div id="liveMap"></div></div>
   </div>
@@ -1197,6 +1211,7 @@ async function refreshMap() {
     const r = await api('get_live_locations');
     if (!r.success) { statusEl.textContent = 'Update failed' + (r.message ? ': ' + r.message : ''); return; }
     const buses = r.buses || [];
+    window._lastBuses = buses;
     statusEl.textContent = 'Updated ' + new Date().toLocaleTimeString();
 
     const wd = document.getElementById('watchdogBanner'), alerts = r.watchdog || [];
@@ -1215,11 +1230,16 @@ async function refreshMap() {
       const ageStr = fmtAge(age);
       const routeTxt = b.route_name || 'No route';
 
-      listHtml += `<div class="bus-list-item" id="bli_${b.id}" onclick="focusBus(${b.id})">
+      const t = b.trip;
+      const still = gs === 'live' && b.still_seconds != null && +b.still_seconds >= 120 ? Math.round(b.still_seconds / 60) : 0;
+      const tripHtml = t ? `<div class="bl-trip">🟢 Shift ${t.shift} · ✔ ${t.done} · ✖ ${t.absent} · ⏳ ${t.pending} baaki${t.next ? ' · Agla: <b>' + esc(t.next) + '</b>' : ''}</div>
+          <div class="bl-bar"><i style="width:${t.total ? t.done / t.total * 100 : 0}%;background:#16a34a"></i><i style="width:${t.total ? t.absent / t.total * 100 : 0}%;background:#94a3b8"></i></div>` : '';
+      listHtml += `<div class="bus-list-item${_selBus == b.id ? ' sel' : ''}" id="bli_${b.id}" onclick="focusBus(${b.id})">
         <span class="gps-dot ${gs}" style="margin-top:0;flex-shrink:0;"></span>
-        <div>
+        <div style="flex:1;min-width:0;">
           <div class="bl-name">${esc(b.bus_name)}</div>
           <div class="bl-info">${esc(b.bus_number)} · ${esc(routeTxt)} · ${hasLoc ? ageStr : 'No GPS'}</div>
+          ${tripHtml}${still ? `<div class="bl-halt">⏸ ${still} min se ruki hai</div>` : ''}
         </div>
       </div>`;
 
@@ -1232,6 +1252,8 @@ async function refreshMap() {
         ${routesLbl}: ${esc(b.route_name || '—')}<br>
         Driver: ${esc(b.driver_name || '—')}<br>
         Speed: ${speedTxt}${b.accuracy ? '<br>Accuracy: ±' + Math.round(b.accuracy) + ' m' : ''}<br>
+        ${b.trip ? `<b>Shift ${b.trip.shift}:</b> ✔ ${b.trip.done} utha liye · ✖ ${b.trip.absent} · ⏳ ${b.trip.pending} baaki<br>` : ''}
+        ${gs === 'live' && b.still_seconds >= 120 ? `<span style="color:#b45309;font-weight:600">⏸ ${Math.round(b.still_seconds / 60)} min se ruki hai</span><br>` : ''}
         <span style="font-size:.75rem;color:#6b7280;">Last update: ${hasLoc && age != null ? ageStr + ' ago' : 'No data'}</span><br>
         <button type="button" onclick="toggleTrail(${b.id}, this)" style="margin-top:6px;padding:3px 9px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;cursor:pointer;font-size:.75rem;">${_trailLayers[b.id] ? 'Hide trail' : 'Show trail (2h)'}</button>`;
 
@@ -1269,6 +1291,7 @@ async function refreshMap() {
 
     // Keep any visible trails up to date
     Object.keys(_trailLayers).forEach(id => drawTrail(id));
+    if (_selBus) loadBusDetail(_selBus);
   } finally {
     _mapBusy = false;
   }
@@ -1276,9 +1299,87 @@ async function refreshMap() {
 
 function focusBus(id) {
   const m = _mapMarkers[id];
+  _selBus = id;
+  document.querySelectorAll('.bus-list-item').forEach(el => el.classList.toggle('sel', el.id === 'bli_' + id));
+  loadBusDetail(id, true);
   if (!_map || !m) { showToast('No GPS location for this bus yet.', false); return; }
   _map.setView(m.getLatLng(), 15);
   m.openPopup();
+}
+
+// ── Selected bus: students of the running shift, halts, path, learned route ──
+let _selBus = null, _detailLayer = null, _detailBusy = false;
+const KIND_LBL = {pickup: '🌅 Pickup', drop: '🏫 Drop', any: ''};
+function closeBusDetail() {
+  _selBus = null;
+  if (_detailLayer) { _map.removeLayer(_detailLayer); _detailLayer = null; }
+  document.getElementById('busDetail').innerHTML = '';
+  document.querySelectorAll('.bus-list-item').forEach(el => el.classList.remove('sel'));
+}
+async function loadBusDetail(id, fit) {
+  if (_detailBusy) return;
+  _detailBusy = true;
+  let r;
+  try { r = await api('get_bus_live_detail', {bus_id: id}); } finally { _detailBusy = false; }
+  if (_selBus != id) return;
+  const box = document.getElementById('busDetail');
+  if (!r.success) { box.innerHTML = '<div class="bd-box" style="color:#b91c1c">' + esc(r.message || 'Error') + '</div>'; return; }
+  if (!_map) return;
+  if (_detailLayer) _map.removeLayer(_detailLayer);
+  _detailLayer = L.layerGroup().addTo(_map);
+  const L_ = _detailLayer, pts = [];
+  const learn = r.learned;
+  if (learn && learn.path && learn.path.length > 1) L.polyline(learn.path, {color:'#8b5cf6', weight:8, opacity:.25}).bindTooltip('Roz ka raasta (seekha hua)').addTo(L_);
+  if (r.path && r.path.length > 1) { L.polyline(r.path, {color:'#2563eb', weight:4, opacity:.85}).bindTooltip('Aaj ki trip ka raasta').addTo(L_); r.path.forEach(p => pts.push(p)); }
+  const col = {done:'#16a34a', absent:'#94a3b8', pending:'#2563eb'};
+  const pend = r.stops.filter(s => s.status === 'pending').sort((a, b) => (a.seq ?? 1e9) - (b.seq ?? 1e9));
+  const nextId = pend.length && pend[0].seq != null ? pend[0].id : null;
+  r.stops.forEach(s => {
+    const c = s.id === nextId ? '#f59e0b' : col[s.status] || '#2563eb';
+    const st = s.status === 'done' ? '✔ ' + (s.by === 'auto' ? 'auto ' : '') + String(s.at || '').slice(11, 16) : s.status === 'absent' ? '✖ nahi aaya' : s.id === nextId ? 'agla stop' : 'baaki';
+    L.circleMarker([s.lat, s.lng], {radius: s.id === nextId ? 9 : 7, color:'#fff', weight:2, fillColor:c, fillOpacity:1})
+      .bindTooltip(esc(s.name) + ' (' + esc(s.cls) + ') — ' + st).addTo(L_);
+    pts.push([s.lat, s.lng]);
+  });
+  (r.halts || []).forEach(h => L.circleMarker([h.lat, h.lng], {radius:8, color:'#b45309', weight:2, fillColor:'#fbbf24', fillOpacity:.9})
+    .bindTooltip('⏸ ' + h.min + ' min ruki · ' + String(h.at).slice(11, 16)).addTo(L_));
+  if (fit && pts.length > 1) _map.fitBounds(pts, {padding:[40,40], maxZoom:16});
+
+  const n = {done:0, absent:0, pending:0}; r.stops.forEach(s => n[s.status]++);
+  const total = r.stops.length + r.missing.length, waiting = n.pending + r.missing.length;
+  const live = (window._lastBuses || []).find(b => b.id == id) || {};
+  const still = live.gps_status === 'live' && live.still_seconds >= 120 ? Math.round(live.still_seconds / 60) : 0;
+  const rows = r.stops.slice().sort((a, b) => ({pending:0, done:1, absent:2}[a.status] - {pending:0, done:1, absent:2}[b.status]) || ((a.seq ?? 1e9) - (b.seq ?? 1e9)))
+    .map(s => {
+      const c = s.id === nextId ? '#f59e0b' : col[s.status];
+      const lab = s.status === 'done' ? '✔' : s.status === 'absent' ? '✖' : (s.seq ?? '•');
+      const tail = s.status === 'done' ? String(s.at || '').slice(11, 16) + (s.by === 'auto' ? ' auto' : '') : s.status === 'absent' ? 'nahi aaya' : s.id === nextId ? '<b style="color:#b45309">agla</b>' : '';
+      return `<div class="bd-row" onclick="_map.setView([${s.lat},${s.lng}],17)"><span class="bd-dot" style="background:${c}">${lab}</span><span style="flex:1;min-width:0">${esc(s.name)} <small style="color:#94a3b8">${esc(s.cls)}</small></span><small>${tail}</small></div>`;
+    }).join('');
+  const halts = (r.halts || []).map(h => `<div class="bd-row" onclick="_map.setView([${h.lat},${h.lng}],17)"><span class="bd-dot" style="background:#fbbf24;color:#78350f">⏸</span><span style="flex:1">${String(h.at).slice(11, 16)}</span><small>${h.min} min</small></div>`).join('');
+  const learnTxt = !learn ? 'Abhi tak koi trip poori nahi hui — trips se apne aap seekhega.'
+    : learn.active ? `✅ ${learn.trips} trips se seekha · ${Math.round(learn.confidence * 100)}% pakka — driver ke phone par yahi kram default hai.`
+    : `⏳ Seekh raha hai: ${Math.min(learn.trips, learn.need)}/${learn.need} trips · ${Math.round(learn.confidence * 100)}% ek jaisa`;
+  document.getElementById('busDetail').innerHTML = `<div class="bd-box">
+    <h4>${esc(r.bus.bus_name)} <small style="font-weight:500;color:#64748b">Shift ${r.shift} ${KIND_LBL[r.kind] || ''}</small>
+      <button type="button" onclick="closeBusDetail()" style="margin-left:auto;border:0;background:none;font-size:1.1rem;cursor:pointer;color:#94a3b8">&times;</button></h4>
+    ${r.trip ? `<div style="color:#16a34a;font-weight:600">🟢 Trip ${String(r.trip.started_at).slice(11, 16)} se chal rahi hai</div>` : '<div style="color:#64748b">Abhi koi trip nahi chal rahi (shift ' + r.shift + ' ke students dikh rahe hain)</div>'}
+    ${still ? `<div class="bl-halt" style="font-size:.8rem">⏸ Abhi ${still} min se ek jagah ruki hai</div>` : ''}
+    <div class="bd-kpi"><div><b style="color:#16a34a">${n.done}</b>utha liye</div><div><b style="color:#64748b">${n.absent}</b>nahi aaye</div><div><b style="color:#2563eb">${waiting}</b>baaki</div></div>
+    <div class="bl-bar" style="height:8px"><i style="width:${total ? n.done / total * 100 : 0}%;background:#16a34a"></i><i style="width:${total ? n.absent / total * 100 : 0}%;background:#94a3b8"></i></div>
+    ${r.missing.length ? `<div style="margin-top:6px;color:#b45309">⚠️ ${r.missing.length} ne ghar ki location nahi lagayi: ${r.missing.map(m => esc(m.name)).join(', ')}</div>` : ''}
+    <div class="bd-sec">Students (${total})</div>${rows || '<div style="color:#94a3b8">—</div>'}
+    ${r.trip ? `<div class="bd-sec">Aaj kahan ruki (2+ min)</div>${halts || '<div style="color:#94a3b8">Abhi tak koi lamba stop nahi</div>'}` : ''}
+    <div class="bd-sec">Roz ka raasta</div><div>${learnTxt}</div>
+    ${learn ? `<button type="button" class="edu-btn edu-btn-sm edu-btn-secondary" style="margin-top:6px" onclick="resetLearn(${id},${r.shift},'${r.kind}')">↺ Seekha hua raasta hatayein</button>` : ''}
+  </div>`;
+}
+function resetLearn(id, shift, kind) {
+  showConfirm('Roz ka raasta hatayein?', 'Route badal gaya ho tabhi hatayein. Agli trips se phir seekhega.', async () => {
+    const r = await api('learn_reset', {bus_id: id, shift, kind});
+    showToast(r.message, r.success);
+    loadBusDetail(id);
+  }, 'Hatayein');
 }
 
 function clearTrail(id) {

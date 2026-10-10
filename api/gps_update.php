@@ -73,16 +73,28 @@ function insertFix(PDO $pdo, int $busId, int $schoolId, float $lat, float $lng, 
 
 // Keep the one-row-per-bus "latest position" table (bus_live) current. Readers (student portal, admin map,
 // watchdog) use it instead of scanning the big history table. Silently skipped until the table exists.
-function upsertLive(PDO $pdo, int $busId, int $schoolId, float $lat, float $lng, float $speed, float $heading, ?float $acc): void {
+// $still: the bus is standing (keeps the time it stopped in still_since → admin sees "stopped for 6 min").
+function upsertLive(PDO $pdo, int $busId, int $schoolId, float $lat, float $lng, float $speed, float $heading, ?float $acc, bool $still = false): void {
     try {
+        $pdo->prepare("INSERT INTO bus_live (bus_id, school_id, lat, lng, speed, heading, accuracy, recorded_at, still_since)
+                       VALUES (?,?,?,?,?,?,?,NOW(),NULL)
+                       ON DUPLICATE KEY UPDATE school_id=VALUES(school_id), lat=VALUES(lat), lng=VALUES(lng), speed=VALUES(speed),
+                           heading=VALUES(heading), accuracy=VALUES(accuracy), recorded_at=NOW(),
+                           still_since=IF(?, COALESCE(still_since, NOW()), NULL)")
+            ->execute([$busId, $schoolId, $lat, $lng, $speed, $heading, $acc, $still ? 1 : 0]);
+        return;
+    } catch (\Throwable $e) {
+        $code = (int)($e->errorInfo[1] ?? 0);
+        if ($code === 1146) return;                                   // table missing (migration not run)
+        if ($code !== 1054) { error_log('gps_update bus_live: ' . $e->getMessage()); return; }
+    }
+    try {   // 1054: still_since column not added yet → old form
         $pdo->prepare("INSERT INTO bus_live (bus_id, school_id, lat, lng, speed, heading, accuracy, recorded_at)
                        VALUES (?,?,?,?,?,?,?,NOW())
                        ON DUPLICATE KEY UPDATE school_id=VALUES(school_id), lat=VALUES(lat), lng=VALUES(lng), speed=VALUES(speed),
                            heading=VALUES(heading), accuracy=VALUES(accuracy), recorded_at=NOW()")
             ->execute([$busId, $schoolId, $lat, $lng, $speed, $heading, $acc]);
-    } catch (\Throwable $e) {
-        if ((int)($e->errorInfo[1] ?? 0) !== 1146) error_log('gps_update bus_live: ' . $e->getMessage());   // 1146 = table missing
-    }
+    } catch (\Throwable $e) { error_log('gps_update bus_live: ' . $e->getMessage()); }
 }
 
 $key = trim((string)($_SERVER['HTTP_X_API_KEY'] ?? ($_REQUEST['key'] ?? '')));
@@ -180,7 +192,7 @@ try {
         insertFix($pdo, $busId, $schoolId, $lat, $lng, $speed, $heading, $acc, null);
     }
 
-    upsertLive($pdo, $busId, $schoolId, $lat, $lng, $speed, $heading, $acc);
+    upsertLive($pdo, $busId, $schoolId, $lat, $lng, $speed, $heading, $acc, $mode === 'refreshed' || ($speed < 3 && $dist < 25));
 
     jDone(['ok'=>true,'bus_id'=>$busId,'ts'=>date('Y-m-d H:i:s'),'saved'=>$mode]);
 } catch (\Throwable $e) {
