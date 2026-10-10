@@ -96,6 +96,16 @@ function _slog(string $activity, string $type = 'other'): void {
 }
 
 
+// ── schema_status: is the bus module's database set up? (admin sees exactly which step failed) ──
+if ($action === 'schema_status') {
+    require_once __DIR__ . '/../includes/bus_schema.php';
+    if ($isAdmin && !empty($_POST['retry'])) { csrfBus(); busEnsureSchema($pdo, true); }
+    $v = busSchemaVersion($pdo);
+    $ok = $v >= BUS_SCHEMA_VERSION;
+    jBus(true, '', ['ready' => $ok, 'version' => $v, 'needed' => BUS_SCHEMA_VERSION,
+                    'errors' => $ok || !$isAdmin ? [] : array_slice(array_map(function ($l) { return mb_substr($l, 0, 400); }, $GLOBALS['BUS_SCHEMA_ERRORS'] ?? []), 0, 20)]);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // FLEET
 // ─────────────────────────────────────────────────────────────────────────────

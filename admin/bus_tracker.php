@@ -1704,7 +1704,25 @@ async function showTrip(id) {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
+// Database setup check: if the automatic setup failed, show the admin exactly why (instead of errors later)
+async function checkSchema(retry) {
+  const r = await api('schema_status', retry ? {retry: 1} : {});
+  let box = document.getElementById('schemaBanner');
+  if (!r.success || r.ready) { if (box) box.remove(); if (retry && r.ready) { showToast('Database setup poora ho gaya ✔'); loadFleet(); } return; }
+  if (!box) {
+    box = document.createElement('div'); box.id = 'schemaBanner';
+    box.style.cssText = 'margin:0 0 14px;padding:12px 14px;border-radius:12px;background:#fef2f2;border:1.5px solid #fecaca;color:#7f1d1d;font-size:.82rem;line-height:1.5;';
+    const tabs = document.querySelector('.bt-tab'); (tabs ? tabs.parentNode : document.body).insertAdjacentElement('beforebegin', box);
+  }
+  box.innerHTML = '<b>⚠️ Bus GPS ka database setup adhoora hai</b> (v' + r.version + ' / v' + r.needed + '). Naye features (driver pairing, alerts, trips) iske bina nahi chalenge.'
+    + (r.errors.length ? '<div style="margin-top:6px;font-family:monospace;font-size:.72rem;background:#fff;border:1px solid #fecaca;border-radius:8px;padding:8px;white-space:pre-wrap;max-height:180px;overflow:auto;">' + r.errors.map(esc).join('\n') + '</div>'
+                       : '<div style="margin-top:4px">Kaaran nahi mila — "Dobara koshish" dabayein.</div>')
+    + (IS_ADMIN ? '<button class="edu-btn edu-btn-sm edu-btn-primary" style="margin-top:8px" onclick="checkSchema(true)">↻ Dobara koshish karein</button>'
+      + ' <span style="font-size:.74rem">Ye laal lines developer ko bhejein agar theek na ho.</span>' : '');
+}
+
 (function init() {
+  checkSchema(false);
   const activePane = '<?= $activeTab ?>';
   if      (activePane === 'routes')   loadRoutes();  // loadRoutes fetches fleet internally
   else if (activePane === 'map')      { initMap(); refreshMap(); _mapInterval = setInterval(refreshMap, 15000); }

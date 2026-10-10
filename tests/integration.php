@@ -102,7 +102,16 @@ try {
 
     section('Automatic database setup (no command line)');
     ok(!$pdo->query("SHOW TABLES LIKE 'bus_trips'")->fetchColumn(), 'fresh deploy: bus tables do not exist yet');
-    $pdo->exec("UPDATE students SET status=status");   // (keeps the seed untouched)
+    // Something on this server blocks one step (here: a view with a bus table's name) → admin must SEE why
+    $pdo->exec("CREATE VIEW bus_trip_stops AS SELECT 1 AS x");
+    [, $j] = admin($A, 'schema_status');
+    ok($j['ready'] === false && $j['errors'] && strpos(implode(' ', $j['errors']), 'bus_trip_stops') !== false, 'a failed setup step is shown to the admin with its reason', $j);
+    [, $j] = admin($T, 'schema_status');
+    ok($j['ready'] === false && $j['errors'] === [], 'teachers see that it is not ready, but no technical details');
+    $pdo->exec("DROP VIEW bus_trip_stops");
+    [, $j] = admin($A, 'schema_status', ['retry' => 1]);
+    ok($j['ready'] === true, '"Dobara koshish" after the cause is fixed → setup completes', $j);
+    $pdo->exec("DROP TABLE IF EXISTS bus_schema_version");   // and run the normal first-request path from scratch below
     $par = [];
     for ($i = 0; $i < 3; $i++) $par[] = curl_init();   // three admins open the page at the same moment
     $mh = curl_multi_init();
