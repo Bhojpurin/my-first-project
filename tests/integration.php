@@ -242,6 +242,41 @@ try {
     if ($kind === 'pickup') ok($p == ['ep-11'], 'only the parent of the child on board is told "bus reached school"', $p);
     else ok($p == [], 'on a drop-time trip parents are not told "bus reached school"', [$kind, $p]);
 
+    section('Unplanned halt → reason → one-click parent message');
+    for ($m = 2100; $m <= 2500; $m += 100) { gps($dev, off($m), 25); sleep(3); }      // away from stops and the school gate
+    gps($dev, off(2500), 0); sleep(3);
+    $pdo->exec("UPDATE bus_live SET still_since = NOW() - INTERVAL 10 MINUTE WHERE bus_id=1");
+    gps($dev, off(2500), 0); sleep(3); gps($dev, off(2500), 0);
+    $h = $pdo->query("SELECT COUNT(*) FROM bus_alerts WHERE type='halt' AND school_id=1")->fetchColumn();
+    ok((int)$h === 1, 'standing 10 min on the road with no reason → exactly one admin alert', $h);
+    [, $j] = trip($tokA, 'halt', ['reason' => 'puncture', 'text' => '<script>x</script>Tyre badal rahe', 'delay' => 20, 'lat' => off(2500)[0], 'lng' => off(2500)[1], 'halt_sec' => 600]);
+    ok(!empty($j['ok']), 'driver reports the reason from the popup');
+    $al = $pdo->query("SELECT id, message, ref_id, trip_id FROM bus_alerts WHERE type='halt_report' ORDER BY id DESC LIMIT 1")->fetch();
+    ok($al && strpos($al['message'], 'Tyre puncture') !== false && strpos($al['message'], '<script>') === false && $al['ref_id'], 'admin gets it (cleaned text, linked report)', $al);
+    [, $j] = admin($B, 'broadcast_preview', ['alert_id' => $al['id']]);
+    ok(empty($j['success']), "school B cannot even preview school A's alert");
+    [, $j] = admin($B, 'broadcast', ['alert_id' => $al['id'], 'text' => 'hack hack hack']);
+    ok(empty($j['success']), "school B cannot message school A's parents");
+    [, $j] = admin($T, 'broadcast', ['alert_id' => $al['id'], 'text' => 'teacher message']);
+    ok(empty($j['success']), 'a teacher cannot broadcast');
+    [, $j] = admin($A, 'broadcast_preview', ['alert_id' => $al['id']]);
+    ok(!empty($j['success']) && $j['count'] === 3 && strpos($j['text'], 'tyre puncture') !== false && strpos($j['text'], '20 min') !== false,
+       'preview: ready-made message + 3 parents of the shift', $j);
+    clearPushes();
+    [, $j] = admin($A, 'broadcast', ['alert_id' => $al['id'], 'text' => $j['text']]);
+    $eps = array_map(function ($x) { return $x->endpoint; }, pushes()); sort($eps);
+    ok(!empty($j['success']) && $eps == ['ep-11', 'ep-12', 'ep-13'], 'one click → push to every parent of that shift', [$j, $eps]);
+    ok((int)$pdo->query("SELECT COUNT(*) FROM school_messages WHERE auto_event='Bus suchna' AND school_id=1")->fetchColumn() === 3
+       && !(int)$pdo->query("SELECT COUNT(*) FROM school_messages WHERE school_id=2")->fetchColumn(), '…and into their Messages tab, nothing to school B');
+    [, $j] = admin($A, 'broadcast', ['alert_id' => $al['id'], 'text' => 'again right away']);
+    ok(empty($j['success']), 'the same alert cannot be re-sent within a minute (no double click spam)');
+    trip($tokA, 'mark_stop', ['student_id' => 12, 'status' => 'absent']);
+    [, $j] = admin($A, 'broadcast_preview', ['bus_id' => 1]);
+    ok(($j['count'] ?? 0) === 2, 'a student marked absent is left out', $j);
+    sleep(2); gps($dev, off(2600), 30); sleep(1);
+    $rs = $pdo->query("SELECT COUNT(*) FROM bus_alerts WHERE type='halt_resolved' AND school_id=1")->fetchColumn();
+    ok((int)$rs === 1 && $pdo->query("SELECT resolved_at FROM bus_halt_reports ORDER BY id DESC LIMIT 1")->fetchColumn(), 'bus moves again → "phir chal padi" alert, report closed');
+
     section('Trip end + learning');
     [, $j] = trip($tokA, 'stop');
     ok(!empty($j['ok']) && isset($j['summary']), 'trip ends with a summary');

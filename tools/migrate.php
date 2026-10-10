@@ -21,6 +21,12 @@ $addCols = [
     ['bus_trip_stops', 'eta_at', 'DATETIME NULL'],
     ['bus_trip_stops', 'eta_notified', 'TINYINT NOT NULL DEFAULT 0'],
     ['bus_trips', 'kind', 'VARCHAR(6) NULL'],
+    ['bus_alert_settings', 'halt_ask_min', 'SMALLINT NOT NULL DEFAULT 3'],
+    ['bus_alert_settings', 'halt_admin_min', 'SMALLINT NOT NULL DEFAULT 8'],
+    ['bus_alerts', 'ref_id', 'INT NULL'],
+    ['bus_alerts', 'broadcast_at', 'DATETIME NULL'],
+    ['bus_alerts', 'broadcast_n', 'INT NOT NULL DEFAULT 0'],
+    ['bus_alert_state', 'halt_alerted_for', 'DATETIME NULL'],
     ['student_home_locations', 'note', 'VARCHAR(120) NULL'],   // "mandir ke saamne, neela gate" — shown to the driver
 ];
 foreach ($addCols as [$t, $c, $def]) {

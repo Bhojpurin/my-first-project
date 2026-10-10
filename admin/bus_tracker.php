@@ -602,11 +602,36 @@ try {
         <div class="fld"><label>Kitna door (m)</label><input type="number" id="asDev" min="150" max="3000"></div>
         <div class="fld"><label>Kitni der tak (sec)</label><input type="number" id="asDevSec" min="30" max="900"></div>
       </div>
+      <div style="font-size:.8rem;font-weight:700;color:#374151;margin-bottom:6px;">🛑 Raaste mein rukna</div>
+      <div class="fld-row">
+        <div class="fld"><label>Driver se kaaran poochhein (min baad)</label><input type="number" id="asHaltAsk" min="1" max="30"></div>
+        <div class="fld"><label>Jawab na mile to admin alert (min)</label><input type="number" id="asHaltAdmin" min="2" max="60"></div>
+      </div>
       <div class="info-box">Alerts sirf aapke school ke admin panel aur aapke school ke parents ko jaate hain — kisi bahari service (WhatsApp/SMS) ko nahi.</div>
     </div>
     <div class="modal-foot">
       <button class="edu-btn edu-btn-secondary" onclick="closeAlertSettings()">Cancel</button>
       <button class="edu-btn edu-btn-primary" onclick="saveAlertSettings()"><i class="bi bi-check2"></i> Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Broadcast to the parents of one shift -->
+<div class="modal-ov" id="bcastModal" onclick="if(event.target===this)closeBroadcast()">
+  <div class="modal-box" style="max-width:520px;" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <div class="modal-title"><i class="bi bi-megaphone"></i> Parents ko suchna</div>
+      <button class="m-close" onclick="closeBroadcast()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="bcastMsg" style="display:none;padding:10px 14px;border-radius:8px;font-size:.83rem;margin-bottom:14px;"></div>
+      <div id="bcastWho" style="font-size:.84rem;color:#334155;margin-bottom:8px;"></div>
+      <div class="fld"><label>Message (badal sakte hain)</label><textarea id="bcastText" rows="5" maxlength="500"></textarea></div>
+      <div style="font-size:.75rem;color:#64748b;">Push notification + student portal ke Messages tab mein jayega. "Nahi aaye" mark kiye gaye bachchon ko nahi.</div>
+    </div>
+    <div class="modal-foot">
+      <button class="edu-btn edu-btn-secondary" onclick="closeBroadcast()">Cancel</button>
+      <button class="edu-btn edu-btn-primary" id="bcastSend" onclick="sendBroadcast()"><i class="bi bi-send"></i> Sabko bhejein</button>
     </div>
   </div>
 </div>
@@ -1368,7 +1393,8 @@ function focusBus(id) {
 
 // ── Safety alert feed (overspeed / school gate / off route / silent) ─────────
 let _lastAlertId = null, _alertMk = null, _schoolCircle = null;
-const AL_ICON = {overspeed:'🚀', school_arrive:'🏫', school_leave:'🚌', deviation:'🧭', silent:'📵'};
+const AL_ICON = {overspeed:'🚀', school_arrive:'🏫', school_leave:'🚌', deviation:'🧭', silent:'📵', halt_report:'🛑', halt:'⏸', halt_resolved:'▶️'};
+const AL_BCAST = {halt_report: 1, halt: 1, halt_resolved: 1, deviation: 1, silent: 1};   // alerts parents may need to hear about
 function renderAlertFeed(list) {
   const box = document.getElementById('alertFeed');
   if (!list.length) { box.style.display = 'none'; return; }
@@ -1388,6 +1414,10 @@ function renderAlertFeed(list) {
       ${unseen ? `<button class="edu-btn edu-btn-sm edu-btn-secondary" onclick="alertsSeen(${maxId})">✓ Sab dekh liya</button>` : ''}</div>`
     + list.slice(0, 8).map(a => `<div class="al-row${a.seen_at ? '' : ' new'}" onclick="showAlertOnMap(${+a.lat || 0},${+a.lng || 0})">
         <span>${AL_ICON[a.type] || '⚠️'}</span><b style="flex:1;font-weight:${a.seen_at ? 500 : 700}">${esc(a.message)}</b>
+        ${IS_ADMIN && AL_BCAST[a.type] && a.trip_id ? (a.broadcast_at
+          ? `<span style="font-size:.72rem;color:#166534;white-space:nowrap">✓ parents ko ${esc(String(a.broadcast_at).slice(11, 16))}</span>
+             <button class="edu-btn edu-btn-sm edu-btn-secondary" style="padding:2px 8px" onclick="event.stopPropagation();openBroadcast(${a.id})">Update</button>`
+          : `<button class="edu-btn edu-btn-sm edu-btn-primary" style="padding:3px 9px;white-space:nowrap" onclick="event.stopPropagation();openBroadcast(${a.id})">📣 Parents ko batayein</button>`) : ''}
         <span class="al-time">${esc(String(a.created_at).slice(11, 16))}</span></div>`).join('');
 }
 function playAlertTone() {
@@ -1395,6 +1425,28 @@ function playAlertTone() {
   [0, .25].forEach(o => { const os = ctx.createOscillator(), g = ctx.createGain(); os.connect(g); g.connect(ctx.destination);
     os.frequency.value = 880; g.gain.setValueAtTime(.3, t + o); g.gain.exponentialRampToValueAtTime(.001, t + o + .2); os.start(t + o); os.stop(t + o + .2); });
   setTimeout(() => ctx.close(), 800);
+}
+let _bcast = null;
+async function openBroadcast(alertId, busId) {
+  const r = await api('broadcast_preview', alertId ? {alert_id: alertId} : {bus_id: busId});
+  if (!r.success) { showToast(r.message, false); return; }
+  _bcast = {alert_id: alertId || 0, bus_id: busId || 0};
+  document.getElementById('bcastText').value = r.text;
+  document.getElementById('bcastWho').innerHTML = r.shift
+    ? `<b>${esc(r.bus.bus_name)}</b> · Shift ${r.shift} · <b>${r.count}</b> parents ko jayega` + (r.sent_before ? ` <span style="color:#b45309">(pehle ${esc(String(r.sent_before).slice(11, 16))} par bheja ja chuka hai)</span>` : '')
+    : '<span style="color:#b91c1c">Is bus ki koi trip nahi chal rahi — message kisko jaye, pata nahi.</span>';
+  document.getElementById('bcastSend').disabled = !r.shift || !r.count;
+  document.getElementById('bcastMsg').style.display = 'none';
+  document.getElementById('bcastModal').classList.add('show');
+}
+function closeBroadcast() { document.getElementById('bcastModal').classList.remove('show'); }
+async function sendBroadcast() {
+  const btn = document.getElementById('bcastSend'); btn.disabled = true;
+  try {
+    const r = await api('broadcast', Object.assign({text: document.getElementById('bcastText').value}, _bcast));
+    showMsg(document.getElementById('bcastMsg'), r.success, r.message);
+    if (r.success) { setTimeout(closeBroadcast, 1200); refreshMap(); } else btn.disabled = false;
+  } catch (e) { btn.disabled = false; }
 }
 async function alertsSeen(upto) { await api('alerts_seen', {upto}); refreshMap(); }
 function showAlertOnMap(lat, lng) {
@@ -1414,6 +1466,8 @@ async function openAlertSettings() {
   document.getElementById('asDev').value = s.deviation_m ?? 400;
   document.getElementById('asDevSec').value = s.deviation_sec ?? 90;
   document.getElementById('asParents').checked = !!+(s.notify_parents ?? 1);
+  document.getElementById('asHaltAsk').value = s.halt_ask_min ?? 3;
+  document.getElementById('asHaltAdmin').value = s.halt_admin_min ?? 8;
   document.getElementById('alertSetMsg').style.display = 'none';
   document.getElementById('alertSetModal').classList.add('show');
 }
@@ -1427,7 +1481,8 @@ function alertUseMapCenter() {
 async function saveAlertSettings() {
   const v = id => document.getElementById(id).value.trim();
   const r = await api('save_alert_settings', {overspeed_kmh: v('asSpeed'), overspeed_sec: v('asSpeedSec'), school_lat: v('asLat'), school_lng: v('asLng'),
-    school_radius_m: v('asRadius'), deviation_m: v('asDev'), deviation_sec: v('asDevSec'), notify_parents: document.getElementById('asParents').checked ? 1 : 0});
+    school_radius_m: v('asRadius'), deviation_m: v('asDev'), deviation_sec: v('asDevSec'), notify_parents: document.getElementById('asParents').checked ? 1 : 0,
+    halt_ask_min: v('asHaltAsk'), halt_admin_min: v('asHaltAdmin')});
   showMsg(document.getElementById('alertSetMsg'), r.success, r.message);
   if (r.success) { drawSchoolCircle(); setTimeout(closeAlertSettings, 900); }
 }
@@ -1498,6 +1553,7 @@ async function loadBusDetail(id, fit) {
       <button type="button" onclick="closeBusDetail()" style="margin-left:auto;border:0;background:none;font-size:1.1rem;cursor:pointer;color:#94a3b8">&times;</button></h4>
     ${r.trip ? `<div style="color:#16a34a;font-weight:600">🟢 Trip ${String(r.trip.started_at).slice(11, 16)} se chal rahi hai</div>` : '<div style="color:#64748b">Abhi koi trip nahi chal rahi (shift ' + r.shift + ' ke students dikh rahe hain)</div>'}
     ${still ? `<div class="bl-halt" style="font-size:.8rem">⏸ Abhi ${still} min se ek jagah ruki hai</div>` : ''}
+    ${r.trip && IS_ADMIN ? `<button type="button" class="edu-btn edu-btn-sm edu-btn-primary" style="margin:6px 0" onclick="openBroadcast(0, ${id})">📣 Is shift ke sabhi parents ko message</button>` : ''}
     <div class="bd-kpi"><div><b style="color:#16a34a">${n.done}</b>utha liye</div><div><b style="color:#64748b">${n.absent}</b>nahi aaye</div><div><b style="color:#2563eb">${waiting}</b>baaki</div></div>
     <div class="bl-bar" style="height:8px"><i style="width:${total ? n.done / total * 100 : 0}%;background:#16a34a"></i><i style="width:${total ? n.absent / total * 100 : 0}%;background:#94a3b8"></i></div>
     ${r.missing.length ? `<div style="margin-top:6px;color:#b45309">⚠️ ${r.missing.length} ne ghar ki location nahi lagayi: ${r.missing.map(m => esc(m.name)).join(', ')}</div>` : ''}

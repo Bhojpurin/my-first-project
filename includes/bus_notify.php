@@ -61,10 +61,10 @@ function busNotifyStudents(PDO $pdo, int $schoolId, array $studentIds, string $t
 
 /**
  * Admin alert (Live Map feed). One row per event; $dedupeMin suppresses the same type for the same bus.
- * Types: overspeed | school_arrive | school_leave | deviation | silent
+ * Types: overspeed | school_arrive | school_leave | deviation | silent | halt_report | halt | halt_resolved
  */
 function busAdminAlert(PDO $pdo, int $schoolId, int $busId, ?int $tripId, string $type, string $message,
-                       ?float $lat = null, ?float $lng = null, ?float $value = null, int $dedupeMin = 0): ?int
+                       ?float $lat = null, ?float $lng = null, ?float $value = null, int $dedupeMin = 0, ?int $refId = null): ?int
 {
     try {
         if ($dedupeMin > 0) {
@@ -72,8 +72,13 @@ function busAdminAlert(PDO $pdo, int $schoolId, int $busId, ?int $tripId, string
             $d->execute([$schoolId, $busId, $type, $dedupeMin]);
             if ($d->fetchColumn()) return null;
         }
-        $pdo->prepare("INSERT INTO bus_alerts (school_id, bus_id, trip_id, type, lat, lng, value, message, created_at) VALUES (?,?,?,?,?,?,?,?,NOW())")
-            ->execute([$schoolId, $busId, $tripId, $type, $lat, $lng, $value, mb_substr($message, 0, 255)]);
+        if ($refId !== null) {
+            $pdo->prepare("INSERT INTO bus_alerts (school_id, bus_id, trip_id, type, lat, lng, value, message, ref_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,NOW())")
+                ->execute([$schoolId, $busId, $tripId, $type, $lat, $lng, $value, mb_substr($message, 0, 255), $refId]);
+        } else {
+            $pdo->prepare("INSERT INTO bus_alerts (school_id, bus_id, trip_id, type, lat, lng, value, message, created_at) VALUES (?,?,?,?,?,?,?,?,NOW())")
+                ->execute([$schoolId, $busId, $tripId, $type, $lat, $lng, $value, mb_substr($message, 0, 255)]);
+        }
         return (int)$pdo->lastInsertId();
     } catch (\Throwable $e) {
         error_log('bus_alert: ' . $e->getMessage());   // table missing → never break GPS ingestion

@@ -15,6 +15,7 @@ require_once __DIR__ . '/bus_notify.php';
 const BUS_ALERT_DEFAULTS = [
     'overspeed_kmh' => 50, 'overspeed_sec' => 20, 'school_lat' => null, 'school_lng' => null,
     'school_radius_m' => 150, 'deviation_m' => 400, 'deviation_sec' => 90, 'notify_parents' => 1,
+    'halt_ask_min' => 3, 'halt_admin_min' => 8,
 ];
 
 function busAlertSettings(PDO $pdo, int $schoolId): array
@@ -26,7 +27,7 @@ function busAlertSettings(PDO $pdo, int $schoolId): array
     } catch (\Throwable $e) { $r = null; }
     $s = BUS_ALERT_DEFAULTS;
     if ($r) foreach ($s as $k => $v) if (array_key_exists($k, $r)) $s[$k] = $r[$k];
-    foreach (['overspeed_kmh', 'overspeed_sec', 'school_radius_m', 'deviation_m', 'deviation_sec', 'notify_parents'] as $k) $s[$k] = (int)$s[$k];
+    foreach (['overspeed_kmh', 'overspeed_sec', 'school_radius_m', 'deviation_m', 'deviation_sec', 'notify_parents', 'halt_ask_min', 'halt_admin_min'] as $k) $s[$k] = (int)$s[$k];
     $s['school_lat'] = $s['school_lat'] !== null ? (float)$s['school_lat'] : null;
     $s['school_lng'] = $s['school_lng'] !== null ? (float)$s['school_lng'] : null;
     return $s;
@@ -124,6 +125,10 @@ function busAlertCheck(PDO $pdo, int $busId, int $schoolId, float $lat, float $l
         if (!$off && $st['off_since'] !== null) {
             $pdo->prepare("UPDATE bus_alert_state SET off_since=NULL, off_alerted=0 WHERE bus_id=?")->execute([$busId]);
         }
+
+        // ── Unplanned halt on the road / moving again ───────────────────────
+        require_once __DIR__ . '/bus_halt.php';
+        busHaltServerCheck($pdo, $set, $st, $schoolId, $busId, $trip && $tripId ? $trip : null, $label, $lat, $lng, $speedKmh);
     } catch (\Throwable $e) {
         error_log('bus_alerts: ' . $e->getMessage());
     }

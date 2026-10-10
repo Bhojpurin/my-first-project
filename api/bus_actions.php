@@ -413,7 +413,7 @@ if ($action === 'get_live_locations') {
     }
     $alerts = [];
     try {   // newest alerts of the last 12 h for the live feed (this school only)
-        $al = $pdo->prepare("SELECT a.id, a.bus_id, a.type, a.lat, a.lng, a.value, a.message, a.created_at, a.seen_at
+        $al = $pdo->prepare("SELECT a.id, a.bus_id, a.type, a.lat, a.lng, a.value, a.message, a.created_at, a.seen_at, a.broadcast_at, a.trip_id
                              FROM bus_alerts a WHERE a.school_id=? AND a.created_at > (NOW() - INTERVAL 12 HOUR) ORDER BY a.id DESC LIMIT 30");
         $al->execute([$schoolId]);
         $alerts = $al->fetchAll();
@@ -505,15 +505,17 @@ if ($action === 'save_alert_settings') {
             jBus(false, 'School location galat hai.');
         $lat = (float)$lat; $lng = (float)$lng;
     } else { $lat = null; $lng = null; }
+    $askMin = $n('halt_ask_min', 1, 30, 3);
     try {
-        $pdo->prepare("INSERT INTO bus_alert_settings (school_id, overspeed_kmh, overspeed_sec, school_lat, school_lng, school_radius_m, deviation_m, deviation_sec, notify_parents, updated_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,NOW())
+        $pdo->prepare("INSERT INTO bus_alert_settings (school_id, overspeed_kmh, overspeed_sec, school_lat, school_lng, school_radius_m, deviation_m, deviation_sec, notify_parents, halt_ask_min, halt_admin_min, updated_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,NOW())
                        ON DUPLICATE KEY UPDATE overspeed_kmh=VALUES(overspeed_kmh), overspeed_sec=VALUES(overspeed_sec), school_lat=VALUES(school_lat),
                          school_lng=VALUES(school_lng), school_radius_m=VALUES(school_radius_m), deviation_m=VALUES(deviation_m),
-                         deviation_sec=VALUES(deviation_sec), notify_parents=VALUES(notify_parents), updated_at=NOW()")
+                         deviation_sec=VALUES(deviation_sec), notify_parents=VALUES(notify_parents),
+                         halt_ask_min=VALUES(halt_ask_min), halt_admin_min=VALUES(halt_admin_min), updated_at=NOW()")
             ->execute([$schoolId, $n('overspeed_kmh', 20, 120, 50), $n('overspeed_sec', 5, 300, 20), $lat, $lng,
                        $n('school_radius_m', 50, 1000, 150), $n('deviation_m', 150, 3000, 400), $n('deviation_sec', 30, 900, 90),
-                       !empty($_POST['notify_parents']) ? 1 : 0]);
+                       !empty($_POST['notify_parents']) ? 1 : 0, $askMin, max($askMin + 1, $n('halt_admin_min', 2, 60, 8))]);
     } catch (\Throwable $e) { jBus(false, 'Alert tables missing — run tools/migrate.php.'); }
     _slog('Bus alert settings updated', 'update');
     jBus(true, 'Alert settings save ho gayi.');
@@ -530,6 +532,43 @@ if ($action === 'get_alerts') {
         $st->execute([$schoolId]);
         jBus(true, '', ['alerts' => $st->fetchAll()]);
     } catch (\Throwable $e) { jBus(true, '', ['alerts' => []]); }
+}
+
+// ── broadcast_preview: suggested parent message + how many parents it reaches ─
+if ($action === 'broadcast_preview') {
+    require_once __DIR__ . '/../includes/bus_halt.php';
+    $alertId = (int)($_REQUEST['alert_id'] ?? 0); $busId = (int)($_REQUEST['bus_id'] ?? 0);
+    $trip = null; $text = '';
+    if ($alertId) {
+        $a = $pdo->prepare("SELECT * FROM bus_alerts WHERE id=? AND school_id=?");
+        $a->execute([$alertId, $schoolId]);
+        $alert = $a->fetch();
+        if (!$alert) jBus(false, 'Alert nahi mila.');
+        $text = busBroadcastDefault($pdo, $alert);
+        $busId = (int)$alert['bus_id'];
+        if ($alert['trip_id']) { $t = $pdo->prepare("SELECT * FROM bus_trips WHERE id=? AND school_id=?"); $t->execute([(int)$alert['trip_id'], $schoolId]); $trip = $t->fetch() ?: null; }
+    }
+    $b = $pdo->prepare("SELECT id, bus_name, bus_number FROM school_buses WHERE id=? AND school_id=?");
+    $b->execute([$busId, $schoolId]);
+    $bus = $b->fetch();
+    if (!$bus) jBus(false, 'Bus nahi mili.');
+    if (!$trip) $trip = busTripGetOpen($pdo, $busId);
+    if (!$text) $text = 'Suchna: ' . $bus['bus_name'] . ' (' . $bus['bus_number'] . ') — ';
+    jBus(true, '', ['text' => $text, 'bus' => $bus, 'shift' => $trip ? (int)$trip['shift_no'] : null,
+                    'count' => $trip ? count(busTripRecipients($pdo, $trip)) : 0,
+                    'sent_before' => !empty($alert['broadcast_at']) ? $alert['broadcast_at'] : null]);
+}
+
+// ── broadcast: send to every parent of that trip's shift (push + Messages) ───
+if ($action === 'broadcast') {
+    if (!$isAdmin) jBus(false, 'Admin only.');
+    csrfBus();
+    require_once __DIR__ . '/../includes/bus_halt.php';
+    require_once __DIR__ . '/../includes/bus_security.php';
+    if (!busRateHit($pdo, 'bcast:' . $schoolId, 30, 3600)) jBus(false, 'Ek ghante mein bahut zyada messages — thodi der baad.');
+    $r = busBroadcast($pdo, $schoolId, (int)($_POST['alert_id'] ?? 0) ?: null, (int)($_POST['bus_id'] ?? 0) ?: null, (string)($_POST['text'] ?? ''));
+    if ($r['ok']) _slog('Bus message sent to ' . $r['sent'] . ' parents', 'other');
+    jBus($r['ok'], $r['msg'], ['sent' => $r['sent']]);
 }
 
 // ── alerts_seen: mark all alerts up to an id as seen ─────────────────────────

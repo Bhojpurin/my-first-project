@@ -6,7 +6,7 @@
 
 // Which bus events also go into the Messages tab. Frequent "nearby" alerts stay push-only so the
 // Messages tab does not fill up (the ETA message already says when the bus will come).
-const BUS_MESSAGE_EVENTS = ['Bus trip shuru', 'Bus ETA', 'Bus school pahunchi', 'Bus school se nikli'];
+const BUS_MESSAGE_EVENTS = ['Bus trip shuru', 'Bus ETA', 'Bus school pahunchi', 'Bus school se nikli', 'Bus suchna'];
 
 if (is_file(__DIR__ . '/school_message_helper.php')) require_once __DIR__ . '/school_message_helper.php';
 

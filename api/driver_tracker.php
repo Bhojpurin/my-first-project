@@ -115,6 +115,18 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-i
   .stic{width:28px;height:28px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 5px #0009;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;color:#fff;background:#2563eb}
   .stic.nx{background:#f59e0b;color:#111;width:34px;height:34px;font-size:14px;animation:pulse 1.4s infinite}
   .stic.dn{background:#16a34a}.stic.ab{background:#64748b}
+  #haltModal{display:none;position:fixed;inset:0;z-index:3000;background:#000b;align-items:flex-end;justify-content:center;padding:12px}
+  #haltModal.show{display:flex}
+  .hm-box{width:100%;max-width:520px;background:#1e293b;border-radius:20px;padding:18px;border:2px solid #f59e0b;max-height:92vh;overflow:auto}
+  .hm-t{font-size:1.3rem;font-weight:800;color:#fbbf24}.hm-s{color:#cbd5e1;font-size:.9rem;margin:4px 0 12px}
+  .hm-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .hm-grid button,.hm-chips button{padding:14px 8px;border-radius:14px;border:2px solid #334155;background:#0f172a;color:#e2e8f0;font-size:1rem;font-weight:700;cursor:pointer}
+  .hm-grid button.sel,.hm-chips button.sel{border-color:#f59e0b;background:#422006}
+  .hm-chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.hm-chips button{flex:1;padding:10px 6px;font-size:.9rem}
+  #hmText{width:100%;margin-top:8px;padding:12px;border-radius:12px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:1rem;font-family:inherit}
+  .hm-send{width:100%;margin-top:10px;padding:16px;border:0;border-radius:14px;background:#dc2626;color:#fff;font-size:1.1rem;font-weight:800;cursor:pointer}
+  .hm-ok{width:100%;margin-top:8px;padding:12px;border:1px solid #334155;border-radius:14px;background:transparent;color:#86efac;font-size:.95rem;font-weight:700;cursor:pointer}
+  button#haltBtn{width:100%;margin:0 0 8px;padding:12px;border:1px solid #92400e;border-radius:14px;background:#422006;color:#fde68a;font-size:.95rem;font-weight:700;cursor:pointer}
   @keyframes pulse{0%{box-shadow:0 0 0 0 #f59e0bcc}70%{box-shadow:0 0 0 14px #f59e0b00}100%{box-shadow:0 0 0 0 #f59e0b00}}
 </style>
 </head>
@@ -136,6 +148,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-i
   </div>
 
   <button id="go" disabled>Trip Shuru Karein</button>
+  <button id="haltBtn" type="button" style="display:none">⚠️ Problem / der ki suchna school ko bhejein</button>
 
   <div id="mapBox">
     <div id="map"></div>
@@ -177,6 +190,24 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-i
   </div>
 </div>
 
+<div id="haltModal"><div class="hm-box">
+  <div class="hm-t" id="hmTitle">🛑 Bus ruki hui hai</div>
+  <div class="hm-s">Kya hua? Ek dabayein — school ko turant pata chal jayega. (Gaadi rok kar hi bharein)</div>
+  <div class="hm-grid" id="hmReasons">
+    <button type="button" data-r="puncture">🛞 Tyre puncture</button><button type="button" data-r="breakdown">🔧 Bus kharab</button>
+    <button type="button" data-r="traffic">🚦 Traffic jam</button><button type="button" data-r="fuel">⛽ Fuel / CNG</button>
+    <button type="button" data-r="road">🚧 Raasta band</button><button type="button" data-r="police">👮 Checking</button>
+    <button type="button" data-r="other" style="grid-column:1/-1">✍️ Kuch aur (likhein)</button>
+  </div>
+  <div id="hmMore" style="display:none">
+    <div style="margin-top:12px;color:#cbd5e1;font-size:.85rem">Kitni der lagegi?</div>
+    <div class="hm-chips" id="hmDelay"><button type="button" data-d="10">10 min</button><button type="button" data-d="20">20 min</button><button type="button" data-d="30">30 min</button><button type="button" data-d="60">1 ghanta+</button></div>
+    <textarea id="hmText" rows="2" maxlength="200" placeholder="Aur kuch batana ho (optional)"></textarea>
+    <button type="button" class="hm-send" id="hmSend">📤 School ko bhejein</button>
+  </div>
+  <button type="button" class="hm-ok" id="hmOk">✅ Sab theek hai — bas thodi der ruke hain</button>
+</div></div>
+
 <div id="dim"><b>Tracking chalu hai</b><span id="dimInfo"></span><div id="dimNext"></div><br>Screen par tap karein — wapas dikhega</div>
 
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
@@ -207,6 +238,8 @@ const CFG = {
   LEAVE_M: 60,           // ...and once this much further away again → auto ✔
   STOPS_REFRESH_MS: 300000,
   ROUTE_MAX: 90,         // stops per routing request
+  HALT_MOVE_M: 40,       // moving less than this = still the same halt
+  HALT_NEAR_M: 80,       // standing this close to a student's home = a normal stop, no question
   OFFROUTE_M: 60         // this far from the planned road (3 fixes in a row) → re-route
 };
 const $ = id => document.getElementById(id);
@@ -225,6 +258,7 @@ let stops = [], missing = [], order = [], orderFromPos = false, stopsLoadedAt = 
 let marks = [];                 // stop marks waiting to reach the server (offline-safe)
 let near = {};                  // per stop: {in, dwell, stopped, annArr, ann}
 let voiceOn = true, follow = true;
+let halt = {since: 0, lat: 0, lng: 0, asked: false, until: 0, reported: false}, haltCfg = {ask_min: 3, school: null}, haltSel = {r: '', d: null}, halts = [];
 let learned = null, tripKind = 'any', planSrc = 'local', dataCached = false, ignoreLearned = false, spdEma = 0;
 
 function store(k, v) { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }
@@ -478,6 +512,8 @@ function loop() {
   if (shifts.length && now - stopsLoadedAt > CFG.STOPS_REFRESH_MS) loadStops();   // students may move their pin
   if (road.cached && now % 30000 < 1000) requestRoute(true);                        // offline route → refresh when net is back
   postEtas(false);                                                                  // parents' ETA, once a minute
+  haltTick(now);
+  if (halts.length && now % 10000 < 1000) flushHalts();
   render();
 }
 
@@ -501,6 +537,7 @@ async function start() {
   running = true; startedAt = Date.now(); accepted = null; glitch = 0; lastPosAt = 0; kf.reset();
   store('trk_on_' + KEY, '1');
   $('go').textContent = 'Trip Khatam Karein'; $('go').classList.add('stop');
+  $('haltBtn').style.display = '';
   setState('warn', 'GPS dhoondh rahe hain…'); say(''); $('permBox').style.display = 'none';
   await getWake();
   startWatch();
@@ -517,6 +554,7 @@ function stop() {
   if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
   $('dim').classList.remove('show');
   $('go').textContent = 'Trip Shuru Karein'; $('go').classList.remove('stop');
+  $('haltBtn').style.display = 'none'; closeHalt(); halt.since = 0;
   setState('', 'Band hai — shift chunkar Start dabayein');
 }
 
@@ -651,6 +689,7 @@ async function loadStops() {
   const shiftChanged = stopsShift !== r.shift;
   stopsShift = r.shift; selShift = r.shift; tripKind = r.kind || 'any'; dataCached = !!r.cached;
   learned = r.learned || null;
+  if (r.halt) haltCfg = r.halt;
   // Local marks not yet on the server win over the server's (older) state
   const pend = {}; marks.forEach(m => { pend[m.id] = m.status; });
   stops = (r.stops || []).map(s => {
@@ -1080,6 +1119,76 @@ function renderWarn() {
   $('stopWarn').innerHTML = w.map(t => '<div class="warnbox">' + t + '</div>').join('');
 }
 
+// ── Unplanned halt: ask the driver why, tell the school ──────────────────
+function haltNormalPlace() {
+  if (!accepted) return true;
+  if (stops.some(s => dist(accepted.lat, accepted.lng, s.lat, s.lng) <= CFG.HALT_NEAR_M)) return true;
+  const sc = haltCfg.school;
+  return !!(sc && dist(accepted.lat, accepted.lng, sc.lat, sc.lng) <= Math.max(50, sc.r || 150) * 1.5);
+}
+function haltTick(now) {
+  if (!running || !accepted) { halt.since = 0; return; }
+  const away = halt.since ? dist(halt.lat, halt.lng, accepted.lat, accepted.lng) : 0;
+  if (accepted.speed < 1.5) {
+    if (!halt.since || away > CFG.HALT_MOVE_M) halt = {since: now, lat: accepted.lat, lng: accepted.lng, asked: false, until: 0, reported: false};
+  } else if (halt.since && away > CFG.HALT_MOVE_M + 20) {
+    halt.since = 0; return;                                     // driving again
+  }
+  if (!halt.since || halt.asked || halt.reported || now < halt.until || $('haltModal').classList.contains('show')) return;
+  if (now - halt.since >= Math.max(1, +haltCfg.ask_min || 3) * 60000 && !haltNormalPlace()) { halt.asked = true; openHalt(true); }
+}
+function openHalt(auto) {
+  haltSel = {r: '', d: null};
+  document.querySelectorAll('#hmReasons button, #hmDelay button').forEach(b => b.classList.remove('sel'));
+  $('hmText').value = ''; $('hmMore').style.display = 'none';
+  const min = halt.since ? Math.max(1, Math.round((Date.now() - halt.since) / 60000)) : 0;
+  $('hmTitle').textContent = auto ? '🛑 Bus ' + min + ' min se ruki hai' : '⚠️ School ko suchna bhejein';
+  $('dim').classList.remove('show');
+  $('haltModal').classList.add('show');
+  if (auto) { vibe(true); speak('Bus ' + min + ' minute se ruki hai. Kya hua, kripya batayein.'); }
+}
+function closeHalt() { $('haltModal').classList.remove('show'); }
+document.querySelectorAll('#hmReasons button').forEach(b => b.onclick = () => {
+  haltSel.r = b.dataset.r;
+  document.querySelectorAll('#hmReasons button').forEach(x => x.classList.toggle('sel', x === b));
+  $('hmMore').style.display = '';
+  $('hmText').placeholder = haltSel.r === 'other' ? 'Kya hua? (zaroori)' : 'Aur kuch batana ho (optional)';
+  if (haltSel.r === 'other') $('hmText').focus();
+});
+document.querySelectorAll('#hmDelay button').forEach(b => b.onclick = () => {
+  haltSel.d = +b.dataset.d;
+  document.querySelectorAll('#hmDelay button').forEach(x => x.classList.toggle('sel', x === b));
+});
+$('hmSend').onclick = () => {
+  const text = $('hmText').value.trim();
+  if (!haltSel.r) return;
+  if (haltSel.r === 'other' && text.length < 3) { $('hmText').focus(); return; }
+  halts.push({reason: haltSel.r, text, delay: haltSel.d ?? '', lat: accepted ? accepted.lat.toFixed(6) : '', lng: accepted ? accepted.lng.toFixed(6) : '',
+              halt_sec: halt.since ? Math.round((Date.now() - halt.since) / 1000) : 0, at: Date.now()});
+  store('trk_halts_' + KEY, JSON.stringify(halts));
+  halt.reported = true; closeHalt();
+  say('📤 School ko bhej diya' + (navigator.onLine ? '' : ' (net aate hi jayega)') + '. Admin parents ko suchit kar sakte hain.', 20000);
+  speak('School ko bata diya gaya');
+  flushHalts();
+};
+$('hmOk').onclick = () => { halt.asked = false; halt.until = Date.now() + 10 * 60000; closeHalt(); };   // ask again in 10 min if still here
+$('haltBtn').onclick = () => openHalt(false);
+let haltFlushing = false;
+async function flushHalts() {
+  if (haltFlushing || !halts.length) return;
+  haltFlushing = true;
+  try {
+    while (halts.length) {
+      const h = halts[0];
+      if (Date.now() - h.at > 6 * 3600000) { halts.shift(); continue; }     // too old to matter
+      const r = await tripCall('halt', {reason: h.reason, text: h.text, delay: h.delay, lat: h.lat, lng: h.lng,
+        halt_sec: h.halt_sec + Math.round((Date.now() - h.at) / 1000)});
+      if (!r) break;                                                           // offline — keep it
+      halts.shift();
+    }
+  } finally { store('trk_halts_' + KEY, halts.length ? JSON.stringify(halts) : null); haltFlushing = false; }
+}
+
 // ── Page events ───────────────────────────────────────────────────────────
 $('go').addEventListener('click', async () => {
   if (!running) { await start(); return; }
@@ -1115,6 +1224,7 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('online', () => {
   if (queue.length) flushQueue();
+  flushHalts();
   flushMarks();
   if (running && !tripOpen) tripStartNow();
   if (dataCached) loadStops();
@@ -1144,7 +1254,7 @@ function showPairScreen(title, text) {
 }
 function forgetBusData() {   // another bus / unpaired: nothing of the old bus may stay on this phone
   try { Object.keys(localStorage).filter(k => k.startsWith('trk_') || k === 'drv_token').forEach(k => localStorage.removeItem(k)); } catch (e) {}
-  TOKEN = ''; queue = []; marks = []; stops = []; order = [];
+  TOKEN = ''; queue = []; marks = []; stops = []; order = []; halts = [];
 }
 function unpaired() {
   forgetBusData();
@@ -1209,6 +1319,7 @@ $('unpairBtn').addEventListener('click', async () => {
   try { const k = JSON.parse(load('trk_km_' + KEY) || 'null'); if (k && k.d === new Date().toDateString()) km = +k.km || 0; } catch (e) {}
   voiceOn = load('trk_voice_' + KEY) !== '0'; $('voiceBtn').textContent = voiceOn ? '🔊' : '🔇';
   loadQueue(); loadMarks();
+  try { halts = JSON.parse(load('trk_halts_' + KEY) || '[]') || []; } catch (e) { halts = []; }
   render();
   checkPermission();
   // Offline support: the page, map library and viewed map tiles are kept on the phone by a service worker

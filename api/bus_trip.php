@@ -14,6 +14,7 @@
 //   action=mark_stop student_id= status=done|absent|pending [by=auto] [ago=sec]   (needs an open trip)
 //   action=set_order order=12,5,9       planned stop order of the open trip (shown to parents as "N stops before you")
 //   action=eta    etas=12:340,5:610     seconds until the bus reaches each home (parent ETA)
+//   action=halt   reason= text= delay= lat= lng= halt_sec=   why the bus stopped on the road (→ admin alert)
 //   action=unpair                       this phone gives up its token
 
 ob_start();
@@ -97,12 +98,23 @@ try {
         ] : null]);
     }
 
+    if ($action === 'halt') {
+        if (!busRateHit($pdo, 'halt:' . $bus['device_id'], 12, 3600)) busTooMany();
+        require_once __DIR__ . '/../includes/bus_halt.php';
+        $aid = busHaltReport($pdo, $bus, $_POST);
+        tOut(['ok' => (bool)$aid, 'msg' => $aid ? 'School ko bata diya gaya.' : 'Save nahi hua.']);
+    }
+
     if ($action === 'stops') {
         $open  = busTripGetOpen($pdo, $busId);
         $shift = $open ? (int)$open['shift_no'] : max(1, min(5, (int)($_POST['shift'] ?? 1)));
         $list  = busStopsForShift($pdo, $busId, $schoolId, $shift, $open ? (int)$open['id'] : null);
         $kind  = busTripKind($pdo, $busId, $schoolId, $shift, $open ? (string)$open['started_at'] : (string)$pdo->query("SELECT NOW()")->fetchColumn());
-        tOut(['ok' => true, 'shift' => $shift, 'kind' => $kind, 'trip' => $fmt($open), 'learned' => busLearnedProfile($pdo, $busId, $shift, $kind)] + $list);
+        require_once __DIR__ . '/../includes/bus_alerts.php';
+        $as = busAlertSettings($pdo, $schoolId);
+        tOut(['ok' => true, 'shift' => $shift, 'kind' => $kind, 'trip' => $fmt($open), 'learned' => busLearnedProfile($pdo, $busId, $shift, $kind),
+              'halt' => ['ask_min' => $as['halt_ask_min'], 'school' => $as['school_lat'] !== null
+                  ? ['lat' => $as['school_lat'], 'lng' => $as['school_lng'], 'r' => $as['school_radius_m']] : null]] + $list);
     }
 
     if (in_array($action, ['mark_stop', 'set_order', 'eta'], true)) {

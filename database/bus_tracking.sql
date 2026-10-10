@@ -135,6 +135,8 @@ CREATE TABLE IF NOT EXISTS bus_alert_settings (
   deviation_m      SMALLINT     NOT NULL DEFAULT 400,  -- this far from the learned everyday road = off route
   deviation_sec    SMALLINT     NOT NULL DEFAULT 90,
   notify_parents   TINYINT      NOT NULL DEFAULT 1,    -- "bus reached school / left school" to parents
+  halt_ask_min     SMALLINT     NOT NULL DEFAULT 3,    -- stopped on the road this long → driver is asked why
+  halt_admin_min   SMALLINT     NOT NULL DEFAULT 8,    -- ...and this long without an answer → admin alert
   updated_at       DATETIME     NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -149,8 +151,11 @@ CREATE TABLE IF NOT EXISTS bus_alerts (
   lng         DECIMAL(10,7) NULL,
   value       DECIMAL(8,1) NULL,           -- km/h for overspeed, metres for deviation
   message     VARCHAR(255) NOT NULL,
+  ref_id      INT         NULL,            -- bus_halt_reports.id for halt alerts
   created_at  DATETIME    NOT NULL,
   seen_at     DATETIME    NULL,
+  broadcast_at DATETIME   NULL,            -- admin sent it to the parents of that shift
+  broadcast_n INT         NOT NULL DEFAULT 0,
   KEY idx_school_time (school_id, created_at),
   KEY idx_bus_time (bus_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -164,5 +169,25 @@ CREATE TABLE IF NOT EXISTS bus_alert_state (
   over_alerted TINYINT  NOT NULL DEFAULT 0,
   at_school    TINYINT  NULL,              -- NULL = unknown yet (no alert on the first fix)
   off_since    DATETIME NULL,
-  off_alerted  TINYINT  NOT NULL DEFAULT 0
+  off_alerted  TINYINT  NOT NULL DEFAULT 0,
+  halt_alerted_for DATETIME NULL           -- still_since of the halt already reported to the admin
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Why did the bus stop on the road? Reported by the driver from the popup (or the "problem" button).
+CREATE TABLE IF NOT EXISTS bus_halt_reports (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  school_id   INT         NOT NULL,
+  bus_id      INT         NOT NULL,
+  trip_id     INT         NULL,
+  device_id   INT         NULL,
+  reason_code VARCHAR(12) NOT NULL,        -- puncture | breakdown | traffic | fuel | road | police | other
+  reason_text VARCHAR(200) NULL,
+  delay_min   SMALLINT    NULL,
+  lat         DECIMAL(10,7) NULL,
+  lng         DECIMAL(10,7) NULL,
+  halt_sec    INT         NULL,
+  created_at  DATETIME    NOT NULL,
+  resolved_at DATETIME    NULL,            -- the bus moved on
+  KEY idx_bus_open (bus_id, resolved_at),
+  KEY idx_school_time (school_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
