@@ -16,16 +16,19 @@
 //   search           find a student / staff by name or code
 //   get_settings     read attendance rules
 //   save_settings    save attendance rules (admin)
+//   card_payload     signed QR text for ID cards (admin)
+//   revoke_card      lost card: old printed card stops working, returns the new QR text (admin)
 //
 // Schema: this file does NOT create or check tables at runtime (that made every request slower).
-// Run attendance_scan_v2.sql ONCE in the database BEFORE uploading this file.
+// Run attendance_scan_v2.sql and then sql/attendance_fixes_v3.sql ONCE in the database BEFORE uploading this file.
 require_once __DIR__ . '/../includes/session.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/activity_log.php';
 require_once __DIR__ . '/../includes/subscription_gate.php';
 require_once __DIR__ . '/../includes/attendance_features.php';
+require_once __DIR__ . '/../includes/attendance_core.php';
 
-const TIME_RE      = '/^([01]\d|2[0-3]):[0-5]\d$/';
+const TIME_RE      = AttCore::TIME_RE;
 const SCAN_SOURCES = ['camera', 'scanner', 'manual', 'image', 'search', 'sync'];
 
 if (empty($_SESSION['logged_in'])) {
@@ -59,44 +62,12 @@ $stfCol = attCodeColumn($pdo, 'teachers', $FT['staff_code_field'], ATT_STAFF_COD
 /* ═══════════════════════════ Helpers ═══════════════════════════ */
 
 function getSettings(PDO $pdo, int $schoolId): array {
-    $keys = ['attendance_full_day_time', 'attendance_late_students', 'attendance_late_staff', 'attendance_min_gap',
-             'attendance_notify_parents', 'attendance_scan_start', 'attendance_scan_end'];
-    $in = implode(',', array_fill(0, count($keys), '?'));
-    $st = $pdo->prepare("SELECT setting_key, setting_val FROM school_settings WHERE school_id=? AND setting_key IN ($in)");
-    $st->execute([$schoolId, ...$keys]);
-    $raw = $st->fetchAll(PDO::FETCH_KEY_PAIR);
-    $t = fn(string $k): string => (isset($raw[$k]) && preg_match(TIME_RE, $raw[$k])) ? $raw[$k] : '';
-    return [
-        'full_day_time'  => $t('attendance_full_day_time') ?: '14:00',
-        'late_students'  => $t('attendance_late_students'),
-        'late_staff'     => $t('attendance_late_staff'),
-        'scan_start'     => $t('attendance_scan_start'),
-        'scan_end'       => $t('attendance_scan_end'),
-        'min_gap'        => isset($raw['attendance_min_gap']) ? max(1, min(60, (int)$raw['attendance_min_gap'])) : 5,
-        'notify_parents' => (($raw['attendance_notify_parents'] ?? '0') === '1'),
-    ];
+    return AttCore::rules($pdo, $schoolId);
 }
 
 function dayWarning(PDO $pdo, int $schoolId, string $date): string {
-    if ((int)date('N', strtotime($date)) === 7) return 'Today is Sunday.';
-    try {
-        $s = $pdo->prepare("SELECT 1 FROM school_holidays WHERE school_id=? AND date=? LIMIT 1");
-        $s->execute([$schoolId, $date]);
-        if ($s->fetchColumn()) return 'Today is marked as a school holiday.';
-    } catch (\Throwable $e) {}
-    return '';
-}
-
-/** Offline-synced scans carry the time they were really scanned. Accept it only when sane. */
-function effectiveScanTime(string $clientTs): array {
-    $now = time(); $ts = $now; $offline = 0;
-    if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $clientTs)) {
-        $c = strtotime($clientTs);
-        if ($c !== false && $c <= $now + 120 && $c >= $now - 36 * 3600 && ($now - $c) > 90) {
-            $ts = $c; $offline = 1;
-        }
-    }
-    return [date('Y-m-d H:i:s', $ts), $offline];
+    $r = AttCore::offDayReason($pdo, $schoolId, $date);
+    return $r === '' ? '' : ($date === date('Y-m-d') ? 'Today: ' : date('d/m/Y', strtotime($date)) . ': ') . $r;
 }
 
 function cleanGate(string $g): string {
@@ -142,9 +113,9 @@ function replayStored(PDO $pdo, int $schoolId, string $uid): void {
     }
 }
 
-function notifyGuardian(PDO $pdo, int $schoolId, int $studentId, string $scanType, string $status, string $timeLabel): void {
+function notifyGuardian(PDO $pdo, int $schoolId, int $studentId, string $scanType, string $status, string $timeLabel,
+                        string $day, int $scanId): void {
     try {
-        require_once __DIR__ . '/../includes/notifier.php';
         $st = $pdo->prepare("
             SELECT s.name, s.guardian_phone, s.email,
                    CONCAT(c.class_name, COALESCE(CONCAT(' ', sec.section_name), '')) AS class_label,
@@ -156,17 +127,18 @@ function notifyGuardian(PDO $pdo, int $schoolId, int $studentId, string $scanTyp
         $st->execute([$studentId, $schoolId]);
         $s = $st->fetch(PDO::FETCH_ASSOC);
         if (!$s || (empty($s['guardian_phone']) && empty($s['email']))) return;
-        sendSchoolNotification($schoolId, $scanType === 'in' ? 'student_checkin' : 'student_checkout', [
+        // Queued: the gate never waits for the SMS / WhatsApp gateway.
+        AttCore::queueNotify($pdo, $schoolId, $scanType === 'in' ? 'student_checkin' : 'student_checkout', [
             'student_id'   => $studentId,
             'student_name' => $s['name'],
             'class'        => $s['class_label'] ?? '',
             'time'         => $timeLabel,
             'status'       => $status,
-            'date'         => date('d/m/Y'),
+            'date'         => date('d/m/Y', strtotime($day)),
             'phone'        => $s['guardian_phone'] ?? '',
             'email'        => $s['email'] ?? '',
             'school_name'  => $s['school_name'] ?? 'School',
-        ]);
+        ], "scan:$scanId", 1);
     } catch (\Throwable $e) {
         error_log('scan notify: ' . $e->getMessage());
     }
@@ -174,23 +146,9 @@ function notifyGuardian(PDO $pdo, int $schoolId, int $studentId, string $scanTyp
 
 /* ═══════════════════════════ Smart voice (mini AI) ═══════════════════════════ */
 
-/** School days (no Sundays / holidays) before $day, newest first. */
+/** School days (no weekly offs / holidays) before $day, newest first. */
 function schoolDaysBack(PDO $pdo, int $schoolId, string $day, int $n = 30): array {
-    $start = date('Y-m-d', strtotime("$day -60 days"));
-    $end   = date('Y-m-d', strtotime("$day -1 day"));
-    $hol = [];
-    try {
-        $s = $pdo->prepare("SELECT date FROM school_holidays WHERE school_id=? AND date BETWEEN ? AND ?");
-        $s->execute([$schoolId, $start, $end]);
-        $hol = array_flip($s->fetchAll(PDO::FETCH_COLUMN));
-    } catch (\Throwable $e) {}
-    $out = []; $c = strtotime($end); $min = strtotime($start);
-    while (count($out) < $n && $c >= $min) {
-        $d = date('Y-m-d', $c);
-        if ((int)date('N', $c) !== 7 && !isset($hol[$d])) $out[] = $d;
-        $c = strtotime('-1 day', $c);
-    }
-    return $out;
+    return AttCore::schoolDaysBack($pdo, $schoolId, $day, $n, false);
 }
 
 /** Real data about this person that makes the voice message personal. */
@@ -394,8 +352,9 @@ function buildSpeech(array $c): array {
 
 /* ═══════════════════════════ get_settings ═══════════════════════════ */
 if ($action === 'get_settings') {
-    jsonResponse(true, '', ['settings' => getSettings($pdo, $schoolId), 'features' => $F, 'locked' => $FT['locked'],
-        'student_code_field' => $stuCol, 'staff_code_field' => $stfCol] + getSettings($pdo, $schoolId));
+    $S = getSettings($pdo, $schoolId);
+    jsonResponse(true, '', ['settings' => $S, 'features' => $F, 'locked' => $FT['locked'],
+        'student_code_field' => $stuCol, 'staff_code_field' => $stfCol] + $S);
 }
 
 /* ═══════════════════════════ save_settings (admin) ═══════════════════════════ */
@@ -423,6 +382,23 @@ if ($action === 'save_settings') {
     }
     if (isset($_POST['notify_parents'])) {
         $save['attendance_notify_parents'] = $_POST['notify_parents'] === '1' ? '1' : '0';
+    }
+    if (isset($_POST['weekly_off'])) {
+        $raw = trim((string)$_POST['weekly_off']);
+        $clean = AttCore::cleanWeeklyOff($raw);
+        if ($raw !== '' && count(explode(',', $clean)) !== count(array_filter(array_map('trim', explode(',', $raw)), 'strlen'))) {
+            jsonResponse(false, 'Invalid weekly off value.');
+        }
+        $save['attendance_weekly_off'] = $clean;
+    }
+    if (isset($_POST['edit_lock_days'])) {
+        $v = trim((string)$_POST['edit_lock_days']);
+        if (!ctype_digit($v) || (int)$v > 365) jsonResponse(false, 'Edit lock must be between 0 and 365 days.');
+        $save['attendance_edit_lock_days'] = (string)(int)$v;
+    }
+    if (isset($_POST['require_signed'])) {
+        $save['attendance_require_signed'] = $_POST['require_signed'] === '1' ? '1' : '0';
+        if ($save['attendance_require_signed'] === '1') AttCore::qrSecret($pdo, $schoolId, true);
     }
     if (isset($save['attendance_scan_start'], $save['attendance_scan_end'])
         && $save['attendance_scan_start'] !== '' && $save['attendance_scan_end'] !== ''
@@ -460,7 +436,7 @@ if ($action === 'save_settings') {
 
     logSchoolActivity($schoolId, $userId, $_SESSION['name'] ?? '', $_SESSION['role'] ?? '',
         'Attendance rules updated: ' . implode(', ', array_keys($save)), 'update', $pdo);
-    jsonResponse(true, 'Saved.', ['settings' => getSettings($pdo, $schoolId)]);
+    jsonResponse(true, 'Saved.', ['settings' => AttCore::rules($pdo, $schoolId, true)]);
 }
 
 /* ═══════════════════════════ scan ═══════════════════════════ */
@@ -485,7 +461,13 @@ if ($action === 'scan') {
     // Same scan sent twice (offline sync after a lost response) → return the stored result, never re-process.
     if ($clientUid !== '') replayStored($pdo, $schoolId, $clientUid);
 
-    [$nowStr, $isOffline] = effectiveScanTime($_POST['scanned_at'] ?? '');
+    // Real scan time = server time − how long the scan waited on the device (age_ms).
+    // The device clock is never trusted directly, so a phone with a wrong clock cannot shift scans.
+    [$nowStr, $isOffline, $ageSec, $timeErr] = AttCore::scanTime((string)($_POST['scanned_at'] ?? ''), (string)($_POST['age_ms'] ?? ''), time());
+    if ($timeErr === 'too_old') {
+        logReject($pdo, $schoolId, $userId, $raw, 'too_old', $gate);
+        jsonResponse(false, 'This offline scan is more than 36 hours old, so it was not recorded. Mark it from the Attendance page.', ['event' => 'rejected']);
+    }
     $day = substr($nowStr, 0, 10);
     $hm  = substr($nowStr, 11, 5);
     [$dayStart, $dayEnd] = dayBounds($day);
@@ -497,45 +479,84 @@ if ($action === 'scan') {
         jsonResponse(false, 'Scanning is closed right now. It is open from ' . ($S['scan_start'] ?: '00:00') . ' to ' . ($S['scan_end'] ?: '23:59') . '.', ['event' => 'closed']);
     }
 
-    // QR payloads are plain text — usually the admission_no / employee_code itself. As a fallback also try
-    // every alphanumeric token inside it (QR that encodes more than one column).
-    $candidates = [$raw];
-    if (preg_match_all('/[A-Za-z0-9\-\/]{3,}/', $raw, $m)) {
-        foreach ($m[0] as $tok) if (!in_array($tok, $candidates, true)) $candidates[] = $tok;
+    /* ── Who is this? ──
+       SZ1|S|<ver>|<code>|<sig>  signed card: type + code are fixed and verified
+       S:<code> / T:<code>       typed (name search, prefixed cards)
+       plain code                old cards: matched against students AND staff; if both match, refuse */
+    $P = AttCore::parseCode($raw);
+    if ($P['kind'] === 'bad') {
+        logReject($pdo, $schoolId, $userId, $raw, 'bad_card', $gate);
+        jsonResponse(false, 'This QR code looks damaged or edited, so it was not accepted.', ['event' => 'unknown']);
+    }
+    if ($S['require_signed'] && $P['kind'] !== 'signed' && !in_array($source, ['manual', 'search'], true)) {
+        logReject($pdo, $schoolId, $userId, $raw, 'unsigned', $gate);
+        jsonResponse(false, 'This is an old ID card. Your school only accepts the new secure cards. Ask the office for a new card, or use name search.', ['event' => 'unknown']);
     }
 
-    $entity = null; $entityType = null; $matchedCode = null;
-    if ($F['students'] && hasPermission('attendance', 'add')) {
-        foreach ($candidates as $code) {
+    $allowStu = $F['students'] && hasPermission('attendance', 'add') && $P['type'] !== 'staff';
+    $allowStf = $F['staff'] && hasPermission('staff_attendance', 'add') && $P['type'] !== 'student';
+
+    $lookup = function (array $codes) use ($pdo, $schoolId, $stuCol, $stfCol, $allowStu, $allowStf): array {
+        $found = [];
+        if (!$codes) return $found;
+        $ph = implode(',', array_fill(0, count($codes), '?'));
+        if ($allowStu) {
             $s = $pdo->prepare("
-                SELECT s.id, s.name, s.photo, s.class_id, s.section_id,
+                SELECT s.id, s.name, s.photo, s.class_id, s.section_id, s.`{$stuCol}` AS matched_code,
                        CONCAT(c.class_name, COALESCE(CONCAT(' ', sec.section_name), '')) AS class_label
                 FROM students s
                 LEFT JOIN classes c    ON c.id = s.class_id
                 LEFT JOIN sections sec ON sec.id = s.section_id
-                WHERE s.school_id=? AND s.`{$stuCol}`=? AND s.status='active' LIMIT 1");
-            $s->execute([$schoolId, $code]);
-            if ($row = $s->fetch(PDO::FETCH_ASSOC)) { $entity = $row; $entityType = 'student'; $matchedCode = $code; break; }
+                WHERE s.school_id=? AND s.`{$stuCol}` IN ($ph) AND s.status='active' LIMIT 10");
+            $s->execute([$schoolId, ...$codes]);
+            foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $r) $found['student:' . $r['id']] = ['student', $r, (string)$r['matched_code']];
         }
-    }
-    if (!$entity && $F['staff'] && hasPermission('staff_attendance', 'add')) {
-        foreach ($candidates as $code) {
+        if ($allowStf) {
             $t = $pdo->prepare("
-                SELECT t.id, u.name, t.photo, t.post
+                SELECT t.id, u.name, t.photo, t.post, t.`{$stfCol}` AS matched_code
                 FROM teachers t JOIN users u ON u.id = t.user_id
-                WHERE t.school_id=? AND t.`{$stfCol}`=? AND t.status='active' LIMIT 1");
-            $t->execute([$schoolId, $code]);
-            if ($row = $t->fetch(PDO::FETCH_ASSOC)) { $entity = $row; $entityType = 'staff'; $matchedCode = $code; break; }
+                WHERE t.school_id=? AND t.`{$stfCol}` IN ($ph) AND t.status='active' LIMIT 10");
+            $t->execute([$schoolId, ...$codes]);
+            foreach ($t->fetchAll(PDO::FETCH_ASSOC) as $r) $found['staff:' . $r['id']] = ['staff', $r, (string)$r['matched_code']];
         }
+        return array_values($found);
+    };
+
+    $matches = $lookup([$P['code']]);
+    if (!$matches && $P['kind'] === 'plain') {
+        // Old QR that encodes more than one column: try its alphanumeric pieces, but only accept
+        // the result if exactly ONE person matches (never guess between people).
+        $tokens = [];
+        if (preg_match_all('/[A-Za-z0-9\-\/]{3,}/', $raw, $m)) {
+            foreach ($m[0] as $tok) if ($tok !== $P['code'] && !in_array($tok, $tokens, true)) $tokens[] = $tok;
+        }
+        $matches = $lookup(array_slice($tokens, 0, 6));
     }
-    if (!$entity) {
+    if (!$matches) {
         logReject($pdo, $schoolId, $userId, $raw, 'unknown_id', $gate);
         jsonResponse(false, 'This ID is not linked to any active student or staff member.', ['event' => 'unknown']);
     }
+    if (count($matches) > 1) {
+        logReject($pdo, $schoolId, $userId, $raw, 'ambiguous', $gate);
+        $who = implode(', ', array_map(fn($x) => $x[1]['name'] . ' (' . ($x[0] === 'staff' ? 'staff' : 'student') . ')', array_slice($matches, 0, 3)));
+        jsonResponse(false, "This code belongs to more than one person: $who. Nothing was marked. Use name search, or print new secure ID cards.", ['event' => 'ambiguous']);
+    }
+    [$entityType, $entity, $matchedCode] = $matches[0];
+    $entityId = (int)$entity['id'];
 
-    $entityId  = (int)$entity['id'];
+    if ($P['kind'] === 'signed') {
+        $secret = AttCore::qrSecret($pdo, $schoolId, false);
+        if ($secret === '' || !hash_equals(AttCore::qrSign($secret, $schoolId, $P['letter'], $P['ver'], $P['code']), $P['sig'])) {
+            logReject($pdo, $schoolId, $userId, $raw, 'bad_signature', $gate);
+            jsonResponse(false, 'This ID card could not be verified. It may be a copy. Nothing was marked.', ['event' => 'unknown']);
+        }
+        if ($P['ver'] !== AttCore::cardVersion($pdo, $schoolId, $entityType, $entityId)) {
+            logReject($pdo, $schoolId, $userId, $raw, 'revoked_card', $gate);
+            jsonResponse(false, "This card of {$entity['name']} has been blocked (lost or replaced). Use the new card.", ['event' => 'unknown']);
+        }
+    }
+
     $isStudent = ($entityType === 'student');
-    $attTable  = $isStudent ? 'attendance' : 'staff_attendance';
     $lateAfter = $isStudent ? $S['late_students'] : $S['late_staff'];
     if (!$F['late']) $lateAfter = '';
     $canLate   = ($lateAfter !== '');
@@ -543,118 +564,111 @@ if ($action === 'scan') {
     $base      = entityPayload($entity, $entityType, (string)$matchedCode);
     $timeLabel = date('h:i A', strtotime($nowStr));
 
-    $scanType = null; $statusToSet = null; $message = ''; $scanId = 0;
+    for ($try = 1; ; $try++) {
+        $scanType = null; $statusToSet = null; $message = ''; $scanId = 0;
+        try {
+            $pdo->beginTransaction();
 
-    try {
-        $pdo->beginTransaction();
+            // Lock this person's scans for the day so two gates scanning the same card
+            // at the same moment cannot both decide "this is the check-in".
+            $chk = $pdo->prepare("
+                SELECT scan_type, scanned_at FROM attendance_scan_log
+                WHERE school_id=? AND entity_type=? AND entity_id=? AND scanned_at BETWEEN ? AND ? AND voided_at IS NULL
+                ORDER BY scanned_at ASC, id ASC FOR UPDATE");
+            $chk->execute([$schoolId, $entityType, $entityId, $dayStart, $dayEnd]);
+            $todayScans = $chk->fetchAll(PDO::FETCH_ASSOC);
 
-        // Lock this person's scans for the day so two gates scanning the same card
-        // at the same moment cannot both decide "this is the check-in".
-        $chk = $pdo->prepare("
-            SELECT scan_type, scanned_at FROM attendance_scan_log
-            WHERE school_id=? AND entity_type=? AND entity_id=? AND scanned_at BETWEEN ? AND ? AND voided_at IS NULL
-            ORDER BY scanned_at ASC, id ASC FOR UPDATE");
-        $chk->execute([$schoolId, $entityType, $entityId, $dayStart, $dayEnd]);
-        $todayScans = $chk->fetchAll(PDO::FETCH_ASSOC);
-
-        $inScan = null; $outScan = null;
-        foreach ($todayScans as $sc) {
-            if ($sc['scan_type'] === 'in'  && !$inScan)  $inScan  = $sc;
-            if ($sc['scan_type'] === 'out' && !$outScan) $outScan = $sc;
-        }
-
-        if (!$inScan) {
-            $scanType = 'in';
-            $isLate   = ($canLate && $hm > $lateAfter);
-            $statusToSet = $isLate ? 'late' : 'present';
-            $message  = $isLate ? "Welcome, {$entity['name']}! Marked late (after {$lateAfter})."
-                                : "Welcome, {$entity['name']}!";
-        } elseif (!$F['checkout']) {
-            // One-scan-per-day mode: arrival is already recorded.
-            $pdo->rollBack();
-            jsonResponse(true, "{$entity['name']} is already marked present today.", $base + ['event' => 'complete',
-                'speech' => buildSpeech(['name' => $entity['name'], 'type' => $entityType, 'event' => 'complete', 'hm' => $hm, 'in_only' => true])]);
-        } elseif (!$outScan) {
-            $gapMin = (strtotime($nowStr) - strtotime($inScan['scanned_at'])) / 60;
-            if ($gapMin < $S['min_gap']) {
-                $pdo->rollBack();
-                jsonResponse(true, "{$entity['name']} was already welcomed a moment ago.", $base + ['event' => 'duplicate',
-                    'speech' => buildSpeech(['name' => $entity['name'], 'type' => $entityType, 'event' => 'duplicate', 'hm' => $hm])]);
+            $inScan = null; $outScan = null;
+            foreach ($todayScans as $sc) {
+                if ($sc['scan_type'] === 'in'  && !$inScan)  $inScan  = $sc;
+                if ($sc['scan_type'] === 'out' && !$outScan) $outScan = $sc;
             }
-            $scanType  = 'out';
-            $inWasLate = ($canLate && substr($inScan['scanned_at'], 11, 5) > $lateAfter);
-            $isFullDay = (!$F['half_day'] || $hm >= $S['full_day_time']);
-            $statusToSet = $isFullDay ? ($inWasLate ? 'late' : 'present') : 'half_day';
-            $message = $isFullDay
-                ? "Good bye, {$entity['name']}! Full day attendance marked."
-                : "Good bye, {$entity['name']}! Half day marked (left before {$S['full_day_time']}).";
-        } else {
-            $pdo->rollBack();
-            jsonResponse(true, "{$entity['name']} has already been scanned in and out today.", $base + ['event' => 'complete',
-                'speech' => buildSpeech(['name' => $entity['name'], 'type' => $entityType, 'event' => 'complete', 'hm' => $hm])]);
-        }
 
-        $pdo->prepare("
-            INSERT INTO attendance_scan_log
-                (school_id, entity_type, entity_id, scan_type, raw_payload, matched_code, scanned_at, device_info, ip_address,
-                 scanned_by, client_uid, gate_name, source, status_set, is_offline_sync)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        ")->execute([
-            $schoolId, $entityType, $entityId, $scanType, substr($raw, 0, 255), $matchedCode, $nowStr,
-            substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255), substr($_SERVER['REMOTE_ADDR'] ?? '', 0, 45), $userId,
-            $clientUid !== '' ? $clientUid : null, $gate !== '' ? $gate : null, $source, $statusToSet, $isOffline,
-        ]);
-        $scanId = (int)$pdo->lastInsertId();
+            if (!$inScan) {
+                $scanType = 'in';
+                $isLate   = ($canLate && $hm > $lateAfter);
+                $statusToSet = $isLate ? 'late' : 'present';
+                $message  = $isLate ? "Welcome, {$entity['name']}! Marked late (after {$lateAfter})."
+                                    : "Welcome, {$entity['name']}!";
+            } elseif (!$F['checkout']) {
+                // One-scan-per-day mode: arrival is already recorded.
+                $pdo->rollBack();
+                jsonResponse(true, "{$entity['name']} is already marked present today.", $base + ['event' => 'complete',
+                    'speech' => buildSpeech(['name' => $entity['name'], 'type' => $entityType, 'event' => 'complete', 'hm' => $hm, 'in_only' => true])]);
+            } elseif (!$outScan) {
+                $gapMin = (strtotime($nowStr) - strtotime($inScan['scanned_at'])) / 60;
+                if ($gapMin < $S['min_gap']) {
+                    $pdo->rollBack();
+                    jsonResponse(true, "{$entity['name']} was already welcomed a moment ago.", $base + ['event' => 'duplicate',
+                        'speech' => buildSpeech(['name' => $entity['name'], 'type' => $entityType, 'event' => 'duplicate', 'hm' => $hm])]);
+                }
+                $scanType  = 'out';
+                $inWasLate = ($canLate && substr($inScan['scanned_at'], 11, 5) > $lateAfter);
+                $isFullDay = (!$F['half_day'] || $hm >= $S['full_day_time']);
+                $statusToSet = $isFullDay ? ($inWasLate ? 'late' : 'present') : 'half_day';
+                $message = $isFullDay
+                    ? "Good bye, {$entity['name']}! Full day attendance marked."
+                    : "Good bye, {$entity['name']}! Half day marked (left before {$S['full_day_time']}).";
+            } else {
+                $pdo->rollBack();
+                jsonResponse(true, "{$entity['name']} has already been scanned in and out today.", $base + ['event' => 'complete',
+                    'speech' => buildSpeech(['name' => $entity['name'], 'type' => $entityType, 'event' => 'complete', 'hm' => $hm])]);
+            }
 
-        if ($isStudent) {
+            // Write attendance first so we know what it was before (needed for an exact undo).
+            $w = AttCore::write($pdo, $schoolId, $entityType, $entityId, $day, $statusToSet, 'scan', $userId,
+                                $isStudent ? ['class_id' => $entity['class_id'] ?? null, 'section_id' => $entity['section_id'] ?? null] : []);
+
             $pdo->prepare("
-                INSERT INTO attendance (school_id, student_id, class_id, section_id, date, status, marked_by)
-                VALUES (?,?,?,?,?,?,?)
-                ON DUPLICATE KEY UPDATE status = VALUES(status), marked_by = VALUES(marked_by)
-            ")->execute([$schoolId, $entityId, $entity['class_id'] ?: null, $entity['section_id'] ?: null, $day, $statusToSet, $userId]);
-        } else {
-            $pdo->prepare("
-                INSERT INTO staff_attendance (school_id, teacher_id, date, status, marked_by)
-                VALUES (?,?,?,?,?)
-                ON DUPLICATE KEY UPDATE status = VALUES(status), marked_by = VALUES(marked_by)
-            ")->execute([$schoolId, $entityId, $day, $statusToSet, $userId]);
+                INSERT INTO attendance_scan_log
+                    (school_id, entity_type, entity_id, scan_type, raw_payload, matched_code, scanned_at, device_info, ip_address,
+                     scanned_by, client_uid, gate_name, source, status_set, prev_status, is_offline_sync, client_age_sec, received_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())
+            ")->execute([
+                $schoolId, $entityType, $entityId, $scanType, substr($raw, 0, 255), $matchedCode, $nowStr,
+                substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255), substr($_SERVER['REMOTE_ADDR'] ?? '', 0, 45), $userId,
+                $clientUid !== '' ? $clientUid : null, $gate !== '' ? $gate : null, $source, $statusToSet, $w['prev'], $isOffline, $ageSec,
+            ]);
+            $scanId = (int)$pdo->lastInsertId();
+
+            $facts  = $F['smart_voice'] ? scanFacts($pdo, $schoolId, $entityType, $entityId, $day, $scanType, $statusToSet) : [];
+            $speech = $F['smart_voice'] ? buildSpeech(['name' => $entity['name'], 'type' => $entityType, 'event' => $scanType,
+                                   'status' => $statusToSet, 'hm' => $hm, 'facts' => $facts]) : null;
+
+            $data = $base + [
+                'speech'       => $speech,
+                'facts'        => $facts,
+                'event'        => $scanType,
+                'status'       => $statusToSet,
+                'scan_id'      => $scanId,
+                'time'         => $timeLabel,
+                'late'         => ($statusToSet === 'late'),
+                'warning'      => $warning,
+                'offline_sync' => (bool)$isOffline,
+            ];
+            $pdo->prepare("UPDATE attendance_scan_log SET result_json=? WHERE id=?")
+                ->execute([json_encode(['message' => $message] + $data, JSON_UNESCAPED_UNICODE), $scanId]);
+
+            $pdo->commit();
+            break;
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            if ($try < 3 && AttCore::isRetryable($e)) { usleep(random_int(50000, 150000) * $try); continue; }
+            if ($clientUid !== '' && $e instanceof PDOException && (string)$e->getCode() === '23000') {
+                replayStored($pdo, $schoolId, $clientUid);   // raced with an identical request — return its result
+            }
+            error_log('attendance_scan: ' . $e->getMessage());
+            jsonResponse(false, 'Could not record attendance. Please try again.');
         }
-
-        $facts  = $F['smart_voice'] ? scanFacts($pdo, $schoolId, $entityType, $entityId, $day, $scanType, $statusToSet) : [];
-        $speech = $F['smart_voice'] ? buildSpeech(['name' => $entity['name'], 'type' => $entityType, 'event' => $scanType,
-                               'status' => $statusToSet, 'hm' => $hm, 'facts' => $facts]) : null;
-
-        $data = $base + [
-            'speech'       => $speech,
-            'facts'        => $facts,
-            'event'        => $scanType,
-            'status'       => $statusToSet,
-            'scan_id'      => $scanId,
-            'time'         => $timeLabel,
-            'late'         => ($statusToSet === 'late'),
-            'warning'      => $warning,
-            'offline_sync' => (bool)$isOffline,
-        ];
-        $pdo->prepare("UPDATE attendance_scan_log SET result_json=? WHERE id=?")
-            ->execute([json_encode(['message' => $message] + $data, JSON_UNESCAPED_UNICODE), $scanId]);
-
-        $pdo->commit();
-    } catch (\Throwable $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
-        if ($clientUid !== '' && $e instanceof PDOException && (string)$e->getCode() === '23000') {
-            replayStored($pdo, $schoolId, $clientUid);   // raced with an identical request — return its result
-        }
-        error_log('attendance_scan: ' . $e->getMessage());
-        jsonResponse(false, 'Could not record attendance. Please try again.');
     }
 
     logSchoolActivity($schoolId, $userId, $_SESSION['name'] ?? '', $_SESSION['role'] ?? '',
         ucfirst($entityType) . " attendance scanned: {$entity['name']} → " . ($scanType === 'in' ? 'check-in' : 'check-out') . " ($statusToSet)"
-        . ($gate !== '' ? " @ $gate" : ''), 'attendance', $pdo);
+        . ($gate !== '' ? " @ $gate" : '') . ($isOffline ? " [offline, scanned $nowStr]" : ''), 'attendance', $pdo);
 
-    // Optional parent message (skip stale offline replays older than 30 min)
+    // Optional parent message (skip stale offline replays older than 30 min). Queued, sent after the response.
     if ($isStudent && $S['notify_parents'] && (!$isOffline || (time() - strtotime($nowStr)) < 1800)) {
-        notifyGuardian($pdo, $schoolId, $entityId, $scanType, $statusToSet, $timeLabel);
+        notifyGuardian($pdo, $schoolId, $entityId, $scanType, $statusToSet, $timeLabel, $day, $scanId);
     }
 
     jsonResponse(true, $message, $data);
@@ -666,7 +680,6 @@ if ($action === 'undo') {
     requireActiveSubOrReject($pdo, 'school', $schoolId);
     $scanId = (int)($_POST['scan_id'] ?? 0);
     if ($scanId <= 0) jsonResponse(false, 'Invalid scan.');
-    $S = getSettings($pdo, $schoolId);
 
     try {
         $pdo->beginTransaction();
@@ -689,31 +702,42 @@ if ($action === 'undo') {
         $last->execute([$schoolId, $scan['entity_type'], $scan['entity_id'], $dayStart, $dayEnd]);
         if ((int)$last->fetchColumn() !== $scanId) { $pdo->rollBack(); jsonResponse(false, 'A later scan exists for this person. Undo that one first.'); }
 
-        $pdo->prepare("UPDATE attendance_scan_log SET voided_at=NOW(), voided_by=? WHERE id=?")->execute([$userId, $scanId]);
+        $eid  = (int)$scan['entity_id'];
+        $type = $scan['entity_type'];
 
-        $eid = (int)$scan['entity_id'];
-        if ($scan['scan_type'] === 'in') {
-            // The check-in created today's attendance row — remove it.
-            if ($isStudent) $pdo->prepare("DELETE FROM attendance WHERE school_id=? AND student_id=? AND date=?")->execute([$schoolId, $eid, $day]);
-            else            $pdo->prepare("DELETE FROM staff_attendance WHERE school_id=? AND teacher_id=? AND date=?")->execute([$schoolId, $eid, $day]);
+        // If someone changed this attendance after the scan (manual edit, "mark remaining absent"),
+        // undoing the scan must not silently overwrite their change.
+        $cur = AttCore::current($pdo, $schoolId, $type, $eid, $day);
+        if (!$cur || $cur['status'] !== $scan['status_set']) {
+            $pdo->rollBack();
+            jsonResponse(false, 'This attendance was changed after the scan (now: ' . ($cur['status'] ?? 'not marked')
+                . '). Change it from the Attendance page instead.');
+        }
+
+        // Put back exactly what was there before this scan.
+        if ($scan['prev_status'] !== null) {
+            $back = $scan['prev_status'];
+        } elseif ($scan['scan_type'] === 'in') {
+            $back = null;                                   // the check-in created the row
         } else {
-            // Undo a check-out: back to the status the check-in produced.
+            // Scans saved before prev_status existed: fall back to the check-in result.
             $inQ = $pdo->prepare("SELECT status_set FROM attendance_scan_log
                                   WHERE school_id=? AND entity_type=? AND entity_id=? AND scan_type='in' AND scanned_at BETWEEN ? AND ? AND voided_at IS NULL
                                   ORDER BY id ASC LIMIT 1");
-            $inQ->execute([$schoolId, $scan['entity_type'], $eid, $dayStart, $dayEnd]);
+            $inQ->execute([$schoolId, $type, $eid, $dayStart, $dayEnd]);
             $back = $inQ->fetchColumn() ?: 'present';
-            if ($isStudent) $pdo->prepare("UPDATE attendance SET status=?, marked_by=? WHERE school_id=? AND student_id=? AND date=?")->execute([$back, $userId, $schoolId, $eid, $day]);
-            else            $pdo->prepare("UPDATE staff_attendance SET status=?, marked_by=? WHERE school_id=? AND teacher_id=? AND date=?")->execute([$back, $userId, $schoolId, $eid, $day]);
         }
 
-        if ($isStudent) { $n = $pdo->prepare("SELECT name FROM students WHERE id=?"); $n->execute([$eid]); }
-        else { $n = $pdo->prepare("SELECT u.name FROM teachers t JOIN users u ON u.id=t.user_id WHERE t.id=?"); $n->execute([$eid]); }
+        $pdo->prepare("UPDATE attendance_scan_log SET voided_at=NOW(), voided_by=? WHERE id=?")->execute([$userId, $scanId]);
+        AttCore::write($pdo, $schoolId, $type, $eid, $day, $back, 'undo', $userId, ['reason' => "Undo of scan #$scanId"]);
+
+        if ($isStudent) { $n = $pdo->prepare("SELECT name FROM students WHERE id=? AND school_id=?"); $n->execute([$eid, $schoolId]); }
+        else { $n = $pdo->prepare("SELECT u.name FROM teachers t JOIN users u ON u.id=t.user_id WHERE t.id=? AND t.school_id=?"); $n->execute([$eid, $schoolId]); }
         $name = (string)$n->fetchColumn();
 
         $pdo->commit();
         logSchoolActivity($schoolId, $userId, $_SESSION['name'] ?? '', $_SESSION['role'] ?? '',
-            "Scan undone: $name ({$scan['scan_type']}, scan #$scanId)", 'update', $pdo);
+            "Scan undone: $name ({$scan['scan_type']}, scan #$scanId) → " . ($back ?? 'not marked'), 'update', $pdo);
         jsonResponse(true, "Scan undone for $name.", ['scan_id' => $scanId, 'name' => $name]);
     } catch (\Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
@@ -764,8 +788,9 @@ if ($action === 'summary') {
     $day = date('Y-m-d');
     [$dayStart, $dayEnd] = dayBounds($day);
 
-    $stuTotal = (int)$pdo->query("SELECT COUNT(*) FROM students WHERE school_id=$schoolId AND status='active'")->fetchColumn();
-    $stfTotal = (int)$pdo->query("SELECT COUNT(*) FROM teachers WHERE school_id=$schoolId AND status='active'")->fetchColumn();
+    $cnt = function (string $sql) use ($pdo, $schoolId): int { $s = $pdo->prepare($sql); $s->execute([$schoolId]); return (int)$s->fetchColumn(); };
+    $stuTotal = $cnt("SELECT COUNT(*) FROM students WHERE school_id=? AND status='active'");
+    $stfTotal = $cnt("SELECT COUNT(*) FROM teachers WHERE school_id=? AND status='active'");
 
     $by = function (string $sql) use ($pdo, $schoolId, $day): array {
         $s = $pdo->prepare($sql); $s->execute([$schoolId, $day]);
@@ -807,7 +832,7 @@ if ($action === 'summary') {
         FROM students s
         LEFT JOIN classes c    ON c.id = s.class_id
         LEFT JOIN sections sec ON sec.id = s.section_id
-        LEFT JOIN attendance a ON a.student_id = s.id AND a.date = ?
+        LEFT JOIN attendance a ON a.student_id = s.id AND a.school_id = s.school_id AND a.date = ?
         WHERE s.school_id=? AND s.status='active'
         GROUP BY s.class_id, s.section_id, c.class_name, sec.section_name
         ORDER BY c.class_name, sec.section_name LIMIT 80");
@@ -832,21 +857,21 @@ if ($action === 'not_arrived') {
     if ($type === 'student') {
         if (!hasPermission('attendance', 'add')) jsonResponse(false, 'Permission denied.');
         $q = $pdo->prepare("
-            SELECT s.name, s.admission_no AS code, s.guardian_phone AS phone,
+            SELECT s.name, s.`{$stuCol}` AS code, s.guardian_phone AS phone,
                    CONCAT(c.class_name, COALESCE(CONCAT(' ', sec.section_name), '')) AS sub
             FROM students s
             LEFT JOIN classes c    ON c.id = s.class_id
             LEFT JOIN sections sec ON sec.id = s.section_id
-            LEFT JOIN attendance a ON a.student_id = s.id AND a.date = ?
+            LEFT JOIN attendance a ON a.student_id = s.id AND a.school_id = s.school_id AND a.date = ?
             WHERE s.school_id=? AND s.status='active' AND a.student_id IS NULL
             ORDER BY c.class_name, sec.section_name, s.name LIMIT " . ($limit + 1));
     } else {
         if (!hasPermission('staff_attendance', 'add')) jsonResponse(false, 'Permission denied.');
         $q = $pdo->prepare("
-            SELECT u.name, t.employee_code AS code, '' AS phone, COALESCE(t.post, '') AS sub
+            SELECT u.name, t.`{$stfCol}` AS code, '' AS phone, COALESCE(t.post, '') AS sub
             FROM teachers t
             JOIN users u ON u.id = t.user_id
-            LEFT JOIN staff_attendance a ON a.teacher_id = t.id AND a.date = ?
+            LEFT JOIN staff_attendance a ON a.teacher_id = t.id AND a.school_id = t.school_id AND a.date = ?
             WHERE t.school_id=? AND t.status='active' AND a.teacher_id IS NULL
             ORDER BY u.name LIMIT " . ($limit + 1));
     }
@@ -868,37 +893,50 @@ if ($action === 'finalize_absent') {
     if ($warn !== '' && !$force) {
         jsonResponse(false, $warn . ' Marking everyone absent on a non-working day is usually a mistake.', ['needs_force' => true]);
     }
-    $stu = 0; $stf = 0;
-    try {
-        $pdo->beginTransaction();
-        if (in_array($type, ['both', 'student'], true) && hasPermission('attendance', 'add')) {
-            $s = $pdo->prepare("
-                INSERT INTO attendance (school_id, student_id, class_id, section_id, date, status, marked_by)
-                SELECT s.school_id, s.id, s.class_id, s.section_id, ?, 'absent', ?
-                FROM students s
-                WHERE s.school_id=? AND s.status='active'
-                  AND NOT EXISTS (SELECT 1 FROM attendance a WHERE a.student_id = s.id AND a.date = ?)");
-            $s->execute([$day, $userId, $schoolId, $day]);
-            $stu = $s->rowCount();
+    $stu = 0; $stf = 0; $absentStudents = [];
+    for ($try = 1; ; $try++) {
+        $stu = 0; $stf = 0; $absentStudents = [];
+        try {
+            $pdo->beginTransaction();
+            if (in_array($type, ['both', 'student'], true) && hasPermission('attendance', 'add')) {
+                $q = $pdo->prepare("
+                    SELECT s.id, s.class_id, s.section_id FROM students s
+                    WHERE s.school_id=? AND s.status='active'
+                      AND NOT EXISTS (SELECT 1 FROM attendance a WHERE a.school_id = s.school_id AND a.student_id = s.id AND a.date = ?)");
+                $q->execute([$schoolId, $day]);
+                foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    // INSERT IGNORE: a student who scans in at this exact moment keeps their scan.
+                    if (AttCore::insertIfMissing($pdo, $schoolId, 'student', (int)$r['id'], $day, 'absent', 'finalize', $userId,
+                                                 ['class_id' => $r['class_id'], 'section_id' => $r['section_id']])) {
+                        $stu++; $absentStudents[] = (int)$r['id'];
+                    }
+                }
+            }
+            if (in_array($type, ['both', 'staff'], true) && hasPermission('staff_attendance', 'add')) {
+                $q = $pdo->prepare("
+                    SELECT t.id FROM teachers t
+                    WHERE t.school_id=? AND t.status='active'
+                      AND NOT EXISTS (SELECT 1 FROM staff_attendance a WHERE a.school_id = t.school_id AND a.teacher_id = t.id AND a.date = ?)");
+                $q->execute([$schoolId, $day]);
+                foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $tid) {
+                    if (AttCore::insertIfMissing($pdo, $schoolId, 'staff', (int)$tid, $day, 'absent', 'finalize', $userId)) $stf++;
+                }
+            }
+            $pdo->commit();
+            break;
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            if ($try < 3 && AttCore::isRetryable($e)) { usleep(150000 * $try); continue; }
+            error_log('attendance_scan finalize: ' . $e->getMessage());
+            jsonResponse(false, 'Could not close attendance. Please try again.');
         }
-        if (in_array($type, ['both', 'staff'], true) && hasPermission('staff_attendance', 'add')) {
-            $s = $pdo->prepare("
-                INSERT INTO staff_attendance (school_id, teacher_id, date, status, marked_by)
-                SELECT t.school_id, t.id, ?, 'absent', ?
-                FROM teachers t
-                WHERE t.school_id=? AND t.status='active'
-                  AND NOT EXISTS (SELECT 1 FROM staff_attendance a WHERE a.teacher_id = t.id AND a.date = ?)");
-            $s->execute([$day, $userId, $schoolId, $day]);
-            $stf = $s->rowCount();
-        }
-        $pdo->commit();
-    } catch (\Throwable $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
-        error_log('attendance_scan finalize: ' . $e->getMessage());
-        jsonResponse(false, 'Could not close attendance. Please try again.');
     }
     logSchoolActivity($schoolId, $userId, $_SESSION['name'] ?? '', $_SESSION['role'] ?? '',
         "Attendance closed for $day: $stu students and $stf staff marked absent", 'create', $pdo);
+
+    // The 6-day absence alert used to run only from manual marking, so schools using the gate never got it.
+    if ($absentStudents) AttCore::checkConsecutiveAbsence($pdo, $schoolId, $absentStudents, $day);
+
     jsonResponse(true, "Marked absent: $stu students, $stf staff. Anyone who scans later will become Present.", ['students' => $stu, 'staff' => $stf]);
 }
 
@@ -920,7 +958,7 @@ if ($action === 'search') {
             ORDER BY s.name LIMIT 8");
         $s->execute([$schoolId, $like, $like]);
         foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $out[] = ['type' => 'student', 'name' => $r['name'], 'code' => $r['code'],
+            $out[] = ['type' => 'student', 'name' => $r['name'], 'code' => $r['code'], 'scan_code' => 'S:' . $r['code'],
                       'sub' => $r['class_label'] ?? '', 'photo' => scanPhotoUrl($r, 'student')];
         }
     }
@@ -932,11 +970,59 @@ if ($action === 'search') {
             ORDER BY u.name LIMIT 5");
         $t->execute([$schoolId, $like, $like]);
         foreach ($t->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $out[] = ['type' => 'staff', 'name' => $r['name'], 'code' => $r['code'],
+            $out[] = ['type' => 'staff', 'name' => $r['name'], 'code' => $r['code'], 'scan_code' => 'T:' . $r['code'],
                       'sub' => $r['post'] ?? '', 'photo' => scanPhotoUrl($r, 'staff')];
         }
     }
     jsonResponse(true, '', ['results' => $out]);
+}
+
+/* ═══════════════════════════ card_payload (admin) ═══════════════════════════ */
+// Signed QR text for ID cards. The ID card print page must put `payload` into the QR.
+if ($action === 'card_payload') {
+    if (!$isAdmin) jsonResponse(false, 'Only the school admin can do this.');
+    $type = ($_POST['type'] ?? '') === 'staff' ? 'staff' : 'student';
+    $ids  = array_slice(array_values(array_unique(array_filter(array_map('intval', explode(',', (string)($_POST['ids'] ?? '')))))), 0, 1000);
+    if (!$ids) jsonResponse(false, 'No people selected.');
+    $ph = implode(',', array_fill(0, count($ids), '?'));
+    $q = $type === 'student'
+        ? $pdo->prepare("SELECT s.id, s.name, s.`{$stuCol}` AS code FROM students s WHERE s.school_id=? AND s.id IN ($ph)")
+        : $pdo->prepare("SELECT t.id, u.name, t.`{$stfCol}` AS code FROM teachers t JOIN users u ON u.id=t.user_id WHERE t.school_id=? AND t.id IN ($ph)");
+    $q->execute([$schoolId, ...$ids]);
+    $out = [];
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        if ((string)$r['code'] === '') continue;
+        $out[] = ['id' => (int)$r['id'], 'name' => $r['name'], 'code' => $r['code'],
+                  'payload' => AttCore::cardPayload($pdo, $schoolId, $type, (int)$r['id'], (string)$r['code'])];
+    }
+    jsonResponse(true, '', ['cards' => $out]);
+}
+
+/* ═══════════════════════════ revoke_card (admin) ═══════════════════════════ */
+// Lost / stolen card: the old printed card stops working at once. Print a new card with the returned payload.
+if ($action === 'revoke_card') {
+    if (!$isAdmin) jsonResponse(false, 'Only the school admin can do this.');
+    $P = AttCore::parseCode((string)($_POST['code'] ?? ''));
+    if ($P['kind'] === 'bad' || $P['code'] === '') jsonResponse(false, 'Enter the ID code printed on the card.');
+    $found = [];
+    if ($P['type'] !== 'staff') {
+        $q = $pdo->prepare("SELECT id, name FROM students WHERE school_id=? AND `{$stuCol}`=?");
+        $q->execute([$schoolId, $P['code']]);
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) $found[] = ['student', $r];
+    }
+    if ($P['type'] !== 'student') {
+        $q = $pdo->prepare("SELECT t.id, u.name FROM teachers t JOIN users u ON u.id=t.user_id WHERE t.school_id=? AND t.`{$stfCol}`=?");
+        $q->execute([$schoolId, $P['code']]);
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) $found[] = ['staff', $r];
+    }
+    if (!$found) jsonResponse(false, 'No student or staff member has this ID code.');
+    if (count($found) > 1) jsonResponse(false, 'This code belongs to more than one person. Type S:' . $P['code'] . ' for the student or T:' . $P['code'] . ' for staff.');
+    [$type, $r] = $found[0];
+    $ver = AttCore::revokeCard($pdo, $schoolId, $type, (int)$r['id']);
+    $payload = AttCore::cardPayload($pdo, $schoolId, $type, (int)$r['id'], $P['code']);
+    logSchoolActivity($schoolId, $userId, $_SESSION['name'] ?? '', $_SESSION['role'] ?? '',
+        "ID card blocked and reissued: {$r['name']} ($type, card v$ver)", 'update', $pdo);
+    jsonResponse(true, "Old card of {$r['name']} is blocked. Print a new card with this QR text.", ['name' => $r['name'], 'type' => $type, 'payload' => $payload]);
 }
 
 jsonResponse(false, 'Unknown action.');

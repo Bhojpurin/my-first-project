@@ -11,6 +11,7 @@ $csrf     = csrfToken();
 $isAdmin  = ($user['role'] === ROLE_SCHOOL_ADMIN);
 
 require_once __DIR__ . '/../includes/attendance_features.php';
+require_once __DIR__ . '/../includes/attendance_core.php';
 $FT   = attFeatures($pdo, (int)$schoolId);
 $FEAT = $FT['effective'];
 
@@ -23,14 +24,17 @@ if (!$canScanStudents && !$canScanStaff) {
     require_once __DIR__ . '/school_footer.php'; exit;
 }
 
-$cfgDefaults = ['attendance_full_day_time' => '14:00', 'attendance_late_students' => '', 'attendance_late_staff' => '',
-                'attendance_min_gap' => '5', 'attendance_notify_parents' => '0',
-                'attendance_scan_start' => '', 'attendance_scan_end' => ''];
-$cfgStmt = $pdo->prepare("SELECT setting_key, setting_val FROM school_settings WHERE school_id=? AND setting_key IN ("
-    . implode(',', array_fill(0, count($cfgDefaults), '?')) . ")");
-$cfgStmt->execute([$schoolId, ...array_keys($cfgDefaults)]);
-$cfg = array_merge($cfgDefaults, $cfgStmt->fetchAll(PDO::FETCH_KEY_PAIR));
-$fullDayTime = $cfg['attendance_full_day_time'] ?: '14:00';
+$R   = AttCore::rules($pdo, (int)$schoolId);
+$cfg = [
+    'attendance_late_students'  => $R['late_students'],
+    'attendance_late_staff'     => $R['late_staff'],
+    'attendance_min_gap'        => $R['min_gap'],
+    'attendance_notify_parents' => $R['notify_parents'] ? '1' : '0',
+    'attendance_scan_start'     => $R['scan_start'],
+    'attendance_scan_end'       => $R['scan_end'],
+];
+$fullDayTime = $R['full_day_time'];
+$weeklyOff   = array_flip($R['weekly_off'] === '' ? [] : explode(',', $R['weekly_off']));
 ?>
 
 <style>
@@ -392,6 +396,24 @@ button.aa-pill{cursor:pointer;} button.aa-pill:hover{filter:brightness(.96);}
       <label>Ignore re-scan for (minutes)<input type="number" min="1" max="60" id="minGapInput" class="aa-in" value="<?= (int)$cfg['attendance_min_gap'] ?>"></label>
     </div>
     <label class="aa-check"><input type="checkbox" id="notifyParentsInput" <?= $cfg['attendance_notify_parents'] === '1' ? 'checked' : '' ?>> Send parents a message on check-in and check-out</label>
+    <div class="aa-fgroup">
+      <div class="aa-fg-title">Weekly off (no attendance, no absence alerts on these days)</div>
+      <div class="aa-ctrls" style="margin-top:4px;">
+        <?php foreach ([1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri', 6 => 'Sat', 7 => 'Sun'] as $dn => $dl): ?>
+        <label class="aa-check" style="margin:0 8px 0 0;"><input type="checkbox" data-wo="<?= $dn ?>" <?= isset($weeklyOff[(string)$dn]) ? 'checked' : '' ?>> <?= $dl ?></label>
+        <?php endforeach; ?>
+      </div>
+      <div class="aa-ctrls" style="margin-top:4px;">
+        <span class="aa-help" style="margin:0;">Or only these Saturdays of the month:</span>
+        <?php foreach ([1 => '1st', 2 => '2nd', 3 => '3rd', 4 => '4th', 5 => '5th'] as $k => $kl): ?>
+        <label class="aa-check" style="margin:0 8px 0 0;"><input type="checkbox" data-wo="6:<?= $k ?>" <?= isset($weeklyOff["6:$k"]) ? 'checked' : '' ?>> <?= $kl ?></label>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <div class="aa-rules" style="margin-top:10px;">
+      <label>Teachers can change attendance up to (days back)<input type="number" min="0" max="365" id="editLockInput" class="aa-in" value="<?= (int)$R['edit_lock_days'] ?>"></label>
+    </div>
+    <label class="aa-check"><input type="checkbox" id="requireSignedInput" <?= $R['require_signed'] ? 'checked' : '' ?>> Only accept new secure (signed) ID cards at the gate</label>
     <div class="aa-ctrls">
       <button class="aa-btn primary" type="button" id="btnSaveTiming"><span class="edu-spinner" id="fdtSpinner" style="display:none;"></span> Save rules</button>
       <button class="aa-btn" type="button" data-fd="12:00">Cutoff 12:00</button>
@@ -402,7 +424,19 @@ button.aa-pill{cursor:pointer;} button.aa-pill:hover{filter:brightness(.96);}
       First scan of the day = <b>Check-in</b> (Present). Second scan = <b>Check-out</b>: at or after the full day cutoff marks a full day, earlier marks a <b>Half day</b>.
       A first scan after the "late after" time is marked <b>Late</b>. Leave "late after" or the scanning window empty to switch that rule off.
       Parent messages need the events <code>student_checkin</code> and <code>student_checkout</code> to be set up in your notifier.
+      Turn on "secure cards" only after every student and staff member has a newly printed card; old cards stop working at the gate (name search still works).
     </p>
+  </div>
+
+  <div class="aa-card">
+    <h3><i class="bi bi-shield-lock" style="color:#dc2626;"></i> Lost ID card</h3>
+    <div class="aa-manual" style="margin-top:0;">
+      <input class="aa-in" id="revokeCodeInput" type="text" placeholder="ID code on the lost card (S:code / T:code if shared)" aria-label="ID code of lost card">
+      <button class="aa-btn danger" type="button" id="btnRevoke"><i class="bi bi-slash-circle"></i> Block &amp; reissue</button>
+    </div>
+    <div class="aa-help" id="revokeResult"></div>
+    <p class="aa-help">The old secure card stops working immediately. Print a new card whose QR holds the text shown above.
+      Old unsigned cards cannot be blocked this way; turn on "Only accept secure cards" for that.</p>
   </div>
   <?php endif; ?>
 
@@ -690,7 +724,10 @@ function notify(it) {
 async function postScan(code, at, uid, source) {
   const fd = new FormData();
   fd.append('csrf_token', csrfToken); fd.append('action', 'scan'); fd.append('code', code);
-  fd.append('scanned_at', sqlTs(at)); fd.append('gate', prefs.gate); fd.append('client_uid', uid); fd.append('source', source);
+  // age_ms = how long this scan waited on the device. The server subtracts it from ITS clock,
+  // so a phone with a wrong clock can no longer shift attendance times.
+  fd.append('scanned_at', sqlTs(at)); fd.append('age_ms', String(Math.max(0, Date.now() - at.getTime())));
+  fd.append('gate', prefs.gate); fd.append('client_uid', uid); fd.append('source', source);
   const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 15000);
   try {
     const r = await fetch(API, {method:'POST', body:fd, credentials:'same-origin', signal:ctl.signal});
@@ -709,6 +746,7 @@ async function handleCode(raw, source = 'camera') {
   const cd = ((source === 'manual' || source === 'search') ? Math.min(prefs.cooldown, 2) : prefs.cooldown) * 1000;
   if (last && now - last < cd) return;
   recent.set(code, now);
+  if (recent.size > 500) recent.forEach((t, k) => { if (now - t > 60000) recent.delete(k); });
   setStatus('Processing…');
   const at = new Date(), uid = uuid();
   if (!navigator.onLine) { offlineOrFail(code, at, uid, source); return; }
@@ -953,11 +991,30 @@ $('btnSaveTiming').onclick = async () => {
   const res = await callApi(form('save_settings', {
     full_day_time: $('fullDayTimeInput').value, late_students: $('lateStudentsInput').value, late_staff: $('lateStaffInput').value,
     scan_start: $('scanStartInput').value, scan_end: $('scanEndInput').value, min_gap: $('minGapInput').value,
-    notify_parents: $('notifyParentsInput').checked ? '1' : '0'}));
+    notify_parents: $('notifyParentsInput').checked ? '1' : '0',
+    weekly_off: [...document.querySelectorAll('[data-wo]')].filter(c => c.checked).map(c => c.dataset.wo).join(','),
+    edit_lock_days: $('editLockInput').value,
+    require_signed: $('requireSignedInput').checked ? '1' : '0'}));
   sp.style.display = 'none';
   const d = res.data || {success:false, message:'No connection. Please try again.'};
   eduShowAlert('pageAlert', d.message, d.success ? 'success' : 'danger');
   if (d.success) loadSummary();
+};
+// "Sat" (every Saturday) and "only some Saturdays" are exclusive.
+document.querySelectorAll('[data-wo]').forEach(c => c.addEventListener('change', () => {
+  if (!c.checked) return;
+  if (c.dataset.wo === '6') document.querySelectorAll('[data-wo^="6:"]').forEach(x => x.checked = false);
+  else if (c.dataset.wo.startsWith('6:')) { const all = document.querySelector('[data-wo="6"]'); if (all) all.checked = false; }
+}));
+$('btnRevoke').onclick = async () => {
+  const code = $('revokeCodeInput').value.trim();
+  if (!code) { toast('Enter the ID code of the lost card.', 'bad'); return; }
+  if (!confirm('Block the old card with code "' + code + '"? It will stop working at the gate immediately.')) return;
+  const res = await callApi(form('revoke_card', {code}));
+  const d = res.data || {success:false, message:'No connection. Please try again.'};
+  $('revokeResult').innerHTML = d.success
+    ? `${esc(d.message)}<br><b>New QR text:</b> <code style="user-select:all;word-break:break-all;">${esc(d.payload)}</code>`
+    : `<span style="color:var(--bad)">${esc(d.message)}</span>`;
 };
 const fin = $('btnFinalize');
 if (fin) fin.onclick = async () => {
@@ -1084,7 +1141,7 @@ $('aaFeed').addEventListener('click', e => { const b = e.target.closest('[data-u
   });
   sug.addEventListener('click', e => {
     const b = e.target.closest('[data-i]'); if (!b) return;
-    const r = rs[Number(b.dataset.i)]; sug.hidden = true; inp.value = ''; handleCode(r.code, 'search');
+    const r = rs[Number(b.dataset.i)]; sug.hidden = true; inp.value = ''; handleCode(r.scan_code || r.code, 'search');
   });
   $('manualForm').addEventListener('submit', () => { sug.hidden = true; });
   document.addEventListener('click', e => { if (!e.target.closest('.aa-manual-wrap')) sug.hidden = true; });
