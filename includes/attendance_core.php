@@ -29,7 +29,7 @@ final class AttCore
         if (!$fresh && isset(self::$rulesCache[$schoolId])) return self::$rulesCache[$schoolId];
         $keys = ['attendance_full_day_time', 'attendance_late_students', 'attendance_late_staff', 'attendance_min_gap',
                  'attendance_notify_parents', 'attendance_scan_start', 'attendance_scan_end', 'attendance_weekly_off',
-                 'attendance_edit_lock_days', 'attendance_require_signed'];
+                 'attendance_edit_lock_days', 'attendance_require_signed', 'attendance_absent_alert', 'attendance_absent_alert_time'];
         $in = implode(',', array_fill(0, count($keys), '?'));
         $st = $pdo->prepare("SELECT setting_key, setting_val FROM school_settings WHERE school_id=? AND setting_key IN ($in)");
         $st->execute([$schoolId, ...$keys]);
@@ -51,6 +51,8 @@ final class AttCore
             'weekly_off'      => $weekly,          // e.g. "7" or "7,6:2,6:4" (Sunday + 2nd & 4th Saturday)
             'edit_lock_days'  => $lock,            // teachers cannot change attendance older than this many days
             'require_signed'  => (($raw['attendance_require_signed'] ?? '0') === '1'),
+            'absent_alert'    => (($raw['attendance_absent_alert'] ?? '0') === '1'),   // "not reached school" message to parents
+            'absent_alert_time' => $t('attendance_absent_alert_time') ?: '10:00',
         ];
     }
 
@@ -451,21 +453,24 @@ final class AttCore
     }
 
     /**
-     * After the JSON response is out, send this school's pending messages.
+     * After the JSON response is out: run due daily jobs (if asked) and send this school's pending messages.
      * PHP-FPM / LiteSpeed: the browser already has its answer, nothing waits.
-     * mod_php: runs before the connection closes (same as before), still capped to a few messages.
+     * mod_php: runs before the connection closes, still capped to a few messages.
      */
-    public static function deferFlush(PDO $pdo, int $schoolId): void
+    public static function deferFlush(PDO $pdo, int $schoolId, bool $dailyJobs = false): void
     {
-        if (isset(self::$flushFor[$schoolId])) return;
-        self::$flushFor[$schoolId] = true;
+        $first = !isset(self::$flushFor[$schoolId]);
+        self::$flushFor[$schoolId] = (self::$flushFor[$schoolId] ?? false) || $dailyJobs;
+        if (!$first) return;
         register_shutdown_function(static function () use ($pdo, $schoolId) {
             if (session_status() === PHP_SESSION_ACTIVE) session_write_close();   // do not block this user's next request
             if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
             elseif (function_exists('litespeed_finish_request')) litespeed_finish_request();
             ignore_user_abort(true);
-            try { self::processQueue($pdo, 10, $schoolId); }
-            catch (\Throwable $e) { error_log('attendance notify flush: ' . $e->getMessage()); }
+            try {
+                if (self::$flushFor[$schoolId]) self::runDailyJobs($pdo, $schoolId);
+                self::processQueue($pdo, 10, $schoolId);
+            } catch (\Throwable $e) { error_log('attendance after-response: ' . $e->getMessage()); }
         });
     }
 
@@ -595,5 +600,164 @@ final class AttCore
         } catch (\Throwable $e) {
             return false;
         }
+    }
+
+    /* ───────────────────────── Daily automation ───────────────────────── */
+
+    /**
+     * Jobs that must run once a day per school. Called from the cron worker and, for schools
+     * without cron, after any gate / summary request (deferFlush with $dailyJobs = true).
+     * @return array job => result ('queued:N', or why it was skipped)
+     */
+    public static function runDailyJobs(PDO $pdo, int $schoolId, ?int $now = null): array
+    {
+        $now = $now ?? time();
+        return ['not_arrived' => self::notArrivedAlert($pdo, $schoolId, $now)];
+    }
+
+    /**
+     * "Your child has not reached school" — once a day, at the time the school chose, for every
+     * active student with no attendance yet (leave counts as attendance, so no message for leave).
+     *
+     * Safety rules, so a whole school never gets a wrong message:
+     *  - only on working days (weekly off and holidays skipped)
+     *  - only if the school is really taking attendance today: at least 30% of students marked/scanned
+     *    (an unmarked rain holiday or a broken gate phone would otherwise alert every parent)
+     *  - not more than 3 hours after the chosen time (a late run would only confuse parents)
+     *  - once per day per school, and once per student per day
+     */
+    public static function notArrivedAlert(PDO $pdo, int $schoolId, int $now): string
+    {
+        $r = self::rules($pdo, $schoolId);
+        if (!$r['absent_alert']) return 'off';
+        $day = date('Y-m-d', $now);
+        $hm  = date('H:i', $now);
+        if ($hm < $r['absent_alert_time']) return 'too_early';
+        if (self::offDayReason($pdo, $schoolId, $day) !== '') return 'off_day';
+
+        $doneKey = 'attendance_job_not_arrived';
+        $d = $pdo->prepare("SELECT setting_val FROM school_settings WHERE school_id=? AND setting_key=?");
+        $d->execute([$schoolId, $doneKey]);
+        if ($d->fetchColumn() === $day) return 'done';
+
+        $late = date('H:i', strtotime("$day {$r['absent_alert_time']}") + 3 * 3600);
+        $claim = function () use ($pdo, $schoolId, $doneKey, $day): bool {
+            $c = $pdo->prepare("INSERT INTO school_settings (school_id, setting_key, setting_val) VALUES (?,?,?)
+                                ON DUPLICATE KEY UPDATE setting_val = IF(setting_val = VALUES(setting_val), setting_val, VALUES(setting_val))");
+            $c->execute([$schoolId, $doneKey, $day]);
+            return $c->rowCount() > 0;   // 0 = another request already claimed today
+        };
+        if ($hm > $late) { $claim(); return 'too_late'; }
+
+        $c = $pdo->prepare("SELECT COUNT(*) AS total, COUNT(a.id) AS marked FROM students s
+                            LEFT JOIN attendance a ON a.school_id = s.school_id AND a.student_id = s.id AND a.date = ?
+                            WHERE s.school_id=? AND s.status='active'");
+        $c->execute([$day, $schoolId]);
+        $cnt = $c->fetch(PDO::FETCH_ASSOC);
+        $total = (int)$cnt['total']; $marked = (int)$cnt['marked'];
+        if ($total === 0 || $marked < max(1, (int)ceil($total * 0.3))) return 'too_few_marked';   // try again on a later request
+
+        if (!$claim()) return 'done';
+
+        $sn = $pdo->prepare("SELECT school_name FROM schools WHERE id=?");
+        $sn->execute([$schoolId]);
+        $schoolName = (string)($sn->fetchColumn() ?: 'School');
+        $q = $pdo->prepare("
+            SELECT s.id, s.name, s.guardian_phone, s.email,
+                   CONCAT(c.class_name, COALESCE(CONCAT(' ', sec.section_name), '')) AS class_label
+            FROM students s
+            LEFT JOIN classes c    ON c.id = s.class_id
+            LEFT JOIN sections sec ON sec.id = s.section_id
+            LEFT JOIN attendance a ON a.school_id = s.school_id AND a.student_id = s.id AND a.date = ?
+            WHERE s.school_id=? AND s.status='active' AND a.id IS NULL
+              AND (COALESCE(s.guardian_phone,'') <> '' OR COALESCE(s.email,'') <> '')");
+        $q->execute([$day, $schoolId]);
+        $n = 0;
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $s) {
+            if (self::queueNotify($pdo, $schoolId, 'student_not_arrived', [
+                'student_id'   => (int)$s['id'],
+                'student_name' => $s['name'],
+                'class'        => $s['class_label'] ?? '',
+                'date'         => date('d/m/Y', $now),
+                'time'         => date('h:i A', strtotime("$day {$r['absent_alert_time']}")),
+                'phone'        => $s['guardian_phone'] ?? '',
+                'email'        => $s['email'] ?? '',
+                'school_name'  => $schoolName,
+            ], "notarr:{$s['id']}:$day", 1)) $n++;
+        }
+        return "queued:$n";
+    }
+
+    /* ───────────────────────── Insights ───────────────────────── */
+
+    /**
+     * Students who need a teacher's attention, from the last 30 working days (today excluded):
+     *   - attendance below 75% (board exam eligibility), with at least 10 marked days
+     *   - absent on each of the last 3+ working days
+     *   - late 5+ times
+     * Sorted most serious first.
+     */
+    public static function needsAttention(PDO $pdo, int $schoolId, string $today, int $limit = 200): array
+    {
+        $days = self::schoolDaysBack($pdo, $schoolId, $today, 30, false);
+        if (!$days) return [];
+        $ph = implode(',', array_fill(0, count($days), '?'));
+        $q = $pdo->prepare("
+            SELECT a.student_id,
+                   SUM(a.status IN ('present','late')) AS full_days, SUM(a.status='half_day') AS half_days,
+                   SUM(a.status='late') AS lates, SUM(a.status='absent') AS absents, COUNT(*) AS marked
+            FROM attendance a
+            JOIN students s ON s.id = a.student_id AND s.school_id = a.school_id AND s.status='active'
+            WHERE a.school_id=? AND a.date IN ($ph)
+            GROUP BY a.student_id");
+        $q->execute([$schoolId, ...$days]);
+        $agg = [];
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) $agg[(int)$r['student_id']] = $r;
+
+        // Current absence streak from the most recent working days.
+        $recent = array_slice($days, 0, 10);
+        $rp = implode(',', array_fill(0, count($recent), '?'));
+        $q = $pdo->prepare("SELECT student_id, date, status FROM attendance WHERE school_id=? AND date IN ($rp) AND status='absent'");
+        $q->execute([$schoolId, ...$recent]);
+        $abs = [];
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) $abs[(int)$r['student_id']][$r['date']] = true;
+
+        $flag = [];
+        foreach ($agg as $sid => $r) {
+            $marked = (int)$r['marked'];
+            $pct = $marked ? (int)floor(((int)$r['full_days'] + 0.5 * (int)$r['half_days']) * 100 / $marked) : 100;
+            $streak = 0;
+            foreach ($recent as $d) { if (isset($abs[$sid][$d])) $streak++; else break; }
+            $why = [];
+            if ($streak >= 3) $why[] = ['streak', $streak];
+            if ($marked >= 10 && $pct < 75) $why[] = ['low', $pct];
+            if ((int)$r['lates'] >= 5) $why[] = ['late', (int)$r['lates']];
+            if ($why) $flag[$sid] = ['pct' => $pct, 'streak' => $streak, 'lates' => (int)$r['lates'], 'marked' => $marked, 'why' => $why];
+        }
+        if (!$flag) return [];
+        $key = fn($x) => [$x['streak'] >= 3 ? $x['streak'] : 0, -$x['pct'], $x['lates']];
+        uasort($flag, fn($a, $b) => $key($b) <=> $key($a));
+        $flag = array_slice($flag, 0, $limit, true);
+
+        $ids = array_keys($flag);
+        $ip = implode(',', array_fill(0, count($ids), '?'));
+        $q = $pdo->prepare("
+            SELECT s.id, s.name, s.guardian_phone,
+                   CONCAT(c.class_name, COALESCE(CONCAT(' ', sec.section_name), '')) AS class_label
+            FROM students s
+            LEFT JOIN classes c    ON c.id = s.class_id
+            LEFT JOIN sections sec ON sec.id = s.section_id
+            WHERE s.school_id=? AND s.id IN ($ip)");
+        $q->execute([$schoolId, ...$ids]);
+        $info = [];
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) $info[(int)$r['id']] = $r;
+
+        $out = [];
+        foreach ($flag as $sid => $f) {
+            if (!isset($info[$sid])) continue;
+            $out[] = ['id' => $sid, 'name' => $info[$sid]['name'], 'sub' => $info[$sid]['class_label'] ?? '',
+                      'phone' => $info[$sid]['guardian_phone'] ?? ''] + $f;
+        }
+        return $out;
     }
 }

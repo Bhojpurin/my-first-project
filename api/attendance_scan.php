@@ -420,6 +420,14 @@ if ($action === 'save_settings') {
         if (!ctype_digit($v) || (int)$v > 365) jsonResponse(false, 'Edit lock must be between 0 and 365 days.');
         $save['attendance_edit_lock_days'] = (string)(int)$v;
     }
+    if (isset($_POST['absent_alert'])) {
+        $save['attendance_absent_alert'] = $_POST['absent_alert'] === '1' ? '1' : '0';
+    }
+    if (isset($_POST['absent_alert_time'])) {
+        $t = trim((string)$_POST['absent_alert_time']);
+        if (!preg_match(TIME_RE, $t)) jsonResponse(false, 'Enter a valid time for the "not reached school" message (HH:MM).');
+        $save['attendance_absent_alert_time'] = $t;
+    }
     if (isset($_POST['require_signed'])) {
         $save['attendance_require_signed'] = $_POST['require_signed'] === '1' ? '1' : '0';
         if ($save['attendance_require_signed'] === '1') AttCore::qrSecret($pdo, $schoolId, true);
@@ -581,6 +589,7 @@ if ($action === 'scan') {
         }
     }
 
+    AttCore::deferFlush($pdo, $schoolId, true);
     $isStudent = ($entityType === 'student');
     $lateAfter = $isStudent ? $S['late_students'] : $S['late_staff'];
     if (!$F['late']) $lateAfter = '';
@@ -811,6 +820,7 @@ if ($action === 'recent') {
 
 /* ═══════════════════════════ summary ═══════════════════════════ */
 if ($action === 'summary') {
+    AttCore::deferFlush($pdo, $schoolId, true);   // daily jobs (e.g. "not reached school") for schools without cron
     $day = date('Y-m-d');
     [$dayStart, $dayEnd] = dayBounds($day);
 
@@ -1049,6 +1059,13 @@ if ($action === 'revoke_card') {
     logSchoolActivity($schoolId, $userId, $actorName, $actorRole,
         "ID card blocked and reissued: {$r['name']} ($type, card v$ver)", 'update', $pdo);
     jsonResponse(true, "Old card of {$r['name']} is blocked. Print a new card with this QR text.", ['name' => $r['name'], 'type' => $type, 'payload' => $payload]);
+}
+
+/* ═══════════════════════════ insights ═══════════════════════════ */
+// Students who need attention: below 75%, absent 3+ days in a row, or often late (last 30 working days).
+if ($action === 'insights') {
+    if (!$F['students'] || !(can('attendance', 'add') || can('attendance', 'edit'))) jsonResponse(false, 'Permission denied.');
+    jsonResponse(true, '', ['rows' => AttCore::needsAttention($pdo, $schoolId, date('Y-m-d'))]);
 }
 
 /* ═══════════════════════════ gate devices ═══════════════════════════ */

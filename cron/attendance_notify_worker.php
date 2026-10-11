@@ -1,6 +1,7 @@
 <?php
-// cron/attendance_notify_worker.php — sends queued attendance messages (check-in / check-out / 6-day absence)
-// and retries failed ones (up to 5 tries, waiting 1, 4, 9, 16 minutes).
+// cron/attendance_notify_worker.php — runs the daily attendance jobs ("not reached school" message),
+// sends queued attendance messages (check-in / check-out / 6-day absence / not reached) and retries
+// failed ones (up to 5 tries, waiting 1, 4, 9, 16 minutes).
 //
 // Messages are also sent right after each request, so this is the safety net for retries and
 // for servers without PHP-FPM. Run every minute:
@@ -11,6 +12,14 @@ require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/attendance_core.php';
 
 $pdo   = Database::connect();
+
+// Daily jobs ("not reached school" message) for every school that switched them on.
+$schools = $pdo->query("SELECT school_id FROM school_settings WHERE setting_key='attendance_absent_alert' AND setting_val='1'")->fetchAll(PDO::FETCH_COLUMN);
+foreach ($schools as $sid) {
+    try { AttCore::runDailyJobs($pdo, (int)$sid); }
+    catch (\Throwable $e) { error_log("attendance daily jobs school $sid: " . $e->getMessage()); }
+}
+
 $total = 0;
 $until = time() + 50;   // stay inside one cron minute
 do {

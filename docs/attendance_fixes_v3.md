@@ -13,6 +13,8 @@
    - `api/attendance_photo.php` (new)
    - `school/gate-sw.js` (new; must be served as a static file from `/school/`)
    - `assets/vendor/html5-qrcode/` (new; scanner library v2.3.8, Apache-2.0)
+   - `api/attendance_reports.php` (new)
+   - `school/attendance_register.php` (new; add a route `/school/attendance-register` if your site uses pretty URLs. The gate page links to that URL, or to the `.php` file when the gate page itself is opened as a `.php` URL)
 4. Optional, recommended: add a cron job that retries failed parent messages.
    `* * * * * php /path/to/site/cron/attendance_notify_worker.php`
 
@@ -42,6 +44,16 @@ The new PHP files use the new columns and tables, so step 2 must come before ste
 ### Still to do for photo privacy
 The old public URLs still work because other pages (student list, ID cards, …) use them. Once those pages also use `AttCore::photoUrl()`, block direct access with `assets/uploads/photos/.htaccess` (`Require all denied`) and the same for `teacher_photos`.
 
+## Phase 3: advanced features, simple to use
+
+Design rule: all the logic lives in the backend. A teacher or admin only sees one checkbox or one button.
+
+| Feature | What the user does | What the backend does |
+|---|---|---|
+| **"Not reached school" message to parents** | Admin ticks one box and picks a time (default 10:00). | Once a day, it queues `student_not_arrived` for every active student with no attendance, with phone or email. Students on leave and those already marked are skipped. Safety rules: working days only (weekly off and holidays skipped); at least 30% of students must be marked that day, so an unmarked rain holiday or a broken gate phone never alerts every parent; never more than 3 h after the chosen time; once per school per day and once per student per day. Runs from cron, or after gate/summary requests on servers without cron. Needs a `student_not_arrived` template in the notifier (and DLT for SMS). |
+| **Needs attention** | One button on the gate page. | Uses the last 30 working days. Flags absence streaks of 3+ days, attendance below 75% (board exam eligibility, needs at least 10 marked days) and 5+ lates. Most serious first, with a Call button. |
+| **Monthly register** | Pick a class (or Staff) and a month, then Show, Print or Excel. | Builds the inspection-format grid on the server: P / ½ / A / Lv / W / H, working days, totals, %, below-75% in red, present count per day. Prints A4 landscape with signature lines. |
+
 ## Not covered here (files not in this repo)
 
 - **Card printing:** the ID card print page must put `AttCore::cardPayload($pdo, $schoolId, 'student'|'staff', $id, $code)` into the QR. Until then, use the `card_payload` API (admin).
@@ -50,4 +62,4 @@ The old public URLs still work because other pages (student list, ID cards, …)
 
 ## Tests
 
-`tests/attendance/run_tests.sh` starts a throw-away MariaDB, runs the real API files against it with stubbed framework includes, and checks 73 cases covering every fix above (gate devices and photo links included). It needs `mariadb-server` and `php` with `pdo_mysql`.
+`tests/attendance/run_tests.sh` starts a throw-away MariaDB, runs the real API files against it with stubbed framework includes, and checks 97 cases covering every fix and feature above. It needs `mariadb-server` and `php` with `pdo_mysql`.

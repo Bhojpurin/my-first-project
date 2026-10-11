@@ -35,6 +35,9 @@ $cfg = [
 ];
 $fullDayTime = $R['full_day_time'];
 $weeklyOff   = array_flip($R['weekly_off'] === '' ? [] : explode(',', $R['weekly_off']));
+// Same URL style as this page (pretty URL or direct .php file).
+$registerUrl = BASE_URL . (str_contains((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH), '.php')
+    ? '/school/attendance_register.php' : '/school/attendance-register');
 ?>
 
 <style>
@@ -122,7 +125,7 @@ button.aa-pill{cursor:pointer;} button.aa-pill:hover{filter:brightness(.96);}
 
 /* controls */
 .aa-ctrls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px;}
-.aa-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;font-size:.84rem;font-weight:600;padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;min-height:40px;}
+.aa-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;text-decoration:none;font-size:.84rem;font-weight:600;padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;min-height:40px;}
 .aa-btn:hover{background:var(--chip);} .aa-btn:disabled{opacity:.45;cursor:not-allowed;}
 .aa-btn.primary{background:var(--brand);border-color:var(--brand);color:#fff;} .aa-btn.primary:hover{filter:brightness(1.08);background:var(--brand);}
 .aa-btn.danger{color:var(--bad);}
@@ -343,6 +346,8 @@ button.aa-pill{cursor:pointer;} button.aa-pill:hover{filter:brightness(.96);}
       <button class="aa-btn" type="button" id="btnNotStu"><i class="bi bi-person-x"></i> Students not arrived</button>
       <button class="aa-btn" type="button" id="btnNotStaff"><i class="bi bi-person-x"></i> Staff not arrived</button>
       <button class="aa-btn" type="button" id="btnClasses"><i class="bi bi-diagram-3"></i> Class-wise</button>
+      <button class="aa-btn" type="button" id="btnAttention"><i class="bi bi-exclamation-triangle"></i> Needs attention</button>
+      <a class="aa-btn" id="lnkRegister" href="<?= e($registerUrl) ?>"><i class="bi bi-journal-text"></i> Monthly register</a>
       <?php if ($isAdmin && $FEAT['finalize_absent']): ?><button class="aa-btn danger" type="button" id="btnFinalize"><i class="bi bi-calendar-x"></i> Mark remaining absent</button><?php endif; ?>
     </div>
   </div>
@@ -397,6 +402,10 @@ button.aa-pill{cursor:pointer;} button.aa-pill:hover{filter:brightness(.96);}
       <label>Ignore re-scan for (minutes)<input type="number" min="1" max="60" id="minGapInput" class="aa-in" value="<?= (int)$cfg['attendance_min_gap'] ?>"></label>
     </div>
     <label class="aa-check"><input type="checkbox" id="notifyParentsInput" <?= $cfg['attendance_notify_parents'] === '1' ? 'checked' : '' ?>> Send parents a message on check-in and check-out</label>
+    <div class="aa-check" style="flex-wrap:wrap;">
+      <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="absentAlertInput" <?= $R['absent_alert'] ? 'checked' : '' ?>> Tell parents if their child has not reached school by</label>
+      <input type="time" id="absentAlertTimeInput" class="aa-in" style="width:130px;" value="<?= e($R['absent_alert_time']) ?>">
+    </div>
     <div class="aa-fgroup">
       <div class="aa-fg-title">Weekly off (no attendance, no absence alerts on these days)</div>
       <div class="aa-ctrls" style="margin-top:4px;">
@@ -425,6 +434,8 @@ button.aa-pill{cursor:pointer;} button.aa-pill:hover{filter:brightness(.96);}
       First scan of the day = <b>Check-in</b> (Present). Second scan = <b>Check-out</b>: at or after the full day cutoff marks a full day, earlier marks a <b>Half day</b>.
       A first scan after the "late after" time is marked <b>Late</b>. Leave "late after" or the scanning window empty to switch that rule off.
       Parent messages need the events <code>student_checkin</code> and <code>student_checkout</code> to be set up in your notifier.
+      The "not reached school" message goes once a day, only on working days, and only if at least 30% of students
+      have been marked that day (so an unmarked holiday never alerts every parent). It needs the event <code>student_not_arrived</code> in your notifier.
       Turn on "secure cards" only after every student and staff member has a newly printed card; old cards stop working at the gate (name search still works).
     </p>
   </div>
@@ -1025,6 +1036,7 @@ $('btnSaveTiming').onclick = async () => {
     full_day_time: $('fullDayTimeInput').value, late_students: $('lateStudentsInput').value, late_staff: $('lateStaffInput').value,
     scan_start: $('scanStartInput').value, scan_end: $('scanEndInput').value, min_gap: $('minGapInput').value,
     notify_parents: $('notifyParentsInput').checked ? '1' : '0',
+    absent_alert: $('absentAlertInput').checked ? '1' : '0', absent_alert_time: $('absentAlertTimeInput').value,
     weekly_off: [...document.querySelectorAll('[data-wo]')].filter(c => c.checked).map(c => c.dataset.wo).join(','),
     edit_lock_days: $('editLockInput').value,
     require_signed: $('requireSignedInput').checked ? '1' : '0'}));
@@ -1152,6 +1164,24 @@ async function showClasses() {
   $('listBody').innerHTML = cl.length ? cl.map(c => `<div class="aa-cls"><span>${esc(c.label)}</span><div class="aa-bar"><i style="width:${pct(c.here, c.total)}%"></i></div><span class="num">${c.here}/${c.total}</span></div>`).join('')
     : '<div class="aa-empty">No class data yet.</div>';
 }
+async function showAttention() {
+  openList('Students who need attention', '<div class="aa-empty">Loading…</div>');
+  const res = await callApi(form('insights'));
+  if (res.net || !res.data || !res.data.success) { $('listBody').innerHTML = `<div class="aa-empty">${esc(res.data ? res.data.message : 'Could not load the list.')}</div>`; return; }
+  const rows = res.data.rows || [];
+  const chip = ([k, v]) => k === 'streak' ? `<span class="aa-badge" data-tone="bad">Absent ${v} days in a row</span>`
+    : k === 'low' ? `<span class="aa-badge" data-tone="warn">${v}% attendance</span>` : `<span class="aa-badge" data-tone="info">Late ${v} times</span>`;
+  $('listBody').innerHTML = rows.length
+    ? `<p class="aa-help" style="margin:8px 0">Last 30 working days. Below 75% can affect board exam eligibility.</p>` + rows.map(r => {
+        const tel = String(r.phone || '').replace(/[^\d+]/g, '');
+        return `<div class="aa-item" data-tone="${r.streak >= 3 ? 'bad' : 'warn'}">${avatar({name:r.name, photo:''})}
+          <div class="aa-item-main"><div class="aa-item-name">${esc(r.name)}${r.sub ? `<span class="aa-sub">${esc(r.sub)}</span>` : ''}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px;">${r.why.map(chip).join('')}</div></div>
+          ${tel ? `<a class="aa-btn" href="tel:${esc(tel)}" aria-label="Call guardian of ${esc(r.name)}"><i class="bi bi-telephone"></i> Call</a>` : ''}</div>`;
+      }).join('')
+    : '<div class="aa-empty">Good news: no student needs attention right now.</div>';
+}
+$('btnAttention').onclick = showAttention;
 $('btnAnnounce').onclick = announceSummary;
 $('btnNotStu').onclick = () => showNotArrived('student');
 $('btnNotStaff').onclick = () => showNotArrived('staff');
@@ -1221,7 +1251,7 @@ function applyFeatures() {
   if (!FEAT.live_gates) { const sg = document.querySelector('.aa-seg'); if (sg) sg.style.display = 'none'; }
   if (!FEAT.class_progress) hide('btnClasses');
   if (!FEAT.checkout) { hideStat('stOut'); hideStat('stHalf'); hideStat('stInside'); }
-  if (!FEAT.students) hide('btnNotStu');
+  if (!FEAT.students) { hide('btnNotStu'); hide('btnAttention'); }
   if (!FEAT.staff) hide('btnNotStaff');
   if (!FEAT.name_search) { const i = $('aaManual'); if (i) i.placeholder = 'Type or paste an ID code, then press Enter'; }
 }

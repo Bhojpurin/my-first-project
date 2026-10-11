@@ -13,7 +13,7 @@ copy("$HERE/stubs/run.php", "$SITE/run.php");
 copy("$HERE/stubs/run_get.php", "$SITE/run_get.php");
 @mkdir("$SITE/assets/uploads/photos", 0777, true);
 file_put_contents("$SITE/assets/uploads/photos/arun.jpg", "\xFF\xD8\xFF fake-jpeg-bytes");
-foreach (['api/attendance_scan.php', 'api/attendance_actions.php', 'api/attendance_photo.php', 'includes/attendance_core.php', 'cron/attendance_notify_worker.php'] as $f) copy("$REPO/$f", "$SITE/$f");
+foreach (['api/attendance_scan.php', 'api/attendance_actions.php', 'api/attendance_photo.php', 'api/attendance_reports.php', 'includes/attendance_core.php', 'cron/attendance_notify_worker.php'] as $f) copy("$REPO/$f", "$SITE/$f");
 $my = 'mariadb --socket=' . escapeshellarg($SOCK);
 shell_exec("$my < $HERE/base_schema.sql && $my sz < $REPO/sql/attendance_fixes_v3.sql");
 $pdo = new PDO("mysql:unix_socket=$SOCK;dbname=sz", 'root', '', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
@@ -239,6 +239,66 @@ $q("UPDATE students SET photo='../../../../etc/passwd' WHERE id=1");
 $s1 = req('api/attendance_scan.php', ['action' => 'search', 'q' => 'Arun']);
 [$c, $b] = $get((string)parse_url($s1['results'][0]['photo'] ?? '', PHP_URL_QUERY));
 ok($c === 404 && $b === '', 'path traversal in photo name cannot read other files', $c);
+
+echo "16. 'Not reached school' message: once a day, only when safe\n";
+$pdoC = Database::connect();
+ok(req('api/attendance_scan.php', ['action' => 'save_settings', 'absent_alert' => '1', 'absent_alert_time' => '10:00'], ADMIN)['success'], 'admin switches it on (one checkbox + time)');
+ok(!req('api/attendance_scan.php', ['action' => 'save_settings', 'absent_alert_time' => '25:00'], ADMIN)['success'], 'invalid time refused');
+AttCore::rules($pdoC, 1, true);
+$wed = '2026-10-07';                       // a normal Wednesday
+$q("DELETE FROM attendance WHERE date=?", [$wed]);
+$q("INSERT INTO attendance (school_id, student_id, date, status, marked_by) VALUES (1,1,?,'present',1),(1,2,?,'leave',1)", [$wed, $wed]);
+ok(AttCore::notArrivedAlert($pdoC, 1, strtotime("$wed 09:59")) === 'too_early', 'before 10:00: nothing');
+$res = AttCore::notArrivedAlert($pdoC, 1, strtotime("$wed 10:20"));
+$keys = $q("SELECT dedupe_key FROM attendance_notify_queue WHERE event_type='student_not_arrived' ORDER BY dedupe_key")->fetchAll(PDO::FETCH_COLUMN);
+ok($res === 'queued:2' && $keys === ["notarr:3:$wed", "notarr:5:$wed"], 'at 10:20: Ravi + Amit queued; present, on-leave and no-phone students skipped', [$res, $keys]);
+ok(AttCore::notArrivedAlert($pdoC, 1, strtotime("$wed 10:40")) === 'done', 'second run the same day does nothing');
+$thu = '2026-10-08';
+$q("DELETE FROM attendance WHERE date=?", [$thu]);
+$q("INSERT INTO attendance (school_id, student_id, date, status, marked_by) VALUES (1,1,?,'present',1)", [$thu]);
+ok(AttCore::notArrivedAlert($pdoC, 1, strtotime("$thu 10:20")) === 'too_few_marked', 'only 1 of 5 marked (attendance not really taken) → no mass message');
+ok(AttCore::notArrivedAlert($pdoC, 1, strtotime("2026-10-10 10:20")) === 'off_day', '2nd Saturday (weekly off) → nothing');
+$q("INSERT INTO school_holidays (school_id, date) VALUES (1, '2026-10-02')");
+ok(AttCore::notArrivedAlert($pdoC, 1, strtotime("2026-10-02 10:20")) === 'off_day', 'school holiday → nothing');
+ok(AttCore::notArrivedAlert($pdoC, 1, strtotime("2026-10-06 14:00")) === 'too_late', 'more than 3 hours late → skipped, not sent late');
+ok((int)$q("SELECT COUNT(*) FROM attendance_notify_queue WHERE event_type='student_not_arrived'")->fetchColumn() === 2, 'total messages: exactly 2');
+
+echo "17. Needs attention list\n";
+$days = AttCore::schoolDaysBack($pdoC, 1, $today, 30, false);
+$q("DELETE FROM attendance WHERE student_id IN (1,5) AND date IN (" . implode(',', array_fill(0, count($days), '?')) . ")", array_merge($days));
+foreach (array_slice($days, 0, 4) as $d) $q("INSERT INTO attendance (school_id, student_id, date, status, marked_by) VALUES (1,3,?,'absent',1)
+                                              ON DUPLICATE KEY UPDATE status='absent'", [$d]);
+foreach (array_slice($days, 5, 5) as $d) $q("INSERT INTO attendance (school_id, student_id, date, status, marked_by) VALUES (1,1,?,'late',1)", [$d]);
+foreach (array_slice($days, 0, 12) as $i => $d) $q("INSERT INTO attendance (school_id, student_id, date, status, marked_by) VALUES (1,5,?,?,1)", [$d, ($i % 3 === 0) ? 'present' : 'absent']);
+$r = req('api/attendance_scan.php', ['action' => 'insights']);
+$by = []; foreach ($r['rows'] ?? [] as $x) $by[$x['name']] = array_column($x['why'], 1, 0);
+ok($r['success'] && ($r['rows'][0]['name'] ?? '') === 'Ravi Das' && ($by['Ravi Das']['streak'] ?? 0) >= 3, 'Ravi (absent many days in a row) is first', $r['rows'] ?? $r);
+ok(isset($by['Amit Roy']['low']) && $by['Amit Roy']['low'] < 75 && !isset($by['Amit Roy']['streak']), 'Amit: below 75% flagged (not a streak)', $by['Amit Roy'] ?? null);
+ok(($by['Arun Kumar']['late'] ?? 0) === 5, 'Arun: late 5 times flagged', $by['Arun Kumar'] ?? null);
+ok(!isset($by['Priya Singh']), 'Priya (regular) not in the list');
+ok(!req('api/attendance_scan.php', ['action' => 'insights'], ['logged_in' => 0], ['GATE' => 'gd_1_' . str_repeat('a', 48)])['success'], 'gate device cannot see it');
+
+echo "18. Monthly register\n";
+$c = req('api/attendance_reports.php', ['action' => 'classes']);
+ok($c['success'] && ($c['classes'][0]['value'] ?? '') === '10:20' && $c['classes'][0]['count'] === 5, 'class list from real data', $c);
+$month = substr($wed, 0, 7);
+$g = req('api/attendance_reports.php', ['action' => 'register', 'class' => '10:20', 'month' => $month]);
+$names = array_column($g['rows'] ?? [], 'name');
+$cellOf = function ($name, $day) use ($g) { foreach ($g['rows'] as $r) if ($r['name'] === $name) return $r['cells'][$day - 1]; return null; };
+ok($g['success'] && count($g['rows']) === 5 && $names === ['Amit Roy', 'Arun Kumar', 'Neha Gupta', 'Priya Singh', 'Ravi Das'], '5 students, sorted by name', $names);
+$lateDay = (int)substr($days[5], 8, 2);   // Arun was late that day (test 17); late counts as P
+ok((substr($days[5], 0, 7) !== $month || $cellOf('Arun Kumar', $lateDay) === 'P') && $cellOf('Priya Singh', 7) === 'Lv' && $cellOf('Neha Gupta', 7) === '',
+   'late → P, leave → Lv, not marked → blank');
+ok($cellOf('Ravi Das', 4) === 'W' && $cellOf('Ravi Das', 10) === 'W' && $cellOf('Ravi Das', 2) === 'H', 'Sunday & 2nd Saturday = W, holiday = H');
+$day4 = $g['days'][3]; $workingExpected = 0;
+foreach ($g['days'] as $d) if (!$d['off'] && !$d['future']) $workingExpected++;
+ok($g['working'] === $workingExpected && $day4['off'] === 'W', 'working days counted on the server', [$g['working'], $workingExpected]);
+$s = req('api/attendance_reports.php', ['action' => 'register', 'class' => 'staff', 'month' => $month]);
+ok($s['success'] && count($s['rows']) === 2, 'staff register', $s['rows'] ?? $s);
+ok(!req('api/attendance_reports.php', ['action' => 'register', 'class' => '10:20', 'month' => '2099-01'])['success'], 'future month refused');
+ok(!req('api/attendance_reports.php', ['action' => 'register', 'class' => "10:20' OR 1", 'month' => $month])['success'], 'bad class value refused');
+$x = req('api/attendance_reports.php', ['action' => 'register', 'class' => '10:20', 'month' => $month], ['school_id' => 2] + ADMIN);
+ok($x['success'] && $x['rows'] === [], "another school sees none of these students");
 
 echo "\n$pass passed, $fail failed\n";
 exit($fail ? 1 : 0);
