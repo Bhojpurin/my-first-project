@@ -233,7 +233,7 @@ button.aa-pill{cursor:pointer;} button.aa-pill:hover{filter:brightness(.96);}
 @media(prefers-reduced-motion:reduce){.aa-frame::after,.aa-live-tag::before{animation:none;} .aa-stat b.pop{animation:none;} .aa-flash{transition:none;}}
 </style>
 
-<div class="aa2" id="aa2" data-eff="light">
+<div class="aa2" id="aa2" data-eff="light" data-sz-gate-page>
   <div id="pageAlert"></div>
 
   <!-- Top bar -->
@@ -245,6 +245,7 @@ button.aa-pill{cursor:pointer;} button.aa-pill:hover{filter:brightness(.96);}
     <div class="aa-pills">
       <span class="aa-pill" id="pillNet" data-tone="ok"><i class="bi bi-wifi"></i> <span>Online</span></span>
       <button class="aa-pill" id="pillQueue" type="button" style="display:none;" title="Scans saved offline. Tap to sync now."><i class="bi bi-cloud-arrow-up"></i> <span>0 waiting</span></button>
+      <button class="aa-pill" id="pillDevice" type="button" data-tone="ok" style="display:none;" title="This browser is a registered gate device. Tap to unlink."><i class="bi bi-shield-check"></i> <span>Gate device</span></button>
       <button class="aa-pill" id="btnKiosk" type="button" title="Fullscreen kiosk mode (Alt+K)"><i class="bi bi-fullscreen"></i> Full</button>
       <button class="aa-pill" id="btnSettings" type="button"><i class="bi bi-gear"></i> Settings</button>
     </div>
@@ -440,6 +441,18 @@ button.aa-pill{cursor:pointer;} button.aa-pill:hover{filter:brightness(.96);}
   </div>
   <?php endif; ?>
 
+  <?php if ($isAdmin): ?>
+  <div class="aa-card">
+    <h3><i class="bi bi-phone" style="color:#059669;"></i> Gate devices</h3>
+    <p class="aa-help" style="margin-top:0;">Register the phone or tablet kept at the gate. It then keeps scanning all day, even after the login on it expires,
+      and opens without internet. A gate device can only scan and see today's numbers. Remove it here if the phone is lost.</p>
+    <div class="aa-ctrls" style="margin-top:6px;">
+      <button class="aa-btn primary" type="button" id="btnRegDevice"><i class="bi bi-plus-circle"></i> Make this browser a gate device</button>
+    </div>
+    <div id="deviceList" style="margin-top:10px;"></div>
+  </div>
+  <?php endif; ?>
+
   <?php if ($isAdmin): ?></details><?php endif; ?>
 
   <div id="qrFileHost" hidden></div>
@@ -484,7 +497,8 @@ button.aa-pill{cursor:pointer;} button.aa-pill:hover{filter:brightness(.96);}
   </dialog>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="<?= BASE_URL ?>/assets/vendor/html5-qrcode/html5-qrcode.min.js"></script>
+<script>window.Html5Qrcode || document.write('<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"><\/script>');</script>
 <script>
 const csrfToken = <?= json_encode($csrf) ?>;
 </script>
@@ -505,6 +519,25 @@ const fmtTime = t => new Date(t).toLocaleTimeString([], {hour:'2-digit', minute:
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
 const jget = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
 const jset = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+
+/* ───────── Gate device token (keeps scanning after the login expires) ───────── */
+const GATE_KEY = 'aa_gate_device';
+let gateDevice = jget(GATE_KEY, null);          // {token, name}
+const gateHeaders = () => gateDevice && gateDevice.token ? {'X-Gate-Token': gateDevice.token} : {};
+function swTell(msg) { try { navigator.serviceWorker && navigator.serviceWorker.ready.then(r => r.active && r.active.postMessage(msg)); } catch (e) {} }
+function setGateDevice(d) {
+  gateDevice = d; if (d) jset(GATE_KEY, d); else { try { localStorage.removeItem(GATE_KEY); } catch (e) {} }
+  swTell({type:'gate-device', on:!!d}); if (!d) swTell({type:'gate-clear'});
+  updateDeviceUI();
+}
+function updateDeviceUI() {
+  const p = document.getElementById('pillDevice'); if (!p) return;
+  p.style.display = gateDevice ? 'inline-flex' : 'none';
+  if (gateDevice) p.querySelector('span').textContent = 'Gate device: ' + gateDevice.name;
+}
+function onAuthFail(data) {
+  if (data && data.device_revoked && gateDevice) { setGateDevice(null); toast('This gate device was removed by the admin. Please log in.', 'bad'); }
+}
 
 /* ───────── Preferences ───────── */
 const PREF_KEY = 'aa_prefs_v2';
@@ -730,9 +763,9 @@ async function postScan(code, at, uid, source) {
   fd.append('gate', prefs.gate); fd.append('client_uid', uid); fd.append('source', source);
   const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 15000);
   try {
-    const r = await fetch(API, {method:'POST', body:fd, credentials:'same-origin', signal:ctl.signal});
-    if (r.status === 401) return {auth:true, data:{success:false, message:'Session expired. Please log in again.'}};
+    const r = await fetch(API, {method:'POST', body:fd, credentials:'same-origin', signal:ctl.signal, headers:gateHeaders()});
     let data = null; try { data = await r.json(); } catch (e) {}
+    if (r.status === 401) { onAuthFail(data); return {auth:true, data:{success:false, message:(data && data.message) || 'Session expired. Please log in again.'}}; }
     if (!data) return {data:{success:false, message:'Server error. Please try again.'}};
     return {data};
   } catch (e) { return {net:true}; }
@@ -1016,6 +1049,39 @@ $('btnRevoke').onclick = async () => {
     ? `${esc(d.message)}<br><b>New QR text:</b> <code style="user-select:all;word-break:break-all;">${esc(d.payload)}</code>`
     : `<span style="color:var(--bad)">${esc(d.message)}</span>`;
 };
+async function loadDevices() {
+  const res = await callApi(form('device_list'));
+  const box = $('deviceList'); if (!box || !res.data || !res.data.success) return;
+  const ds = res.data.devices || [];
+  box.innerHTML = ds.length ? ds.map(d => `<div class="aa-item" data-tone="${d.last_seen_at ? 'ok' : 'mute'}">
+      <div class="aa-av"><i class="bi bi-phone"></i></div>
+      <div class="aa-item-main"><div class="aa-item-name">${esc(d.name)}${gateDevice && gateDevice.id === Number(d.id) ? '<span class="aa-sub">this browser</span>' : ''}</div>
+        <div class="aa-item-msg">Last seen: ${esc(d.last_seen_at || 'never')}${d.last_ip ? ' · ' + esc(d.last_ip) : ''}</div></div>
+      <button class="aa-btn danger" type="button" data-rmdev="${Number(d.id)}">Remove</button></div>`).join('')
+    : '<div class="aa-empty">No gate devices yet.</div>';
+}
+$('btnRegDevice').onclick = async () => {
+  if (gateDevice && !confirm('This browser is already the gate device "' + gateDevice.name + '". Register it again?')) return;
+  const name = (prompt('Name for this gate device:', prefs.gate || 'Main Gate') || '').trim();
+  if (!name) return;
+  const res = await callApi(form('device_register', {name}));
+  const d = res.data || {success:false, message:'No connection. Please try again.'};
+  if (d.success) {
+    const id = Number(String(d.token).split('_')[1]) || 0;
+    setGateDevice({token:d.token, name:d.name, id}); prefs.gate = d.name; savePrefs(); syncPrefUI(); loadDevices();
+  }
+  toast(d.message, d.success ? 'ok' : 'bad');
+};
+$('deviceList').addEventListener('click', async e => {
+  const b = e.target.closest('[data-rmdev]'); if (!b) return;
+  if (!confirm('Remove this gate device? It will stop scanning immediately.')) return;
+  const id = Number(b.dataset.rmdev);
+  const res = await callApi(form('device_revoke', {id}));
+  const d = res.data || {success:false, message:'No connection. Please try again.'};
+  toast(d.message, d.success ? 'ok' : 'bad');
+  if (d.success && gateDevice && gateDevice.id === id) setGateDevice(null);
+  loadDevices();
+});
 const fin = $('btnFinalize');
 if (fin) fin.onclick = async () => {
   if (!confirm('Mark everyone who has no attendance yet today as Absent?\nIf they scan later they will be changed to Present.')) return;
@@ -1030,9 +1096,9 @@ if (fin) fin.onclick = async () => {
 async function callApi(fd) {
   const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 15000);
   try {
-    const r = await fetch(API, {method:'POST', body:fd, credentials:'same-origin', signal:ctl.signal});
-    if (r.status === 401) return {auth:true, data:{success:false, message:'Session expired. Please log in again.'}};
+    const r = await fetch(API, {method:'POST', body:fd, credentials:'same-origin', signal:ctl.signal, headers:gateHeaders()});
     let d = null; try { d = await r.json(); } catch (e) {}
+    if (r.status === 401) { onAuthFail(d); return {auth:true, data:{success:false, message:(d && d.message) || 'Session expired. Please log in again.'}}; }
     return {data: d || {success:false, message:'Server error. Please try again.'}};
   } catch (e) { return {net:true}; }
   finally { clearTimeout(to); }
@@ -1182,8 +1248,21 @@ function tick() {
 }
 tick(); setInterval(tick, 1000);
 
+/* gate device pill: tap to unlink this browser */
+$('pillDevice').onclick = () => {
+  if (gateDevice && confirm('Unlink this browser from gate device "' + gateDevice.name + '"? It will need a login to scan again.')) setGateDevice(null);
+};
+
+/* offline page: a service worker keeps this page (and its scripts) available without internet */
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  navigator.serviceWorker.register('<?= BASE_URL ?>/school/gate-sw.js?page=' + encodeURIComponent(location.pathname), {scope:'<?= BASE_URL ?>/school/'})
+    .then(() => swTell({type:'gate-device', on:!!gateDevice}))
+    .catch(e => console.warn('Offline page not available:', e && e.message));
+}
+
 /* init */
-applyFeatures(); applyTheme(); syncPrefUI(); renderFeed(); updateNetUI(); flushQueue(); loadSummary(); loadAll();
+applyFeatures(); applyTheme(); syncPrefUI(); renderFeed(); updateNetUI(); updateDeviceUI(); flushQueue(); loadSummary(); loadAll();
+<?php if ($isAdmin): ?>loadDevices();<?php endif; ?>
 if (prefs.autoStart && FEAT.camera) startScanner();
 })();
 </script>

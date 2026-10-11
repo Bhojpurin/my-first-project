@@ -10,6 +10,9 @@
    - `api/attendance_scan.php`
    - `school/auto_attendance.php`
    - `cron/attendance_notify_worker.php` (new)
+   - `api/attendance_photo.php` (new)
+   - `school/gate-sw.js` (new; must be served as a static file from `/school/`)
+   - `assets/vendor/html5-qrcode/` (new; scanner library v2.3.8, Apache-2.0)
 4. Optional, recommended: add a cron job that retries failed parent messages.
    `* * * * * php /path/to/site/cron/attendance_notify_worker.php`
 
@@ -27,6 +30,18 @@ The new PHP files use the new columns and tables, so step 2 must come before ste
 | 6 | No audit trail. Undo deleted the row. A stale register could overwrite a scan. Any date could be edited. | Every write goes through `AttCore::write()`, which records `attendance_history` (old → new, source, who, reason). Undo restores the exact previous status and refuses if the record was changed after the scan. Bulk "absent" no longer overwrites a gate scan unless `override_scan=1`. Teachers are limited to N days back (default 7, configurable); future and invalid dates are refused. |
 | 7 | Smaller issues | Weekly off is configurable (e.g. 2nd/4th Saturday). `not_arrived` uses the configured ID column. Deadlocks are retried. `summary` uses prepared statements. Settings are no longer read twice. The parent message shows the scan's date. |
 
+## Phase 2: professional (same deploy)
+
+| Problem | Fix |
+|---|---|
+| The gate phone ran on a teacher's login. When the session expired mid-morning, scanning stopped. | **Gate devices.** The admin clicks "Make this browser a gate device". That browser gets a token, stored as a SHA-256 hash in `attendance_gate_device`. When the session expires, the page sends `X-Gate-Token`. A device can only scan and view (scan, recent, summary, not_arrived, search, get_settings), not undo, finalize, change settings or print cards. Lost phone: Remove. Scans record `gate_device_id`. |
+| Offline queue existed, but the page would not open at all without internet after a reload. | **Service worker** `school/gate-sw.js`. It handles only the gate page and its scripts: network first, last good copy when offline. Other school pages are untouched. After logout a normal browser sees the login page as usual. Only a registered gate device keeps its scanner. Needs HTTPS. |
+| The scanner library came only from jsDelivr. If the CDN was down, there was no scanning. | **Library served from your own server** (`assets/vendor/html5-qrcode`). jsDelivr is now only a fallback. |
+| Student photos were public, permanent URLs (`/assets/uploads/photos/...`), a DPDP Act concern. | **Signed photo links.** This page now uses `api/attendance_photo.php` links. They are signed per school, expire after 12-18 h, break if the photo changes, and are protected against path traversal. |
+
+### Still to do for photo privacy
+The old public URLs still work because other pages (student list, ID cards, …) use them. Once those pages also use `AttCore::photoUrl()`, block direct access with `assets/uploads/photos/.htaccess` (`Require all denied`) and the same for `teacher_photos`.
+
 ## Not covered here (files not in this repo)
 
 - **Card printing:** the ID card print page must put `AttCore::cardPayload($pdo, $schoolId, 'student'|'staff', $id, $code)` into the QR. Until then, use the `card_payload` API (admin).
@@ -35,4 +50,4 @@ The new PHP files use the new columns and tables, so step 2 must come before ste
 
 ## Tests
 
-`tests/attendance/run_tests.sh` starts a throw-away MariaDB, runs the real API files against it with stubbed framework includes, and checks 52 cases covering every fix above. It needs `mariadb-server` and `php` with `pdo_mysql`.
+`tests/attendance/run_tests.sh` starts a throw-away MariaDB, runs the real API files against it with stubbed framework includes, and checks 73 cases covering every fix above (gate devices and photo links included). It needs `mariadb-server` and `php` with `pdo_mysql`.

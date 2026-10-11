@@ -31,27 +31,50 @@ require_once __DIR__ . '/../includes/attendance_core.php';
 const TIME_RE      = AttCore::TIME_RE;
 const SCAN_SOURCES = ['camera', 'scanner', 'manual', 'image', 'search', 'sync'];
 
-if (empty($_SESSION['logged_in'])) {
-    jsonResponse(false, 'Your session has expired. Please log in again.', [], 401);
-}
-if (!in_array($_SESSION['role'], [ROLE_SCHOOL_ADMIN, ROLE_TEACHER])) {
-    jsonResponse(false, 'Permission denied.', [], 403);
-}
+// Gate devices may only do these. Everything else needs a logged-in admin / teacher.
+const DEVICE_ACTIONS = ['scan', 'recent', 'summary', 'not_arrived', 'search', 'get_settings'];
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     jsonResponse(false, 'Invalid request method.');
 }
 
-$csrf     = $_POST['csrf_token'] ?? '';
-$schoolId = (int)$_SESSION['school_id'];
-$userId   = (int)$_SESSION['user_id'];
-$isAdmin  = (($_SESSION['role'] ?? '') === ROLE_SCHOOL_ADMIN);
+$pdo    = Database::connect();
+$action = $_POST['action'] ?? '';
+$csrf   = $_POST['csrf_token'] ?? '';
+$device = null;   // set when the request is authenticated by a registered gate device instead of a login
 
-if (!verifyCsrf($csrf)) {
+$sessionOk = !empty($_SESSION['logged_in']) && in_array($_SESSION['role'] ?? '', [ROLE_SCHOOL_ADMIN, ROLE_TEACHER], true);
+if ($sessionOk && verifyCsrf($csrf)) {
+    $schoolId  = (int)$_SESSION['school_id'];
+    $userId    = (int)$_SESSION['user_id'];
+    $isAdmin   = (($_SESSION['role'] ?? '') === ROLE_SCHOOL_ADMIN);
+    $actorName = (string)($_SESSION['name'] ?? '');
+    $actorRole = (string)($_SESSION['role'] ?? '');
+} elseif (($tok = (string)($_SERVER['HTTP_X_GATE_TOKEN'] ?? '')) !== '') {
+    // Registered gate phone: keeps working when the teacher's session has expired.
+    // A header token is not sent by the browser on its own, so CSRF does not apply here.
+    $device = AttCore::deviceAuth($pdo, $tok);
+    if (!$device) jsonResponse(false, 'This gate device was removed or is not registered. Ask the school admin to register it again.', ['device_revoked' => true], 401);
+    if (!in_array($action, DEVICE_ACTIONS, true)) jsonResponse(false, 'Please log in to do this.', [], 403);
+    $schoolId  = (int)$device['school_id'];
+    $userId    = (int)$device['created_by'];
+    $isAdmin   = false;
+    $actorName = 'Gate device: ' . $device['name'];
+    $actorRole = 'gate_device';
+} elseif (empty($_SESSION['logged_in'])) {
+    jsonResponse(false, 'Your session has expired. Please log in again.', [], 401);
+} elseif (!$sessionOk) {
+    jsonResponse(false, 'Permission denied.', [], 403);
+} else {
     jsonResponse(false, 'Session expired. Please reload the page.', [], 401);
 }
 
-$pdo    = Database::connect();
-$action = $_POST['action'] ?? '';
+/** Permission check that also covers gate devices (they may only add attendance). */
+function can(string $module, string $act): bool {
+    global $device;
+    if ($device) return $act === 'add' && in_array($module, ['attendance', 'staff_attendance'], true);
+    return hasPermission($module, $act);
+}
 
 // Per-school feature switches (school choice AND plan allowance) + which column the ID card holds.
 $FT     = attFeatures($pdo, $schoolId);
@@ -76,10 +99,11 @@ function cleanGate(string $g): string {
 
 function dayBounds(string $day): array { return [$day . ' 00:00:00', $day . ' 23:59:59']; }
 
+/** Signed, expiring photo link (api/attendance_photo.php), never the public uploads URL. */
 function scanPhotoUrl(array $entity, string $entityType): string {
-    if (empty($entity['photo'])) return '';
-    $folder = $entityType === 'student' ? 'photos' : 'teacher_photos';
-    return BASE_URL . '/assets/uploads/' . $folder . '/' . $entity['photo'];
+    global $pdo, $schoolId;
+    if (empty($entity['photo']) || empty($entity['id'])) return '';
+    return AttCore::photoUrl($pdo, (int)$schoolId, $entityType, (int)$entity['id'], (string)$entity['photo']);
 }
 
 function entityPayload(array $e, string $type, string $code): array {
@@ -434,14 +458,14 @@ if ($action === 'save_settings') {
         ON DUPLICATE KEY UPDATE setting_val = VALUES(setting_val)");
     foreach ($save as $k => $v) $up->execute([$schoolId, $k, $v]);
 
-    logSchoolActivity($schoolId, $userId, $_SESSION['name'] ?? '', $_SESSION['role'] ?? '',
+    logSchoolActivity($schoolId, $userId, $actorName, $actorRole,
         'Attendance rules updated: ' . implode(', ', array_keys($save)), 'update', $pdo);
     jsonResponse(true, 'Saved.', ['settings' => AttCore::rules($pdo, $schoolId, true)]);
 }
 
 /* ═══════════════════════════ scan ═══════════════════════════ */
 if ($action === 'scan') {
-    if (!hasPermission('attendance', 'add') && !hasPermission('staff_attendance', 'add')) {
+    if (!can('attendance', 'add') && !can('staff_attendance', 'add')) {
         jsonResponse(false, 'Permission denied.');
     }
     requireActiveSubOrReject($pdo, 'school', $schoolId);
@@ -450,6 +474,7 @@ if ($action === 'scan') {
     if ($raw === '') jsonResponse(false, 'Empty scan.');
 
     $gate      = cleanGate($_POST['gate'] ?? '');
+    if ($device && $gate === '') $gate = cleanGate((string)$device['name']);
     $source    = in_array($_POST['source'] ?? '', SCAN_SOURCES, true) ? $_POST['source'] : 'camera';
     if (($source === 'camera' && !$F['camera']) || ($source === 'scanner' && !$F['usb_scanner'])
         || ($source === 'image' && !$F['photo_scan']) || ($source === 'search' && !$F['name_search'])) {
@@ -493,8 +518,8 @@ if ($action === 'scan') {
         jsonResponse(false, 'This is an old ID card. Your school only accepts the new secure cards. Ask the office for a new card, or use name search.', ['event' => 'unknown']);
     }
 
-    $allowStu = $F['students'] && hasPermission('attendance', 'add') && $P['type'] !== 'staff';
-    $allowStf = $F['staff'] && hasPermission('staff_attendance', 'add') && $P['type'] !== 'student';
+    $allowStu = $F['students'] && can('attendance', 'add') && $P['type'] !== 'staff';
+    $allowStf = $F['staff'] && can('staff_attendance', 'add') && $P['type'] !== 'student';
 
     $lookup = function (array $codes) use ($pdo, $schoolId, $stuCol, $stfCol, $allowStu, $allowStf): array {
         $found = [];
@@ -622,12 +647,13 @@ if ($action === 'scan') {
             $pdo->prepare("
                 INSERT INTO attendance_scan_log
                     (school_id, entity_type, entity_id, scan_type, raw_payload, matched_code, scanned_at, device_info, ip_address,
-                     scanned_by, client_uid, gate_name, source, status_set, prev_status, is_offline_sync, client_age_sec, received_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())
+                     scanned_by, client_uid, gate_name, source, status_set, prev_status, is_offline_sync, client_age_sec, received_at, gate_device_id)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),?)
             ")->execute([
                 $schoolId, $entityType, $entityId, $scanType, substr($raw, 0, 255), $matchedCode, $nowStr,
                 substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255), substr($_SERVER['REMOTE_ADDR'] ?? '', 0, 45), $userId,
                 $clientUid !== '' ? $clientUid : null, $gate !== '' ? $gate : null, $source, $statusToSet, $w['prev'], $isOffline, $ageSec,
+                $device ? (int)$device['id'] : null,
             ]);
             $scanId = (int)$pdo->lastInsertId();
 
@@ -662,7 +688,7 @@ if ($action === 'scan') {
         }
     }
 
-    logSchoolActivity($schoolId, $userId, $_SESSION['name'] ?? '', $_SESSION['role'] ?? '',
+    logSchoolActivity($schoolId, $userId, $actorName, $actorRole,
         ucfirst($entityType) . " attendance scanned: {$entity['name']} → " . ($scanType === 'in' ? 'check-in' : 'check-out') . " ($statusToSet)"
         . ($gate !== '' ? " @ $gate" : '') . ($isOffline ? " [offline, scanned $nowStr]" : ''), 'attendance', $pdo);
 
@@ -689,7 +715,7 @@ if ($action === 'undo') {
         if (!$scan) { $pdo->rollBack(); jsonResponse(false, 'Scan not found or already undone.'); }
 
         $isStudent = ($scan['entity_type'] === 'student');
-        $perm = $isStudent ? hasPermission('attendance', 'edit') : hasPermission('staff_attendance', 'edit');
+        $perm = $isStudent ? can('attendance', 'edit') : can('staff_attendance', 'edit');
         if (!$perm) { $pdo->rollBack(); jsonResponse(false, 'Permission denied.'); }
         if (!$isAdmin && (int)$scan['scanned_by'] !== $userId) { $pdo->rollBack(); jsonResponse(false, 'You can only undo scans you made yourself.'); }
 
@@ -736,7 +762,7 @@ if ($action === 'undo') {
         $name = (string)$n->fetchColumn();
 
         $pdo->commit();
-        logSchoolActivity($schoolId, $userId, $_SESSION['name'] ?? '', $_SESSION['role'] ?? '',
+        logSchoolActivity($schoolId, $userId, $actorName, $actorRole,
             "Scan undone: $name ({$scan['scan_type']}, scan #$scanId) → " . ($back ?? 'not marked'), 'update', $pdo);
         jsonResponse(true, "Scan undone for $name.", ['scan_id' => $scanId, 'name' => $name]);
     } catch (\Throwable $e) {
@@ -776,7 +802,7 @@ if ($action === 'recent') {
             'gate'       => $r['gate_name'] ?? '',
             'source'     => $r['source'] ?? '',
             'name'       => $r['name'] ?? '',
-            'photo'      => scanPhotoUrl(['photo' => $isS ? $r['s_photo'] : $r['t_photo']], $r['entity_type']),
+            'photo'      => scanPhotoUrl(['id' => $r['entity_id'], 'photo' => $isS ? $r['s_photo'] : $r['t_photo']], $r['entity_type']),
             'sub'        => $isS ? ($r['class_label'] ?? '') : ($r['post'] ?? ''),
         ];
     }
@@ -855,7 +881,7 @@ if ($action === 'not_arrived') {
     $day  = date('Y-m-d');
     $limit = 300;
     if ($type === 'student') {
-        if (!hasPermission('attendance', 'add')) jsonResponse(false, 'Permission denied.');
+        if (!can('attendance', 'add')) jsonResponse(false, 'Permission denied.');
         $q = $pdo->prepare("
             SELECT s.name, s.`{$stuCol}` AS code, s.guardian_phone AS phone,
                    CONCAT(c.class_name, COALESCE(CONCAT(' ', sec.section_name), '')) AS sub
@@ -866,7 +892,7 @@ if ($action === 'not_arrived') {
             WHERE s.school_id=? AND s.status='active' AND a.student_id IS NULL
             ORDER BY c.class_name, sec.section_name, s.name LIMIT " . ($limit + 1));
     } else {
-        if (!hasPermission('staff_attendance', 'add')) jsonResponse(false, 'Permission denied.');
+        if (!can('staff_attendance', 'add')) jsonResponse(false, 'Permission denied.');
         $q = $pdo->prepare("
             SELECT u.name, t.`{$stfCol}` AS code, '' AS phone, COALESCE(t.post, '') AS sub
             FROM teachers t
@@ -898,7 +924,7 @@ if ($action === 'finalize_absent') {
         $stu = 0; $stf = 0; $absentStudents = [];
         try {
             $pdo->beginTransaction();
-            if (in_array($type, ['both', 'student'], true) && hasPermission('attendance', 'add')) {
+            if (in_array($type, ['both', 'student'], true) && can('attendance', 'add')) {
                 $q = $pdo->prepare("
                     SELECT s.id, s.class_id, s.section_id FROM students s
                     WHERE s.school_id=? AND s.status='active'
@@ -912,7 +938,7 @@ if ($action === 'finalize_absent') {
                     }
                 }
             }
-            if (in_array($type, ['both', 'staff'], true) && hasPermission('staff_attendance', 'add')) {
+            if (in_array($type, ['both', 'staff'], true) && can('staff_attendance', 'add')) {
                 $q = $pdo->prepare("
                     SELECT t.id FROM teachers t
                     WHERE t.school_id=? AND t.status='active'
@@ -931,7 +957,7 @@ if ($action === 'finalize_absent') {
             jsonResponse(false, 'Could not close attendance. Please try again.');
         }
     }
-    logSchoolActivity($schoolId, $userId, $_SESSION['name'] ?? '', $_SESSION['role'] ?? '',
+    logSchoolActivity($schoolId, $userId, $actorName, $actorRole,
         "Attendance closed for $day: $stu students and $stf staff marked absent", 'create', $pdo);
 
     // The 6-day absence alert used to run only from manual marking, so schools using the gate never got it.
@@ -947,9 +973,9 @@ if ($action === 'search') {
     if (mb_strlen($q) < 2) jsonResponse(true, '', ['results' => []]);
     $like = '%' . addcslashes($q, '%_\\') . '%';
     $out = [];
-    if ($F['students'] && hasPermission('attendance', 'add')) {
+    if ($F['students'] && can('attendance', 'add')) {
         $s = $pdo->prepare("
-            SELECT s.name, s.`{$stuCol}` AS code, s.photo,
+            SELECT s.id, s.name, s.`{$stuCol}` AS code, s.photo,
                    CONCAT(c.class_name, COALESCE(CONCAT(' ', sec.section_name), '')) AS class_label
             FROM students s
             LEFT JOIN classes c    ON c.id = s.class_id
@@ -962,9 +988,9 @@ if ($action === 'search') {
                       'sub' => $r['class_label'] ?? '', 'photo' => scanPhotoUrl($r, 'student')];
         }
     }
-    if ($F['staff'] && hasPermission('staff_attendance', 'add')) {
+    if ($F['staff'] && can('staff_attendance', 'add')) {
         $t = $pdo->prepare("
-            SELECT u.name, t.`{$stfCol}` AS code, t.photo, t.post
+            SELECT t.id, u.name, t.`{$stfCol}` AS code, t.photo, t.post
             FROM teachers t JOIN users u ON u.id = t.user_id
             WHERE t.school_id=? AND t.status='active' AND (u.name LIKE ? OR t.`{$stfCol}` LIKE ?)
             ORDER BY u.name LIMIT 5");
@@ -1020,9 +1046,32 @@ if ($action === 'revoke_card') {
     [$type, $r] = $found[0];
     $ver = AttCore::revokeCard($pdo, $schoolId, $type, (int)$r['id']);
     $payload = AttCore::cardPayload($pdo, $schoolId, $type, (int)$r['id'], $P['code']);
-    logSchoolActivity($schoolId, $userId, $_SESSION['name'] ?? '', $_SESSION['role'] ?? '',
+    logSchoolActivity($schoolId, $userId, $actorName, $actorRole,
         "ID card blocked and reissued: {$r['name']} ($type, card v$ver)", 'update', $pdo);
     jsonResponse(true, "Old card of {$r['name']} is blocked. Print a new card with this QR text.", ['name' => $r['name'], 'type' => $type, 'payload' => $payload]);
+}
+
+/* ═══════════════════════════ gate devices ═══════════════════════════ */
+if ($action === 'device_register') {
+    if (!$isAdmin) jsonResponse(false, 'Only the school admin can register a gate device.');
+    $name = cleanGate((string)($_POST['name'] ?? ''));
+    if ($name === '') jsonResponse(false, 'Give this gate device a name, e.g. Main Gate.');
+    $active = count(AttCore::deviceList($pdo, $schoolId));
+    if ($active >= 50) jsonResponse(false, 'Too many gate devices. Remove old ones first.');
+    $token = AttCore::deviceCreate($pdo, $schoolId, $name, $userId);
+    logSchoolActivity($schoolId, $userId, $actorName, $actorRole, "Gate device registered: $name", 'create', $pdo);
+    jsonResponse(true, "This browser is now the gate device \"$name\". It keeps scanning even after your login expires.", ['token' => $token, 'name' => $name]);
+}
+if ($action === 'device_list') {
+    if (!$isAdmin) jsonResponse(false, 'Only the school admin can see gate devices.');
+    jsonResponse(true, '', ['devices' => AttCore::deviceList($pdo, $schoolId)]);
+}
+if ($action === 'device_revoke') {
+    if (!$isAdmin) jsonResponse(false, 'Only the school admin can remove a gate device.');
+    $id = (int)($_POST['id'] ?? 0);
+    if (!AttCore::deviceRevoke($pdo, $schoolId, $id, $userId)) jsonResponse(false, 'Device not found or already removed.');
+    logSchoolActivity($schoolId, $userId, $actorName, $actorRole, "Gate device removed: #$id", 'update', $pdo);
+    jsonResponse(true, 'Gate device removed. It can no longer scan.');
 }
 
 jsonResponse(false, 'Unknown action.');

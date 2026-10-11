@@ -10,7 +10,10 @@ $SITE = sys_get_temp_dir() . '/att_test_site';
 foreach (['api', 'includes', 'cron'] as $d) @mkdir("$SITE/$d", 0777, true);
 foreach (glob("$HERE/stubs/includes/*.php") as $f) copy($f, "$SITE/includes/" . basename($f));
 copy("$HERE/stubs/run.php", "$SITE/run.php");
-foreach (['api/attendance_scan.php', 'api/attendance_actions.php', 'includes/attendance_core.php', 'cron/attendance_notify_worker.php'] as $f) copy("$REPO/$f", "$SITE/$f");
+copy("$HERE/stubs/run_get.php", "$SITE/run_get.php");
+@mkdir("$SITE/assets/uploads/photos", 0777, true);
+file_put_contents("$SITE/assets/uploads/photos/arun.jpg", "\xFF\xD8\xFF fake-jpeg-bytes");
+foreach (['api/attendance_scan.php', 'api/attendance_actions.php', 'api/attendance_photo.php', 'includes/attendance_core.php', 'cron/attendance_notify_worker.php'] as $f) copy("$REPO/$f", "$SITE/$f");
 $my = 'mariadb --socket=' . escapeshellarg($SOCK);
 shell_exec("$my < $HERE/base_schema.sql && $my sz < $REPO/sql/attendance_fixes_v3.sql");
 $pdo = new PDO("mysql:unix_socket=$SOCK;dbname=sz", 'root', '', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
@@ -183,6 +186,59 @@ ok($rc['success'] && count($rc['items']) > 0, 'recent');
 echo "13. Deadlock detection\n";
 $ex = new PDOException('Deadlock found'); $ex->errorInfo = ['40001', 1213, 'Deadlock'];
 ok(AttCore::isRetryable($ex) && !AttCore::isRetryable(new RuntimeException('x')), 'deadlock is retried, other errors are not');
+
+echo "14. Gate device keeps scanning without a login, but can only scan\n";
+$NOSESS = ['logged_in' => 0];
+$r = req('api/attendance_scan.php', ['action' => 'device_register', 'name' => 'Main Gate']);
+ok(!$r['success'], 'teacher cannot register a gate device', $r);
+$r = req('api/attendance_scan.php', ['action' => 'device_register', 'name' => 'Main Gate'], ADMIN);
+$tok = $r['token'] ?? '';
+ok($r['success'] && preg_match('/^gd_\d+_[0-9a-f]{48}$/', $tok) && !$q("SELECT 1 FROM attendance_gate_device WHERE token_hash=?", [$tok])->fetchColumn(),
+   'admin registers device; only a hash is stored', $r);
+$q("DELETE FROM attendance WHERE student_id=4"); $q("UPDATE attendance_scan_log SET voided_at=NOW() WHERE entity_type='student' AND entity_id=4");
+$r = scan('A103', ['gate' => ''], $NOSESS);
+ok(!$r['success'], 'without session and without token: refused', $r);
+$r = scan('A103', ['gate' => '', 'csrf_token' => 'stale'], $NOSESS, ['GATE' => $tok]);
+$row = $q("SELECT scanned_by, gate_device_id, gate_name FROM attendance_scan_log WHERE id=?", [$r['scan_id'] ?? 0])->fetch(PDO::FETCH_ASSOC);
+ok($r['success'] && $status(4) === 'present', 'session expired + stale CSRF: gate device still scans', $r);
+ok($row && (int)$row['scanned_by'] === 900 && (int)$row['gate_device_id'] > 0 && $row['gate_name'] === 'Main Gate', 'scan attributed to the device (and the admin who registered it)', $row);
+foreach (['undo' => ['scan_id' => $r['scan_id'] ?? 0], 'finalize_absent' => ['force' => '1'], 'save_settings' => ['min_gap' => '9'],
+          'card_payload' => ['type' => 'student', 'ids' => '1'], 'device_register' => ['name' => 'x']] as $act => $extra) {
+    $x = req('api/attendance_scan.php', ['action' => $act] + $extra, $NOSESS, ['GATE' => $tok]);
+    ok(!$x['success'], "gate device cannot $act", $x);
+}
+ok(req('api/attendance_scan.php', ['action' => 'summary'], $NOSESS, ['GATE' => $tok])['success'], 'gate device can see summary');
+ok(!req('api/attendance_scan.php', ['action' => 'summary'], $NOSESS, ['GATE' => substr($tok, 0, -1) . 'x'])['success'], 'tampered token refused');
+$other = req('api/attendance_scan.php', ['action' => 'device_list'], ['school_id' => 2] + ADMIN);
+ok($other['success'] && $other['devices'] === [], "another school's admin does not see this device");
+$devId = (int)explode('_', $tok)[1];
+ok(!req('api/attendance_scan.php', ['action' => 'device_revoke', 'id' => $devId], ['school_id' => 2] + ADMIN)['success'], "another school's admin cannot remove it");
+ok(req('api/attendance_scan.php', ['action' => 'device_revoke', 'id' => $devId], ADMIN)['success'], 'admin removes the device');
+$x = scan('A100', [], $NOSESS, ['GATE' => $tok]);
+ok(!$x['success'] && !empty($x['device_revoked']), 'removed device can no longer scan', $x);
+
+echo "15. Photos only through signed, expiring links\n";
+$q("UPDATE students SET photo='arun.jpg' WHERE id=1");
+$s1 = req('api/attendance_scan.php', ['action' => 'search', 'q' => 'Arun']);
+$url = $s1['results'][0]['photo'] ?? '';
+ok(str_contains($url, '/api/attendance_photo.php?') && !str_contains($url, 'uploads'), 'search returns signed photo link, not the public uploads path', $url);
+$get = function (string $qs) use ($SITE) {
+    $p = proc_open(['php', "$SITE/run_get.php", 'api/attendance_photo.php', $qs], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pp, null, ['ATT_TEST_SOCK' => getenv('ATT_TEST_SOCK')]);
+    $body = stream_get_contents($pp[1]); $err = stream_get_contents($pp[2]); proc_close($p);
+    preg_match('/HTTP (\d+)/', $err, $m); return [(int)($m[1] ?? 0), $body];
+};
+$qs = (string)parse_url($url, PHP_URL_QUERY);
+[$c, $b] = $get($qs);
+ok($c === 200 && $b === "\xFF\xD8\xFF fake-jpeg-bytes", 'valid link serves the photo', [$c]);
+[$c] = $get(preg_replace('/id=1&/', 'id=2&', $qs));
+ok($c === 403, 'changing the student id breaks the signature (403)', $c);
+parse_str($qs, $pq); $pq['e'] = time() - 10;
+[$c] = $get(http_build_query($pq));
+ok($c === 410, 'expired link refused (410)', $c);
+$q("UPDATE students SET photo='../../../../etc/passwd' WHERE id=1");
+$s1 = req('api/attendance_scan.php', ['action' => 'search', 'q' => 'Arun']);
+[$c, $b] = $get((string)parse_url($s1['results'][0]['photo'] ?? '', PHP_URL_QUERY));
+ok($c === 404 && $b === '', 'path traversal in photo name cannot read other files', $c);
 
 echo "\n$pass passed, $fail failed\n";
 exit($fail ? 1 : 0);

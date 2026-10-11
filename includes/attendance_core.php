@@ -161,13 +161,17 @@ final class AttCore
 
     /* ───────────────────────── Signed QR cards ───────────────────────── */
 
-    /** Per-school HMAC key. Created on first use when $create is true. */
+    private static array $secretCache = [];
+
+    /** Per-school HMAC key (signed cards, photo links). Created on first use when $create is true. */
     public static function qrSecret(PDO $pdo, int $schoolId, bool $create = false): string
     {
+        if (isset(self::$secretCache[$schoolId])) return self::$secretCache[$schoolId];
         $s = $pdo->prepare("SELECT setting_val FROM school_settings WHERE school_id=? AND setting_key='attendance_qr_secret'");
         $s->execute([$schoolId]);
         $v = (string)$s->fetchColumn();
-        if (preg_match('/^[0-9a-f]{64}$/', $v) || !$create) return $v;
+        if (preg_match('/^[0-9a-f]{64}$/', $v)) return self::$secretCache[$schoolId] = $v;
+        if (!$create) return $v;
         $v = bin2hex(random_bytes(32));
         $pdo->prepare("INSERT INTO school_settings (school_id, setting_key, setting_val) VALUES (?, 'attendance_qr_secret', ?)
                        ON DUPLICATE KEY UPDATE setting_val = IF(setting_val REGEXP '^[0-9a-f]{64}$', setting_val, VALUES(setting_val))")
@@ -234,6 +238,77 @@ final class AttCore
         $letter = self::typeLetter($type);
         $ver    = self::cardVersion($pdo, $schoolId, $type, $id);
         return self::QR_PREFIX . "|$letter|$ver|$code|" . self::qrSign($secret, $schoolId, $letter, $ver, $code);
+    }
+
+    /* ───────────────────────── Private photo links ───────────────────────── */
+
+    /**
+     * Signed, expiring link to a student / staff photo, served by api/attendance_photo.php.
+     * Works without a login session (gate devices) and stops working after 12-18 hours, so a
+     * copied link does not expose children's photos forever. The expiry is rounded to 6 hours
+     * so the browser can cache the image.
+     */
+    public static function photoUrl(PDO $pdo, int $schoolId, string $type, int $id, string $photo): string
+    {
+        if ($photo === '' || $id <= 0) return '';
+        $t   = $type === 'staff' ? 't' : 's';
+        $exp = (intdiv(time(), 21600) + 3) * 21600;
+        $h   = substr(md5($photo), 0, 8);
+        $sig = self::photoSig(self::qrSecret($pdo, $schoolId, true), $schoolId, $t, $id, $h, $exp);
+        return BASE_URL . "/api/attendance_photo.php?sc=$schoolId&t=$t&id=$id&h=$h&e=$exp&s=$sig";
+    }
+
+    public static function photoSig(string $secret, int $schoolId, string $t, int $id, string $h, int $exp): string
+    {
+        return substr(hash_hmac('sha256', "photo|$schoolId|$t|$id|$h|$exp", $secret), 0, 24);
+    }
+
+    /* ───────────────────────── Gate devices ───────────────────────── */
+
+    /**
+     * Registers a gate phone / tablet. The returned token is shown once and stored only in that
+     * device's browser; the database keeps a SHA-256 hash. With it the gate keeps scanning after
+     * the teacher's login session expires, but it can only scan and view today's numbers.
+     */
+    public static function deviceCreate(PDO $pdo, int $schoolId, string $name, int $by): string
+    {
+        $secret = bin2hex(random_bytes(24));
+        $pdo->prepare("INSERT INTO attendance_gate_device (school_id, name, token_hash, created_by, created_at)
+                       VALUES (?,?,?,?,NOW())")
+            ->execute([$schoolId, $name, hash('sha256', $secret), $by]);
+        return 'gd_' . $pdo->lastInsertId() . '_' . $secret;
+    }
+
+    /** The device row for a valid, not revoked token, else null. */
+    public static function deviceAuth(PDO $pdo, string $token): ?array
+    {
+        if (!preg_match('/^gd_(\d{1,10})_([0-9a-f]{48})$/', $token, $m)) return null;
+        $q = $pdo->prepare("SELECT id, school_id, name, token_hash, created_by, last_seen_at FROM attendance_gate_device
+                            WHERE id=? AND revoked_at IS NULL");
+        $q->execute([(int)$m[1]]);
+        $d = $q->fetch(PDO::FETCH_ASSOC);
+        if (!$d || !hash_equals((string)$d['token_hash'], hash('sha256', $m[2]))) return null;
+        if (!$d['last_seen_at'] || strtotime($d['last_seen_at']) < time() - 60) {
+            $pdo->prepare("UPDATE attendance_gate_device SET last_seen_at=NOW(), last_ip=? WHERE id=?")
+                ->execute([substr($_SERVER['REMOTE_ADDR'] ?? '', 0, 45), $d['id']]);
+        }
+        unset($d['token_hash']);
+        return $d;
+    }
+
+    public static function deviceList(PDO $pdo, int $schoolId): array
+    {
+        $q = $pdo->prepare("SELECT id, name, created_at, last_seen_at, last_ip FROM attendance_gate_device
+                            WHERE school_id=? AND revoked_at IS NULL ORDER BY id");
+        $q->execute([$schoolId]);
+        return $q->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public static function deviceRevoke(PDO $pdo, int $schoolId, int $id, int $by): bool
+    {
+        $q = $pdo->prepare("UPDATE attendance_gate_device SET revoked_at=NOW(), revoked_by=? WHERE id=? AND school_id=? AND revoked_at IS NULL");
+        $q->execute([$by, $id, $schoolId]);
+        return $q->rowCount() === 1;
     }
 
     /* ───────────────────────── Writing attendance ───────────────────────── */

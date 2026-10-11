@@ -103,6 +103,23 @@ CREATE TABLE IF NOT EXISTS attendance_card (
   PRIMARY KEY (school_id, entity_type, entity_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 7. Registered gate phones / tablets. They keep scanning after a teacher's session expires,
+--    but can only scan and see today's numbers. Only a hash of the token is stored.
+CREATE TABLE IF NOT EXISTS attendance_gate_device (
+  id           INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  school_id    INT NOT NULL,
+  name         VARCHAR(60) NOT NULL,
+  token_hash   CHAR(64) NOT NULL,
+  created_by   INT NOT NULL,
+  created_at   DATETIME NOT NULL,
+  last_seen_at DATETIME NULL,
+  last_ip      VARCHAR(45) NULL,
+  revoked_at   DATETIME NULL,
+  revoked_by   INT NULL,
+  KEY idx_agd_school (school_id, revoked_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CALL _att_add_col('attendance_scan_log', 'gate_device_id', 'INT UNSIGNED NULL');
+
 DROP PROCEDURE IF EXISTS _att_add_col;
 DROP PROCEDURE IF EXISTS _att_add_idx;
 DROP PROCEDURE IF EXISTS _att_uq_client_uid;
