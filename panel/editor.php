@@ -112,7 +112,7 @@ if ($galId > 0) {
 <link rel="icon" type="image/png" href="<?= BASE_URL ?>/assets/images/logo.png">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.3/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&family=Roboto:wght@400;700&family=Open+Sans:wght@400;700&family=Lato:wght@400;700&family=Montserrat:wght@400;700&family=Poppins:wght@400;700&family=Playfair+Display:wght@400;700&family=Dancing+Script:wght@700&family=Baloo+2:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&family=Roboto:wght@400;700&family=Open+Sans:wght@400;700&family=Lato:wght@400;700&family=Montserrat:wght@400;700&family=Poppins:wght@400;700&family=Playfair+Display:wght@400;700&family=Dancing+Script:wght@700&family=Baloo+2:wght@400;700&family=Noto+Sans+Devanagari:wght@400;700&family=Hind:wght@400;700&family=Mukta:wght@400;700&family=Kalam:wght@400;700&family=Rozha+One&family=Tiro+Devanagari+Hindi&family=Yatra+One&family=Oswald:wght@400;700&family=Bebas+Neue&family=Cinzel:wght@400;700&family=Merriweather:wght@400;700&family=Raleway:wght@400;700&family=Great+Vibes&family=Pacifico&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; }
@@ -681,6 +681,95 @@ body.crop-mode .canvas-shadow { outline:2px dashed #f59e0b; outline-offset:2px; 
   /* ── Logo Studio host close button: bigger touch target on mobile ── */
   #lspIframeModal button { width:42px !important; height:42px !important; top:8px !important; right:8px !important; font-size:1.3rem !important; }
 }
+</style>
+<style>
+/* ═══════════ EDITOR PRO — rulers, guides, status bar, menus, panels ═══════════ */
+:root { --pro-bg:#0f172a; --pro-panel:#1e293b; --pro-line:#334155; --pro-text:#e2e8f0; --pro-mute:#94a3b8; --pro-acc:#6366f1; --pro-guide:#06b6d4; }
+.pro-ruler { position:fixed; z-index:40; background:#111827; display:none; cursor:default; touch-action:none; }
+.pro-ruler.on { display:block; }
+#proRulerTop { height:20px; cursor:row-resize; border-bottom:1px solid var(--pro-line); }
+#proRulerLeft { width:20px; cursor:col-resize; border-right:1px solid var(--pro-line); }
+#proRulerCorner { position:fixed; z-index:41; width:20px; height:20px; background:#111827; border-right:1px solid var(--pro-line); border-bottom:1px solid var(--pro-line);
+  color:var(--pro-mute); font-size:.55rem; font-weight:700; display:none; align-items:center; justify-content:center; cursor:pointer; user-select:none; }
+#proRulerCorner.on { display:flex; }
+#proRulerCorner:hover { color:#fff; background:var(--pro-acc); }
+.ed-canvas-area.pro-rulers { padding-top:calc(2rem + 20px) !important; padding-left:calc(2rem + 20px) !important; }
+#proGuideTip { position:fixed; z-index:9800; pointer-events:none; background:var(--pro-guide); color:#002b33; font:700 11px/1 system-ui; padding:3px 6px; border-radius:4px; display:none; }
+
+#proStatus { position:fixed; z-index:39; height:28px; display:flex; align-items:center; gap:.6rem; padding:0 .6rem;
+  background:rgba(15,23,42,.92); backdrop-filter:blur(6px); border-top:1px solid var(--pro-line); color:var(--pro-mute); font-size:.72rem; user-select:none; }
+#proSelInfo { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; flex-shrink:1; }
+#proStatus b { color:var(--pro-text); font-weight:600; font-variant-numeric:tabular-nums; }
+#proStatus .sep { width:1px; height:14px; background:var(--pro-line); }
+#proStatus button { background:transparent; border:1px solid transparent; color:var(--pro-mute); border-radius:5px; padding:1px 6px; font-size:.72rem; cursor:pointer; }
+#proStatus button:hover { color:#fff; border-color:var(--pro-line); background:var(--pro-panel); }
+#proStatus input[type=range] { width:110px; flex:none; }
+#proStatus .grow { flex:1; }
+@media (max-width:900px) { #proStatus .hide-m { display:none; } #proStatus input[type=range] { width:80px; } }
+
+.pro-menu { position:fixed; z-index:9600; min-width:220px; background:var(--pro-panel); border:1px solid var(--pro-line); border-radius:10px; padding:.3rem;
+  box-shadow:0 18px 50px rgba(0,0,0,.55); display:none; font-size:.8rem; color:var(--pro-text); }
+.pro-menu.open { display:block; }
+.pro-menu .mi { display:flex; align-items:center; gap:.55rem; padding:.42rem .6rem; border-radius:6px; cursor:pointer; white-space:nowrap; }
+.pro-menu .mi:hover, .pro-menu .mi.kb { background:var(--pro-acc); color:#fff; }
+.pro-menu .mi i { width:16px; text-align:center; color:var(--pro-mute); }
+.pro-menu .mi:hover i { color:#fff; }
+.pro-menu .mi .k { margin-left:auto; color:var(--pro-mute); font-size:.7rem; padding-left:1rem; }
+.pro-menu .mi:hover .k { color:#e0e7ff; }
+.pro-menu .mi.danger { color:#fca5a5; }
+.pro-menu .mi.off { opacity:.4; pointer-events:none; }
+.pro-menu .ms { height:1px; background:var(--pro-line); margin:.25rem .2rem; }
+
+.pro-ov { position:fixed; inset:0; z-index:9650; background:rgba(2,6,23,.6); display:none; align-items:flex-start; justify-content:center; padding:10vh 1rem 1rem; }
+.pro-ov.open { display:flex; }
+.pro-box { width:100%; max-width:560px; background:var(--pro-panel); border:1px solid var(--pro-line); border-radius:14px; box-shadow:0 30px 80px rgba(0,0,0,.6); overflow:hidden; color:var(--pro-text); }
+.pro-box-hd { display:flex; align-items:center; gap:.5rem; padding:.8rem 1rem; border-bottom:1px solid var(--pro-line); font-weight:700; }
+.pro-box-hd .x { margin-left:auto; background:none; border:none; color:var(--pro-mute); font-size:1.1rem; cursor:pointer; }
+.pro-box-bd { padding:1rem; max-height:70vh; overflow:auto; }
+#proCmdInput { width:100%; background:var(--pro-bg); border:none; border-bottom:1px solid var(--pro-line); color:var(--pro-text); font-size:1rem; padding:.9rem 1rem; outline:none; }
+#proCmdList { max-height:52vh; overflow:auto; padding:.35rem; }
+#proCmdList .mi { display:flex; align-items:center; gap:.6rem; padding:.5rem .65rem; border-radius:8px; cursor:pointer; font-size:.85rem; }
+#proCmdList .mi.kb { background:var(--pro-acc); color:#fff; }
+#proCmdList .mi i { width:18px; text-align:center; color:var(--pro-mute); }
+#proCmdList .mi.kb i { color:#fff; }
+#proCmdList .mi .grp { font-size:.66rem; color:var(--pro-mute); text-transform:uppercase; letter-spacing:.06em; }
+#proCmdList .mi .k { margin-left:auto; font-size:.72rem; color:var(--pro-mute); }
+#proCmdList .mi.kb .k, #proCmdList .mi.kb .grp { color:#e0e7ff; }
+.pro-kbd { display:inline-block; min-width:1.4em; padding:1px 5px; border:1px solid var(--pro-line); border-bottom-width:2px; border-radius:5px; font:600 .7rem system-ui; color:var(--pro-text); background:var(--pro-bg); text-align:center; }
+.pro-keys { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:.2rem 1.2rem; font-size:.8rem; }
+.pro-keys h4 { grid-column:1/-1; font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; color:var(--pro-acc); margin:.7rem 0 .2rem; }
+.pro-keys div { display:flex; justify-content:space-between; gap:.5rem; padding:.2rem 0; border-bottom:1px dashed #263244; }
+
+#proHistory { position:fixed; z-index:45; width:250px; max-height:60vh; display:none; flex-direction:column; background:var(--pro-panel); border:1px solid var(--pro-line); border-radius:12px; box-shadow:0 18px 50px rgba(0,0,0,.5); overflow:hidden; }
+#proHistory.open { display:flex; }
+#proHistory .hd { display:flex; align-items:center; padding:.55rem .75rem; border-bottom:1px solid var(--pro-line); font-size:.78rem; font-weight:700; color:var(--pro-text); gap:.4rem; }
+#proHistory .hd button { margin-left:auto; background:none; border:none; color:var(--pro-mute); cursor:pointer; }
+#proHistList { overflow:auto; padding:.3rem; }
+#proHistList .hi { display:flex; align-items:center; gap:.5rem; padding:.35rem .5rem; border-radius:6px; font-size:.76rem; color:var(--pro-text); cursor:pointer; }
+#proHistList .hi:hover { background:#273449; }
+#proHistList .hi.cur { background:var(--pro-acc); color:#fff; }
+#proHistList .hi.future { opacity:.45; }
+#proHistList .hi .t { margin-left:auto; font-size:.66rem; color:var(--pro-mute); }
+#proHistList .hi.cur .t { color:#e0e7ff; }
+
+.pro-field { margin-bottom:.75rem; }
+.pro-field label { display:block; font-size:.72rem; color:var(--pro-mute); margin-bottom:.3rem; font-weight:600; }
+.pro-field input[type=text], .pro-field input[type=number], .pro-field select { width:100%; background:var(--pro-bg); border:1px solid var(--pro-line); border-radius:8px; color:var(--pro-text); padding:.45rem .6rem; font-size:.85rem; outline:none; }
+.pro-chips { display:flex; flex-wrap:wrap; gap:.35rem; }
+.pro-chip { padding:.35rem .7rem; border-radius:999px; border:1px solid var(--pro-line); background:var(--pro-bg); color:var(--pro-mute); font-size:.76rem; cursor:pointer; font-weight:600; }
+.pro-chip.on { background:var(--pro-acc); border-color:var(--pro-acc); color:#fff; }
+.pro-actions { display:flex; gap:.5rem; justify-content:flex-end; padding:.8rem 1rem; border-top:1px solid var(--pro-line); }
+.pro-btn { padding:.5rem 1rem; border-radius:8px; border:1px solid var(--pro-line); background:transparent; color:var(--pro-text); cursor:pointer; font-size:.82rem; font-weight:600; }
+.pro-btn.primary { background:var(--pro-acc); border-color:var(--pro-acc); color:#fff; }
+.pro-btn:disabled { opacity:.5; cursor:not-allowed; }
+.pro-note { font-size:.72rem; color:var(--pro-mute); margin-top:.3rem; }
+#proQrPreview { display:flex; align-items:center; justify-content:center; min-height:150px; background:#fff; border-radius:10px; margin-bottom:.8rem; padding:.6rem; }
+#proQrPreview svg { max-width:100%; max-height:200px; }
+
+#proDrop { position:fixed; z-index:9500; inset:0; display:none; align-items:center; justify-content:center; background:rgba(79,70,229,.25); border:3px dashed #818cf8; color:#fff; font-size:1.3rem; font-weight:700; pointer-events:none; }
+#proDrop.on { display:flex; }
+.pro-top-btn { position:relative; }
+.pro-badge-new { position:absolute; top:-5px; right:-5px; background:#22c55e; color:#04260f; font-size:.5rem; font-weight:800; padding:1px 4px; border-radius:6px; }
 </style>
 </head>
 <body>
@@ -1840,7 +1929,13 @@ body.crop-mode .canvas-shadow { outline:2px dashed #f59e0b; outline-offset:2px; 
             <option value="Lato">Lato</option>
             <option value="Playfair Display">Playfair Display</option>
             <option value="Dancing Script">Dancing Script</option>
-            <option value="Baloo 2">Baloo 2</option>
+            <option value="Baloo 2">Baloo 2 (हिंदी)</option>
+            <option value="Hind">Hind (हिंदी)</option>
+            <option value="Mukta">Mukta (हिंदी)</option>
+            <option value="Rozha One">Rozha One (हिंदी)</option>
+            <option value="Yatra One">Yatra One (हिंदी)</option>
+            <option value="Bebas Neue">Bebas Neue</option>
+            <option value="Oswald">Oswald</option>
             <option value="Impact">Impact</option>
             <option value="Georgia">Georgia</option>
             <option value="Arial Black">Arial Black</option>
@@ -2382,23 +2477,34 @@ function markClean() { _dirty = false; document.getElementById('edDirtyDot')?.cl
 window.addEventListener('beforeunload', e => { if (_dirty) { e.preventDefault(); e.returnValue = ''; } });
 
 // ── History ────────────────────────────────────────────────────────
-const hist = { states: [], idx: -1, locked: false };
+const hist = { states: [], labels: [], times: [], idx: -1, locked: false };
+let _histLabel = null;   // set by an action just before it saves (shown in the History panel)
+function histLabel(l) { _histLabel = l; }
 
-function histSave() {
+function histSave(label) {
   if (hist.locked) return;
   clearTimeout(_histSoonT);
   const json = JSON.stringify(canvasJSON());
+  const lbl = (typeof label === 'string' && label) || _histLabel || 'Edit';
+  _histLabel = null;
   if (hist.idx >= 0 && hist.states[hist.idx] === json) return;   // nothing actually changed
-  hist.states.splice(hist.idx + 1);
-  hist.states.push(json);
-  if (hist.states.length > 60) hist.states.shift(); else hist.idx++;
+  hist.states.splice(hist.idx + 1); hist.labels.splice(hist.idx + 1); hist.times.splice(hist.idx + 1);
+  hist.states.push(json); hist.labels.push(hist.states.length === 1 ? 'Open design' : lbl); hist.times.push(Date.now());
+  if (hist.states.length > 80) { hist.states.shift(); hist.labels.shift(); hist.times.shift(); } else hist.idx++;
   if (hist.states.length > 1) markDirty();
   syncHistBtns();
 }
+/** Jump straight to any step (History panel). */
+function histGoTo(i) {
+  if (i < 0 || i >= hist.states.length || i === hist.idx || hist.locked) return;
+  clearTimeout(_histSoonT);
+  hist.idx = i;
+  _histRestore(hist.states[i]);
+}
 // Coalesce rapid slider/typing changes into one undo step (property edits
 // were never recorded before, so Undo skipped straight past them).
-let _histSoonT = null;
-function histSaveSoon() { if (hist.locked) return; clearTimeout(_histSoonT); _histSoonT = setTimeout(histSave, 350); }
+let _histSoonT = null, _histSoonLabel = null;
+function histSaveSoon(label) { if (hist.locked) return; _histSoonLabel = label || _histSoonLabel || 'Change properties'; clearTimeout(_histSoonT); _histSoonT = setTimeout(() => { const l = _histSoonLabel; _histSoonLabel = null; histSave(l); }, 350); }
 
 function _histRestore(json) {
   hist.locked = true;
@@ -2427,6 +2533,9 @@ function histRedo() {
 function syncHistBtns() {
   document.getElementById('btnUndo').disabled = hist.idx <= 0;
   document.getElementById('btnRedo').disabled = hist.idx >= hist.states.length - 1;
+  document.getElementById('btnUndo').title = hist.idx > 0 ? 'Undo: ' + hist.labels[hist.idx] + ' (Ctrl+Z)' : 'Undo (Ctrl+Z)';
+  document.getElementById('btnRedo').title = hist.idx < hist.states.length - 1 ? 'Redo: ' + hist.labels[hist.idx + 1] + ' (Ctrl+Y)' : 'Redo (Ctrl+Y)';
+  if (typeof renderHistoryPanel === 'function') renderHistoryPanel();
 }
 
 // ── Auto-save & Session Recovery ──────────────────────────────────
@@ -2506,9 +2615,10 @@ let printGuideObjects  = [];
 // ── Snap toggle ─────────────────────────────────────────────────────
 let snapEnabled = true;
 
-canvas.on('object:added',    () => { histSave(); refreshLayers(); });
-canvas.on('object:modified', () => { histSave(); refreshLayers(); refreshProps(); });
-canvas.on('object:removed',  () => { histSave(); refreshLayers(); });
+const _typeName = o => o ? (isTextObj(o) ? 'text' : o.data?.placeholder ? o.data.placeholder + ' slot' : o.type === 'path' ? 'drawing' : o.type) : 'object';
+canvas.on('object:added',    e => { histSave('Add ' + _typeName(e.target)); refreshLayers(); });
+canvas.on('object:modified', e => { const a = e.action || (e.transform && e.transform.action) || ''; histSave(/rotate/.test(a) ? 'Rotate' : /scale/.test(a) ? 'Resize' : 'Move'); refreshLayers(); refreshProps(); });
+canvas.on('object:removed',  () => { histSave('Delete'); refreshLayers(); });
 canvas.on('selection:created', e  => { refreshProps(e.selected?.[0]); refreshLayers(); });
 canvas.on('selection:updated', e  => { refreshProps(e.selected?.[0]); refreshLayers(); });
 canvas.on('selection:cleared', () => { refreshProps(null); refreshLayers(); });
@@ -4157,7 +4267,7 @@ canvas.on('path:created', function(e) {
 
   // The stroke was already recorded by object:added — replace that history
   // step with the finished eraser stroke instead of adding a second one.
-  if (hist.idx > 0) { hist.states.splice(hist.idx, 1); hist.idx--; }
+  if (hist.idx > 0) { hist.states.splice(hist.idx, 1); hist.labels.splice(hist.idx, 1); hist.times.splice(hist.idx, 1); hist.idx--; }
   if (eraserMode === 'pixel') {
     // TRUE TRANSPARENCY: destination-out makes pixels transparent
     path.set({
@@ -5838,14 +5948,23 @@ function addStickerToCanvas(src, name) {
 }
 
 // ── Font select ──────────────────────────────────────────────────────
+// Grouped font list — including Hindi / Devanagari fonts (school names, mottos
+// like "विद्या ददाति विनयम्" need a font that actually has Devanagari glyphs).
+const FONT_GROUPS = {
+  'हिंदी / Devanagari': ['Noto Sans Devanagari','Hind','Mukta','Baloo 2','Kalam','Rozha One','Tiro Devanagari Hindi','Yatra One'],
+  'Sans-serif': ['Noto Sans','Roboto','Open Sans','Lato','Montserrat','Poppins','Raleway','Oswald'],
+  'Serif': ['Playfair Display','Merriweather','Cinzel','Times New Roman','Georgia'],
+  'Display': ['Bebas Neue','Impact'],
+  'Script / handwriting': ['Dancing Script','Great Vibes','Pacifico'],
+  'System': ['Arial','Verdana','Tahoma','Trebuchet MS','Courier New'],
+};
 function populateFonts() {
-  const fonts = [
-    'Noto Sans','Roboto','Open Sans','Lato','Montserrat','Poppins',
-    'Playfair Display','Dancing Script','Baloo 2',
-    'Arial','Times New Roman','Georgia','Courier New','Verdana','Impact','Tahoma','Trebuchet MS',
-  ];
   const sel = document.getElementById('pFont');
-  fonts.forEach(f => { const o = document.createElement('option'); o.value = o.textContent = f; o.style.fontFamily = `'${f}'`; sel.appendChild(o); });
+  Object.entries(FONT_GROUPS).forEach(([g, fonts]) => {
+    const og = document.createElement('optgroup'); og.label = g;
+    fonts.forEach(f => { const o = document.createElement('option'); o.value = o.textContent = f; o.style.fontFamily = `'${f}'`; og.appendChild(o); });
+    sel.appendChild(og);
+  });
 }
 
 // ── Crop Tool ──────────────────────────────────────────────────────
@@ -8039,6 +8158,109 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 
+<!-- ═══════════ EDITOR PRO UI ═══════════ -->
+<canvas id="proRulerTop" class="pro-ruler"></canvas>
+<canvas id="proRulerLeft" class="pro-ruler"></canvas>
+<div id="proRulerCorner" title="Ruler units — click to switch px / mm / in">PX</div>
+<div id="proGuideTip"></div>
+<div id="proDrop"><i class="bi bi-cloud-arrow-down" style="margin-right:.6rem;"></i> Drop images here to add them</div>
+
+<div id="proStatus">
+  <span class="hide-m"><i class="bi bi-crosshair"></i> <b id="proPos">—</b></span>
+  <span class="sep hide-m"></span>
+  <span id="proSelInfo">Nothing selected</span>
+  <span class="grow"></span>
+  <button onclick="proToggleRulers()" class="hide-m" title="Rulers & guides (Ctrl+R)"><i class="bi bi-rulers"></i></button>
+  <button onclick="proToggleHistory()" title="History panel (Ctrl+Shift+H)"><i class="bi bi-clock-history"></i></button>
+  <button onclick="proOpenCmd()" class="hide-m" title="Search all tools (Ctrl+K)"><i class="bi bi-search"></i></button>
+  <span class="sep"></span>
+  <button onclick="setZoom(Math.max(0.05, canvas.getZoom()/1.25))" title="Zoom out (Ctrl -)"><i class="bi bi-dash-lg"></i></button>
+  <input type="range" id="proZoomRange" min="5" max="400" value="100" oninput="setZoom(this.value/100)" title="Zoom">
+  <button onclick="setZoom(Math.min(4, canvas.getZoom()*1.25))" title="Zoom in (Ctrl +)"><i class="bi bi-plus-lg"></i></button>
+  <b id="proZoomTxt" style="min-width:42px;text-align:right;">100%</b>
+  <button onclick="setZoom('fit')" title="Fit to screen (Ctrl+0)">Fit</button>
+  <button onclick="setZoom(1)" class="hide-m" title="Actual size (Ctrl+1)">1:1</button>
+  <button onclick="proZoomToSelection()" class="hide-m" title="Zoom to selection (Ctrl+2)"><i class="bi bi-zoom-in"></i></button>
+</div>
+
+<div id="proCtxMenu" class="pro-menu" role="menu"></div>
+
+<div id="proHistory">
+  <div class="hd"><i class="bi bi-clock-history"></i> History <span style="font-weight:500;color:var(--pro-mute);font-size:.68rem;">click a step to go back</span><button onclick="proToggleHistory(false)" title="Close">✕</button></div>
+  <div id="proHistList"></div>
+</div>
+
+<div id="proCmdOv" class="pro-ov" onclick="if(event.target===this)proCloseCmd()">
+  <div class="pro-box" style="max-width:600px;">
+    <input id="proCmdInput" type="text" placeholder="Search tools & actions…  (e.g. qr, align, export, undo)" autocomplete="off">
+    <div id="proCmdList"></div>
+    <div style="padding:.45rem .9rem;border-top:1px solid var(--pro-line);font-size:.7rem;color:var(--pro-mute);display:flex;gap:1rem;">
+      <span><span class="pro-kbd">↑</span><span class="pro-kbd">↓</span> move</span><span><span class="pro-kbd">Enter</span> run</span><span><span class="pro-kbd">Esc</span> close</span>
+      <span style="margin-left:auto;">Press <span class="pro-kbd">?</span> for all shortcuts</span>
+    </div>
+  </div>
+</div>
+
+<div id="proKeysOv" class="pro-ov" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="pro-box" style="max-width:820px;">
+    <div class="pro-box-hd"><i class="bi bi-keyboard"></i> Keyboard shortcuts <button class="x" onclick="document.getElementById('proKeysOv').classList.remove('open')">✕</button></div>
+    <div class="pro-box-bd"><div class="pro-keys" id="proKeysList"></div></div>
+  </div>
+</div>
+
+<div id="proExportOv" class="pro-ov" onclick="if(event.target===this)proCloseExport()">
+  <div class="pro-box">
+    <div class="pro-box-hd"><i class="bi bi-box-arrow-up"></i> Export <button class="x" onclick="proCloseExport()">✕</button></div>
+    <div class="pro-box-bd">
+      <div class="pro-field"><label>Format</label>
+        <div class="pro-chips" id="proExpFmt">
+          <span class="pro-chip on" data-v="png">PNG</span><span class="pro-chip" data-v="jpeg">JPG</span><span class="pro-chip" data-v="webp">WebP</span>
+          <span class="pro-chip" data-v="pdf">PDF</span><span class="pro-chip" data-v="svg">SVG</span>
+        </div>
+      </div>
+      <div class="pro-field" id="proExpScaleRow"><label>Size / quality</label>
+        <div class="pro-chips" id="proExpScale">
+          <span class="pro-chip" data-v="1">1× screen</span><span class="pro-chip" data-v="2">2×</span><span class="pro-chip" data-v="3">3×</span><span class="pro-chip on" data-v="print">Print (300 DPI)</span>
+        </div>
+        <div class="pro-note" id="proExpDims"></div>
+      </div>
+      <div class="pro-field" id="proExpQualRow" style="display:none;"><label>JPG / WebP quality: <b id="proExpQualVal">92</b>%</label>
+        <input type="range" id="proExpQual" min="40" max="100" value="92" style="width:100%;" oninput="document.getElementById('proExpQualVal').textContent=this.value">
+      </div>
+      <div class="pro-field">
+        <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;color:var(--pro-text);"><input type="checkbox" id="proExpTrans"> Transparent background <span class="pro-note" style="margin:0;">(PNG / WebP / SVG)</span></label>
+        <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;color:var(--pro-text);margin-top:.35rem;"><input type="checkbox" id="proExpSel"> Selected object(s) only</label>
+      </div>
+      <div class="pro-field"><label>File name</label><input type="text" id="proExpName"></div>
+    </div>
+    <div class="pro-actions"><button class="pro-btn" onclick="proCloseExport()">Cancel</button><button class="pro-btn primary" id="proExpGo" onclick="proDoExport()"><i class="bi bi-download"></i> Download</button></div>
+  </div>
+</div>
+
+<div id="proQrOv" class="pro-ov" onclick="if(event.target===this)proCloseQr()">
+  <div class="pro-box">
+    <div class="pro-box-hd"><i class="bi bi-qr-code"></i> <span id="proQrTitle">QR Code / Barcode</span> <button class="x" onclick="proCloseQr()">✕</button></div>
+    <div class="pro-box-bd">
+      <div class="pro-field"><label>Type</label>
+        <div class="pro-chips" id="proQrType">
+          <span class="pro-chip on" data-v="qr">QR Code</span><span class="pro-chip" data-v="CODE128">Barcode (Code 128)</span><span class="pro-chip" data-v="CODE39">Code 39</span><span class="pro-chip" data-v="EAN13">EAN-13</span>
+        </div>
+      </div>
+      <div class="pro-field"><label id="proQrValLbl">Text / link / ID number</label><input type="text" id="proQrVal" value="https://" maxlength="1000"></div>
+      <div style="display:flex;gap:.8rem;">
+        <div class="pro-field" style="flex:1;"><label>Colour</label><input type="color" id="proQrFg" value="#000000" style="width:100%;height:34px;"></div>
+        <div class="pro-field" style="flex:1;"><label>Background</label><input type="color" id="proQrBg" value="#ffffff" style="width:100%;height:34px;"></div>
+        <div class="pro-field" style="flex:1;" id="proQrEccRow"><label>Error correction</label>
+          <select id="proQrEcc"><option value="L">Low</option><option value="M" selected>Medium</option><option value="Q">High</option><option value="H">Max (logo-safe)</option></select></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.78rem;margin-bottom:.6rem;" id="proQrTextRow"><input type="checkbox" id="proQrShowText" checked> Show the number under the barcode</label>
+      <div id="proQrPreview"><span style="color:#64748b;font-size:.8rem;">Preview</span></div>
+      <div class="pro-note" id="proQrMsg"></div>
+    </div>
+    <div class="pro-actions"><button class="pro-btn" onclick="proCloseQr()">Cancel</button><button class="pro-btn primary" id="proQrGo" onclick="proInsertQr()"><i class="bi bi-plus-lg"></i> <span id="proQrGoLbl">Add to design</span></button></div>
+  </div>
+</div>
+
 <!-- ═══ LOGO STUDIO PRO — IFRAME MODAL ═══ -->
 <div id="lspIframeModal" onclick="if(event.target===this)closeLspModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:3000;align-items:center;justify-content:center;padding:12px;">
   <div style="position:relative;width:100%;height:100%;max-width:1600px;border-radius:14px;overflow:hidden;box-shadow:0 30px 100px rgba(0,0,0,.95),0 0 0 1px rgba(168,85,247,.25);">
@@ -8048,6 +8270,756 @@ if ('serviceWorker' in navigator) {
       onmouseover="this.style.background='#4c1d95'" onmouseout="this.style.background='rgba(20,10,40,.85)'">✕</button>
   </div>
 </div>
+
+<script>
+/* ═════════════════════════════════════════════════════════════════════
+   EDITOR PRO — Photoshop / CorelDRAW-style workflow on top of the editor:
+   rulers + draggable guides, right-click menu, Ctrl+K command search,
+   shortcut sheet, History panel, export dialog, QR / barcode generator,
+   status bar with live zoom/position, drag-and-drop images.
+   ═════════════════════════════════════════════════════════════════════ */
+const $pro = id => document.getElementById(id);
+const PRO_PREF_KEY = 'ed_pro_prefs';
+let proPrefs = { rulers: true, unit: 'px', history: false };
+try { Object.assign(proPrefs, JSON.parse(localStorage.getItem(PRO_PREF_KEY) || '{}')); } catch (_) {}
+function proSavePrefs() { try { localStorage.setItem(PRO_PREF_KEY, JSON.stringify(proPrefs)); } catch (_) {} }
+
+/* ── Guides (design units). Saved inside the design so they come back. ── */
+let edGuides = [];
+try { const g = ED.canvas_json ? JSON.parse(ED.canvas_json)._guides : null; if (Array.isArray(g)) edGuides = g.filter(x => x && (x.t === 'v' || x.t === 'h') && isFinite(x.p)); } catch (_) {}
+const _origCanvasJSON = canvasJSON;
+canvasJSON = function () { const j = _origCanvasJSON(); if (edGuides.length) j._guides = edGuides.map(g => ({ t: g.t, p: Math.round(g.p * 100) / 100 })); return j; };
+
+canvas.on('after:render', opt => {
+  if (opt.ctx !== canvas.contextContainer || !edGuides.length || !proPrefs.rulers) return;
+  const ctx = opt.ctx, v = canvas.viewportTransform, z = v[0] || 1;
+  ctx.save(); ctx.transform(v[0], v[1], v[2], v[3], v[4], v[5]);
+  ctx.strokeStyle = '#06b6d4'; ctx.lineWidth = 1 / z; ctx.setLineDash([]);
+  edGuides.forEach(g => { ctx.beginPath(); if (g.t === 'v') { ctx.moveTo(g.p, -1e4); ctx.lineTo(g.p, 1e4); } else { ctx.moveTo(-1e4, g.p); ctx.lineTo(1e4, g.p); } ctx.stroke(); });
+  ctx.restore();
+});
+// Moving objects also snap to guides (in addition to canvas + other objects).
+canvas.on('object:moving', e => {
+  if (!snapEnabled || !edGuides.length || !proPrefs.rulers) return;
+  const o = e.target, z = canvas.getZoom() || 1, T = 7 / z, b = o.getBoundingRect(true, true);
+  let dx = null, dy = null;
+  edGuides.forEach(g => {
+    if (g.t === 'v') [b.left, b.left + b.width / 2, b.left + b.width].forEach(x => { const d = g.p - x; if (Math.abs(d) < T && (dx === null || Math.abs(d) < Math.abs(dx))) dx = d; });
+    else [b.top, b.top + b.height / 2, b.top + b.height].forEach(y => { const d = g.p - y; if (Math.abs(d) < T && (dy === null || Math.abs(d) < Math.abs(dy))) dy = d; });
+  });
+  if (dx !== null) o.left += dx; if (dy !== null) o.top += dy;
+  if (dx !== null || dy !== null) o.setCoords();
+});
+
+/* ── Layout of the fixed chrome (rulers + status bar) around the canvas area ── */
+function proLayout() {
+  const area = $pro('canvasArea'); if (!area) return;
+  const r = area.getBoundingClientRect();
+  // Rulers are a desktop tool — on phones they would only eat canvas space.
+  const on = proPrefs.rulers && r.width > 0 && window.innerWidth > 900;
+  const was = area.classList.contains('pro-rulers');
+  const top = $pro('proRulerTop'), left = $pro('proRulerLeft'), corner = $pro('proRulerCorner'), st = $pro('proStatus');
+  [top, left].forEach(el => el.classList.toggle('on', on));
+  corner.classList.toggle('on', on);
+  area.classList.toggle('pro-rulers', on);
+  const dpr = window.devicePixelRatio || 1;
+  if (on) {
+    Object.assign(corner.style, { left: r.left + 'px', top: r.top + 'px' });
+    Object.assign(top.style, { left: (r.left + 20) + 'px', top: r.top + 'px', width: Math.max(0, r.width - 20) + 'px' });
+    Object.assign(left.style, { left: r.left + 'px', top: (r.top + 20) + 'px', height: Math.max(0, r.height - 20 - 28) + 'px' });
+    top.width = Math.max(1, Math.round((r.width - 20) * dpr)); top.height = Math.round(20 * dpr);
+    left.width = Math.round(20 * dpr); left.height = Math.max(1, Math.round((r.height - 48) * dpr));
+    corner.textContent = proPrefs.unit.toUpperCase();
+  }
+  Object.assign(st.style, { left: r.left + 'px', width: r.width + 'px', top: (r.bottom - 28) + 'px', display: r.width > 0 ? 'flex' : 'none' });
+  // Ruler padding changes the space available — keep "Fit" actually fitting.
+  if (was !== on && document.getElementById('zoomSel')?.value === 'fit') setZoom('fit');
+  proDrawRulers();
+}
+const _pxPerUnit = () => proPrefs.unit === 'mm' ? (_ncCurrentDpi || 96) / 25.4 : proPrefs.unit === 'in' ? (_ncCurrentDpi || 96) : 1;
+let _proCursor = null;
+function proDrawRulers() {
+  if (!proPrefs.rulers) return;
+  const topC = $pro('proRulerTop'), leftC = $pro('proRulerLeft');
+  if (!topC.classList.contains('on')) return;
+  const dpr = window.devicePixelRatio || 1, z = canvas.getZoom() || 1;
+  const cr = canvas.lowerCanvasEl.getBoundingClientRect();
+  const tr = topC.getBoundingClientRect(), lr = leftC.getBoundingClientRect();
+  const ppu = _pxPerUnit();
+  // choose a tick step that is ≥ 55 screen px apart
+  const steps = [0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000];
+  let step = steps.find(s => s * ppu * z >= 55) || 10000;
+  const sub = step >= 10 && String(step)[0] !== '2' && String(step)[0] !== '5' ? 10 : 5;
+  const sel = canvas.getActiveObject();
+  const sb = sel ? sel.getBoundingRect(true, true) : null;
+  const draw = (c, horiz, originScreen, lengthPx) => {
+    const ctx = c.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const W = horiz ? c.width / dpr : 20, H = horiz ? 20 : c.height / dpr;
+    ctx.fillStyle = '#111827'; ctx.fillRect(0, 0, W, H);
+    // design area band
+    const a0 = originScreen, a1 = originScreen + canvasW * z, b0 = 0, len = horiz ? W : H;
+    ctx.fillStyle = '#1f2937';
+    if (horiz) ctx.fillRect(Math.max(0, a0), 0, Math.max(0, Math.min(len, a1) - Math.max(0, a0)), H);
+    else ctx.fillRect(0, Math.max(0, originScreen), W, Math.max(0, Math.min(len, originScreen + canvasH * z) - Math.max(0, originScreen)));
+    // selection band
+    if (sb) {
+      ctx.fillStyle = 'rgba(99,102,241,.35)';
+      if (horiz) ctx.fillRect(originScreen + sb.left * z, 0, sb.width * z, H);
+      else ctx.fillRect(0, originScreen + sb.top * z, W, sb.height * z);
+    }
+    ctx.strokeStyle = '#64748b'; ctx.fillStyle = '#94a3b8'; ctx.lineWidth = 1;
+    ctx.font = '9px system-ui, sans-serif'; ctx.textBaseline = 'top';
+    const unitPx = step * ppu * z, minor = unitPx / sub;
+    const first = Math.floor(-originScreen / minor) - 1, last = Math.ceil((len - originScreen) / minor) + 1;
+    ctx.beginPath();
+    for (let i = first; i <= last; i++) {
+      const s = Math.round(originScreen + i * minor) + 0.5;
+      const major = i % sub === 0, half = !major && sub === 10 && i % 5 === 0;
+      const tl = major ? 20 : half ? 9 : 5;
+      if (horiz) { ctx.moveTo(s, 20); ctx.lineTo(s, 20 - tl); } else { ctx.moveTo(20, s); ctx.lineTo(20 - tl, s); }
+      if (major) {
+        const val = +(i / sub * step).toFixed(2);
+        if (horiz) ctx.fillText(String(val), s + 3, 2);
+        else { ctx.save(); ctx.translate(2, s + 3); ctx.rotate(Math.PI / 2); ctx.fillText(String(val), 0, -9); ctx.restore(); }
+      }
+    }
+    ctx.stroke();
+    // guide markers
+    ctx.fillStyle = '#06b6d4';
+    edGuides.forEach(g => {
+      if ((g.t === 'v') !== horiz) return;
+      const s = originScreen + g.p * z;
+      ctx.beginPath();
+      if (horiz) { ctx.moveTo(s - 4, 12); ctx.lineTo(s + 4, 12); ctx.lineTo(s, 20); } else { ctx.moveTo(12, s - 4); ctx.lineTo(12, s + 4); ctx.lineTo(20, s); }
+      ctx.fill();
+    });
+    // cursor line
+    if (_proCursor) {
+      const s = originScreen + (horiz ? _proCursor.x : _proCursor.y) * z;
+      ctx.strokeStyle = '#f59e0b'; ctx.beginPath();
+      if (horiz) { ctx.moveTo(s, 0); ctx.lineTo(s, 20); } else { ctx.moveTo(0, s); ctx.lineTo(20, s); }
+      ctx.stroke();
+    }
+  };
+  draw(topC, true, cr.left - tr.left, 0);
+  draw(leftC, false, cr.top - lr.top, 0);
+}
+let _proRaf = 0;
+function proRefreshChrome() { if (_proRaf) return; _proRaf = requestAnimationFrame(() => { _proRaf = 0; proDrawRulers(); proStatus(); }); }
+canvas.on('after:render', opt => { if (opt.ctx === canvas.contextContainer) proRefreshChrome(); });
+document.getElementById('canvasArea').addEventListener('scroll', proRefreshChrome, { passive: true });
+window.addEventListener('resize', () => setTimeout(proLayout, 60));
+new ResizeObserver(() => proLayout()).observe(document.getElementById('canvasArea'));
+
+function proToggleRulers(force) {
+  proPrefs.rulers = typeof force === 'boolean' ? force : !proPrefs.rulers; proSavePrefs();
+  proLayout(); canvas.requestRenderAll();
+  showToast('Rulers & guides ' + (proPrefs.rulers ? 'ON — drag from a ruler to create a guide' : 'OFF'), 'info');
+}
+$pro('proRulerCorner').addEventListener('click', () => {
+  proPrefs.unit = { px: 'mm', mm: 'in', in: 'px' }[proPrefs.unit] || 'px'; proSavePrefs(); proLayout();
+  showToast('Ruler units: ' + proPrefs.unit, 'info');
+});
+function proFmt(vpx) { const u = proPrefs.unit, v = vpx / _pxPerUnit(); return (u === 'px' ? Math.round(v) : v.toFixed(u === 'mm' ? 1 : 2)) + ' ' + u; }
+
+/* Drag from a ruler → new guide. Drag a guide marker on the ruler → move it.
+   Drop it back onto the ruler (or outside the canvas) → delete it. */
+function proRulerDrag(e, horiz) {
+  e.preventDefault();
+  const z = canvas.getZoom() || 1;
+  const cr = canvas.lowerCanvasEl.getBoundingClientRect();
+  const toDesign = ev => horiz ? (ev.clientY - cr.top) / z : (ev.clientX - cr.left) / z;
+  const along = ev => horiz ? (ev.clientX - cr.left) / z : (ev.clientY - cr.top) / z;
+  // pick an existing guide whose marker was grabbed (horizontal ruler holds vertical guides)
+  const t = horiz ? 'v' : 'h';
+  const pos = along(e);
+  let g = edGuides.find(x => x.t === t && Math.abs(x.p - pos) * z < 6);
+  const isNew = !g;
+  if (isNew) { g = { t: horiz ? 'h' : 'v', p: toDesign(e) }; edGuides.push(g); }
+  const tip = $pro('proGuideTip');
+  const move = ev => {
+    g.p = isNew ? toDesign(ev) : along(ev);
+    if (ev.shiftKey) g.p = Math.round(g.p / 10) * 10;
+    if (Math.abs(g.p - (g.t === 'v' ? canvasW / 2 : canvasH / 2)) * z < 5) g.p = g.t === 'v' ? canvasW / 2 : canvasH / 2;   // snap to centre
+    tip.style.display = 'block'; tip.style.left = (ev.clientX + 12) + 'px'; tip.style.top = (ev.clientY + 12) + 'px';
+    tip.textContent = (g.t === 'v' ? 'X ' : 'Y ') + proFmt(g.p);
+    canvas.requestRenderAll(); proDrawRulers();
+  };
+  const up = ev => {
+    document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up);
+    tip.style.display = 'none';
+    const r = $pro('canvasArea').getBoundingClientRect();
+    const overRuler = ev.clientY < r.top + 20 || ev.clientX < r.left + 20;
+    const outside = g.p < -20 || g.p > (g.t === 'v' ? canvasW : canvasH) + 20;
+    // A new guide dropped back on the ruler is cancelled; an existing one is
+    // deleted by dragging it past the canvas edge (or double-clicking its marker).
+    if ((isNew && overRuler) || outside) { edGuides = edGuides.filter(x => x !== g); showToast('Guide removed', 'info'); }
+    canvas.requestRenderAll(); proDrawRulers(); markDirty();
+  };
+  document.addEventListener('pointermove', move); document.addEventListener('pointerup', up);
+  move(e);
+}
+$pro('proRulerTop').addEventListener('pointerdown', e => proRulerDrag(e, true));
+$pro('proRulerLeft').addEventListener('pointerdown', e => proRulerDrag(e, false));
+['proRulerTop', 'proRulerLeft'].forEach((id, i) => $pro(id).addEventListener('dblclick', e => {
+  const z = canvas.getZoom() || 1, cr = canvas.lowerCanvasEl.getBoundingClientRect();
+  const horiz = i === 0, pos = horiz ? (e.clientX - cr.left) / z : (e.clientY - cr.top) / z;
+  const g = edGuides.find(x => x.t === (horiz ? 'v' : 'h') && Math.abs(x.p - pos) * z < 6);
+  if (g) { edGuides = edGuides.filter(x => x !== g); canvas.requestRenderAll(); proDrawRulers(); markDirty(); showToast('Guide removed', 'info'); }
+}));
+function proClearGuides() { if (!edGuides.length) return showToast('No guides', 'info'); edGuides = []; canvas.requestRenderAll(); proDrawRulers(); markDirty(); showToast('All guides cleared'); }
+function proAddCenterGuides() { edGuides.push({ t: 'v', p: canvasW / 2 }, { t: 'h', p: canvasH / 2 }); if (!proPrefs.rulers) proToggleRulers(true); canvas.requestRenderAll(); proDrawRulers(); markDirty(); }
+
+/* ── Status bar ── */
+canvas.on('mouse:move', o => {
+  const p = canvas.getPointer(o.e);
+  _proCursor = { x: p.x, y: p.y };
+  const el = $pro('proPos'); if (el) el.textContent = proFmt(p.x).replace(/ \w+$/, '') + ', ' + proFmt(p.y);
+  proRefreshChrome();
+});
+canvas.on('mouse:out', () => { _proCursor = null; proRefreshChrome(); });
+function proStatus() {
+  const a = canvas.getActiveObject();
+  const el = $pro('proSelInfo');
+  if (el) {
+    if (!a) el.innerHTML = 'Canvas <b>' + proFmt(canvasW).replace(/ \w+$/, '') + ' × ' + proFmt(canvasH) + '</b>';
+    else {
+      const b = a.getBoundingRect(true, true);
+      const what = a.type === 'activeSelection' ? a.size() + ' objects' : escHtml(_layerLabel(a)).slice(0, 26);
+      el.innerHTML = what + ' · <b>' + proFmt(b.width).replace(/ \w+$/, '') + ' × ' + proFmt(b.height) + '</b>' + (Math.round(a.angle || 0) ? ' · ' + Math.round(a.angle) + '°' : '');
+    }
+  }
+  const z = canvas.getZoom();
+  const zt = $pro('proZoomTxt'); if (zt) zt.textContent = Math.round(z * 100) + '%';
+  const zr = $pro('proZoomRange'); if (zr && document.activeElement !== zr) zr.value = Math.round(z * 100);
+}
+canvas.on('selection:created', proRefreshChrome); canvas.on('selection:updated', proRefreshChrome); canvas.on('selection:cleared', proRefreshChrome);
+
+function proZoomToSelection() {
+  const a = canvas.getActiveObject();
+  if (!a) { setZoom('fit'); return; }
+  const area = $pro('canvasArea'), b = a.getBoundingRect(true, true);
+  const z = Math.max(0.05, Math.min(4, (area.clientWidth - 140) / Math.max(b.width, 1), (area.clientHeight - 140) / Math.max(b.height, 1)));
+  setZoom(z);
+  requestAnimationFrame(() => {
+    const cr = canvas.lowerCanvasEl.getBoundingClientRect(), ar = area.getBoundingClientRect();
+    area.scrollLeft += (cr.left + (b.left + b.width / 2) * z) - (ar.left + ar.width / 2);
+    area.scrollTop  += (cr.top + (b.top + b.height / 2) * z) - (ar.top + ar.height / 2);
+  });
+}
+
+/* ── Keep-proportions for the W/H fields ── */
+let proKeepRatio = true;
+const _origApplyScale = applyScale;
+applyScale = function (dim, val) {
+  const obj = canvas.getActiveObject();
+  if (!obj || !(val > 0)) return;
+  if (!proKeepRatio) return _origApplyScale(dim, val);
+  const br = obj.getBoundingRect(true, true);
+  const f = dim === 'w' ? val / (br.width || 1) : val / (br.height || 1);
+  obj.scaleX *= f; obj.scaleY *= f; obj.setCoords(); canvas.requestRenderAll();
+  refreshProps(); histSaveSoon('Resize');
+};
+function proToggleRatio(btn) {
+  proKeepRatio = !proKeepRatio;
+  btn.innerHTML = proKeepRatio ? '<i class="bi bi-link-45deg"></i> Proportions locked' : '<i class="bi bi-link"></i> Free resize';
+  btn.style.color = proKeepRatio ? '#a5b4fc' : '#94a3b8';
+}
+
+/* ── Right-click (and long-press) context menu ── */
+const _proMenu = $pro('proCtxMenu');
+function proMenuItem(icon, label, keys, fn, opts) {
+  opts = opts || {};
+  return { icon, label, keys, fn, danger: opts.danger, off: opts.off };
+}
+function proOpenMenu(x, y, items) {
+  _proMenu.innerHTML = items.map((it, i) => it === '-' ? '<div class="ms"></div>'
+    : `<div class="mi${it.danger ? ' danger' : ''}${it.off ? ' off' : ''}" data-i="${i}" role="menuitem"><i class="bi ${it.icon}"></i>${escHtml(it.label)}${it.keys ? '<span class="k">' + escHtml(it.keys) + '</span>' : ''}</div>`).join('');
+  _proMenu.classList.add('open');
+  const w = _proMenu.offsetWidth, h = _proMenu.offsetHeight;
+  _proMenu.style.left = Math.max(6, Math.min(x, innerWidth - w - 6)) + 'px';
+  _proMenu.style.top  = Math.max(6, Math.min(y, innerHeight - h - 6)) + 'px';
+  _proMenu.onclick = ev => { const el = ev.target.closest('.mi'); if (!el) return; const it = items[+el.dataset.i]; proCloseMenu(); it && it.fn && it.fn(); };
+}
+function proCloseMenu() { _proMenu.classList.remove('open'); }
+document.addEventListener('pointerdown', e => { if (!e.target.closest('#proCtxMenu')) proCloseMenu(); }, true);
+window.addEventListener('blur', proCloseMenu);
+
+function proCanvasMenu(clientX, clientY, nativeEvent) {
+  const target = canvas.findTarget(nativeEvent, false);
+  const sel = canvas.getActiveObjects();
+  if (target && !sel.includes(target) && target.selectable !== false) { canvas.setActiveObject(target); canvas.requestRenderAll(); refreshProps(); }
+  const a = canvas.getActiveObject();
+  const n = canvas.getActiveObjects().length;
+  const items = [];
+  if (a) {
+    items.push(proMenuItem('bi-scissors', 'Cut', 'Ctrl+X', cutSelected), proMenuItem('bi-files', 'Copy', 'Ctrl+C', copySelected));
+  }
+  items.push(proMenuItem('bi-clipboard', 'Paste', 'Ctrl+V', pasteSelected, { off: !clipboard }));
+  if (a) {
+    items.push(proMenuItem('bi-copy', 'Duplicate', 'Ctrl+D', dupSelected), '-');
+    if (isTextObj(a)) items.push(proMenuItem('bi-cursor-text', 'Edit text', 'Dbl-click', () => { a.enterEditing(); a.selectAll(); canvas.requestRenderAll(); }), proMenuItem('bi-bezier2', 'Warp text…', '', openWarpModal));
+    if (a.type === 'image') {
+      if (a.data?.warpedFrom) items.push(proMenuItem('bi-pencil', 'Re-edit warped text', '', reEditWarp));
+      if (a.data?.qr) items.push(proMenuItem('bi-qr-code', 'Edit QR / barcode…', '', () => proOpenQr(a)));
+      items.push(proMenuItem('bi-crop', 'Crop photo', '', toggleCropMode), proMenuItem('bi-magic', 'Remove background', '', () => removeBgFromImage(+$pro('bgTol').value || 30)), proMenuItem('bi-circle', 'Mask: circle', '', () => applyClipMask('circle')));
+    }
+    if (a.data?.qr && a.type !== 'image') items.push(proMenuItem('bi-qr-code', 'Edit QR / barcode…', '', () => proOpenQr(a)));
+    items.push('-',
+      proMenuItem('bi-front', 'Bring to front', 'Ctrl+Shift+]', () => { canvas.bringToFront(a); canvas.renderAll(); histSave('Bring to front'); refreshLayers(); }),
+      proMenuItem('bi-chevron-up', 'Bring forward', 'Ctrl+]', bringFwd),
+      proMenuItem('bi-chevron-down', 'Send backward', 'Ctrl+[', sendBwd),
+      proMenuItem('bi-back', 'Send to back', 'Ctrl+Shift+[', () => { canvas.sendToBack(a); canvas.renderAll(); histSave('Send to back'); refreshLayers(); }), '-');
+    if (n > 1) items.push(proMenuItem('bi-collection', 'Group', 'Ctrl+G', groupSelected));
+    if (a.type === 'group') items.push(proMenuItem('bi-collection-fill', 'Ungroup', 'Ctrl+Shift+G', ungroupSelected));
+    items.push(
+      proMenuItem('bi-align-center', n > 1 ? 'Align centres' : 'Centre on canvas', '', () => { alignObj('hcenter'); alignObj('vcenter'); }),
+      proMenuItem('bi-symmetry-vertical', 'Flip horizontal', '', () => flipImg('x')),
+      proMenuItem('bi-symmetry-horizontal', 'Flip vertical', '', () => flipImg('y')),
+      proMenuItem('bi-zoom-in', 'Zoom to selection', 'Ctrl+2', proZoomToSelection),
+      proMenuItem('bi-image', 'Export selection…', '', () => proOpenExport(true)),
+      proMenuItem('bi-lock', 'Lock', '', toggleLockActive), '-',
+      proMenuItem('bi-trash', n > 1 ? 'Delete ' + n + ' objects' : 'Delete', 'Del', deleteSelected, { danger: true }));
+  } else {
+    items.push(proMenuItem('bi-ui-checks-grid', 'Select all', 'Ctrl+A', () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true }))), '-',
+      proMenuItem('bi-type', 'Add text', 'T', addText),
+      proMenuItem('bi-image', 'Add image…', 'I', () => $pro('imgUpload').click()),
+      proMenuItem('bi-qr-code', 'Add QR code / barcode…', '', () => proOpenQr()), '-',
+      proMenuItem('bi-palette', 'Background colour…', '', () => { canvas.discardActiveObject(); refreshProps(null); openEdPanel(); setTimeout(() => $pro('pCanvasBg').click(), 50); }),
+      proMenuItem('bi-grid-3x3', (gridOn ? 'Hide' : 'Show') + ' grid', 'G', toggleGrid),
+      proMenuItem('bi-rulers', (proPrefs.rulers ? 'Hide' : 'Show') + ' rulers & guides', 'Ctrl+R', () => proToggleRulers()),
+      proMenuItem('bi-plus-square-dotted', 'Add centre guides', '', proAddCenterGuides),
+      proMenuItem('bi-eraser', 'Clear guides', '', proClearGuides, { off: !edGuides.length }), '-',
+      proMenuItem('bi-arrows-fullscreen', 'Fit to screen', 'Ctrl+0', () => setZoom('fit')),
+      proMenuItem('bi-box-arrow-up', 'Export…', 'Ctrl+E', () => proOpenExport()));
+  }
+  proOpenMenu(clientX, clientY, items);
+}
+canvas.upperCanvasEl.addEventListener('contextmenu', e => { e.preventDefault(); if (canvas.isDrawingMode) return; proCanvasMenu(e.clientX, e.clientY, e); });
+// Long-press on touch screens opens the same menu.
+(function () {
+  let t = null, sx = 0, sy = 0;
+  canvas.upperCanvasEl.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1 || canvas.isDrawingMode) return;
+    const p = e.touches[0]; sx = p.clientX; sy = p.clientY;
+    t = setTimeout(() => { t = null; proCanvasMenu(sx, sy, { clientX: sx, clientY: sy, target: canvas.upperCanvasEl }); }, 600);
+  }, { passive: true });
+  const cancel = e => { if (!t) return; const p = e.touches && e.touches[0]; if (!p || Math.hypot(p.clientX - sx, p.clientY - sy) > 10 || e.type !== 'touchmove') { clearTimeout(t); t = null; } };
+  canvas.upperCanvasEl.addEventListener('touchmove', cancel, { passive: true });
+  canvas.upperCanvasEl.addEventListener('touchend', cancel, { passive: true });
+})();
+
+/* ── Command palette (Ctrl+K) — every tool, searchable ── */
+const PRO_CMDS = [
+  ['File', 'bi-floppy', 'Save to gallery', 'Ctrl+S', () => saveToGallery()],
+  ['File', 'bi-box-arrow-up', 'Export… (PNG / JPG / WebP / PDF / SVG)', 'Ctrl+E', () => proOpenExport()],
+  ['File', 'bi-printer', 'Print', 'Ctrl+P', printCanvas],
+  ['File', 'bi-filetype-pdf', 'Export PDF (print size)', '', exportPDF],
+  ['File', 'bi-printer-fill', 'Export print-ready (bleed + crop marks)', '', exportPrintReady],
+  ['File', 'bi-filetype-json', 'Export JSON backup', '', exportJSON],
+  ['File', 'bi-plus-lg', 'New canvas…', '', openNewCanvasModal],
+  ['File', 'bi-aspect-ratio', 'Resize canvas…', '', openResizeModal],
+  ['Edit', 'bi-arrow-counterclockwise', 'Undo', 'Ctrl+Z', histUndo],
+  ['Edit', 'bi-arrow-clockwise', 'Redo', 'Ctrl+Y', histRedo],
+  ['Edit', 'bi-clock-history', 'History panel', 'Ctrl+Shift+H', () => proToggleHistory()],
+  ['Edit', 'bi-files', 'Copy', 'Ctrl+C', copySelected],
+  ['Edit', 'bi-clipboard', 'Paste', 'Ctrl+V', pasteSelected],
+  ['Edit', 'bi-copy', 'Duplicate', 'Ctrl+D', dupSelected],
+  ['Edit', 'bi-trash', 'Delete selection', 'Del', deleteSelected],
+  ['Edit', 'bi-collection', 'Group', 'Ctrl+G', groupSelected],
+  ['Edit', 'bi-collection-fill', 'Ungroup', 'Ctrl+Shift+G', ungroupSelected],
+  ['Edit', 'bi-lock', 'Lock selection', '', toggleLockActive],
+  ['Insert', 'bi-type', 'Add text', 'T', addText],
+  ['Insert', 'bi-circle-half', 'Add curved text…', '', openCurvedTextModal],
+  ['Insert', 'bi-distribute-vertical', 'Add vertical text', '', addVerticalText],
+  ['Insert', 'bi-list-ul', 'Add bullet list…', '', promptBulletList],
+  ['Insert', 'bi-badge-3d', 'Add 3D text (studio)…', '', open3DStudio],
+  ['Insert', 'bi-image', 'Add image from computer…', 'I', () => $pro('imgUpload').click()],
+  ['Insert', 'bi-link-45deg', 'Add image from link…', 'U', openUrlModal],
+  ['Insert', 'bi-images', 'Add photos & stickers…', 'M', openStickerModal],
+  ['Insert', 'bi-qr-code', 'Add QR code…', '', () => proOpenQr(null, 'qr')],
+  ['Insert', 'bi-upc', 'Add barcode…', '', () => proOpenQr(null, 'CODE128')],
+  ['Insert', 'bi-pentagon-fill', 'Open Logo Studio…', '', openLogoStudioPro],
+  ['Insert', 'bi-square', 'Add rectangle', 'R', () => addShape('rect')],
+  ['Insert', 'bi-circle', 'Add circle', 'C', () => addShape('circle')],
+  ['Insert', 'bi-star', 'Add star', '', () => addShape('star')],
+  ['Insert', 'bi-slash-lg', 'Add line', 'L', () => addShape('line')],
+  ['Insert', 'bi-person-square', 'Add photo placeholder', '', () => addPlaceholder('photo')],
+  ['Insert', 'bi-pen', 'Add signature placeholder', '', () => addPlaceholder('sign')],
+  ['Tools', 'bi-cursor-fill', 'Select tool', 'V', () => setActiveTool('select')],
+  ['Tools', 'bi-brush', 'Brush / draw', 'P', () => activateBrush('pencil')],
+  ['Tools', 'bi-eraser', 'Eraser', 'E', toggleEraserMode],
+  ['Tools', 'bi-eyedropper', 'Colour picker (eyedropper)', '', toggleEyedropper],
+  ['Tools', 'bi-crop', 'Crop (select a photo to crop only it)', '', toggleCropMode],
+  ['Tools', 'bi-magic', 'Remove photo background', '', () => removeBgFromImage(+$pro('bgTol').value || 30)],
+  ['Tools', 'bi-bezier2', 'Warp text…', '', openWarpModal],
+  ['Tools', 'bi-universal-access-circle', 'Accessibility (contrast) check', '', checkColorAccessibility],
+  ['Tools', 'bi-aspect-ratio-fill', 'Check image resolution', '', checkImageResolution],
+  ['Tools', 'bi-palette', 'CMYK print preview', '', toggleCMYKPreview],
+  ['Tools', 'bi-phone-flip', 'Mockup preview', '', openMockupModal],
+  ['Arrange', 'bi-align-start', 'Align left', '', () => alignObj('left')],
+  ['Arrange', 'bi-align-center', 'Align horizontal centre', '', () => alignObj('hcenter')],
+  ['Arrange', 'bi-align-end', 'Align right', '', () => alignObj('right')],
+  ['Arrange', 'bi-align-top', 'Align top', '', () => alignObj('top')],
+  ['Arrange', 'bi-align-middle', 'Align vertical centre', '', () => alignObj('vcenter')],
+  ['Arrange', 'bi-align-bottom', 'Align bottom', '', () => alignObj('bottom')],
+  ['Arrange', 'bi-distribute-horizontal', 'Distribute horizontally', '', () => distributeObjs('h')],
+  ['Arrange', 'bi-distribute-vertical', 'Distribute vertically', '', () => distributeObjs('v')],
+  ['Arrange', 'bi-symmetry-vertical', 'Flip horizontal', '', () => flipImg('x')],
+  ['Arrange', 'bi-symmetry-horizontal', 'Flip vertical', '', () => flipImg('y')],
+  ['Arrange', 'bi-front', 'Bring forward', 'Ctrl+]', bringFwd],
+  ['Arrange', 'bi-back', 'Send backward', 'Ctrl+[', sendBwd],
+  ['View', 'bi-arrows-fullscreen', 'Fit to screen', 'Ctrl+0', () => setZoom('fit')],
+  ['View', 'bi-1-square', 'Actual size 100%', 'Ctrl+1', () => setZoom(1)],
+  ['View', 'bi-zoom-in', 'Zoom to selection', 'Ctrl+2', proZoomToSelection],
+  ['View', 'bi-grid-3x3', 'Toggle grid', 'G', toggleGrid],
+  ['View', 'bi-rulers', 'Toggle rulers & guides', 'Ctrl+R', () => proToggleRulers()],
+  ['View', 'bi-plus-square-dotted', 'Add centre guides', '', proAddCenterGuides],
+  ['View', 'bi-eraser', 'Clear all guides', '', proClearGuides],
+  ['View', 'bi-magnet', 'Toggle smart snap', 'H', toggleSnapGuides],
+  ['View', 'bi-bounding-box', 'Toggle print guides (bleed / safe)', '', togglePrintGuides],
+  ['View', 'bi-keyboard', 'Keyboard shortcuts', '?', () => proOpenKeys()],
+].map(([group, icon, label, keys, run]) => ({ group, icon, label, keys, run }));
+
+let _proCmdSel = 0, _proCmdHits = [];
+function proOpenCmd() {
+  proCloseMenu();
+  $pro('proCmdOv').classList.add('open');
+  const inp = $pro('proCmdInput'); inp.value = ''; proFilterCmd(''); inp.focus();   // focus now, so fast typing isn't lost
+}
+function proCloseCmd() { $pro('proCmdOv').classList.remove('open'); }
+function _proScore(q, s) {
+  s = s.toLowerCase(); if (!q) return 1;
+  if (s.includes(q)) return 100 - s.indexOf(q);
+  let i = 0, score = 0; for (const ch of s) { if (ch === q[i]) { i++; score += 1; if (i === q.length) return score; } }
+  return 0;
+}
+function proFilterCmd(q) {
+  q = q.trim().toLowerCase();
+  _proCmdHits = PRO_CMDS.map(c => ({ c, s: Math.max(_proScore(q, c.label), _proScore(q, c.group + ' ' + c.label) * .8) })).filter(x => x.s > 0)
+    .sort((a, b) => b.s - a.s).slice(0, 40).map(x => x.c);
+  _proCmdSel = 0; proRenderCmd();
+}
+function proRenderCmd() {
+  const list = $pro('proCmdList');
+  list.innerHTML = _proCmdHits.length ? _proCmdHits.map((c, i) => `<div class="mi${i === _proCmdSel ? ' kb' : ''}" data-i="${i}"><i class="bi ${c.icon}"></i><span>${escHtml(c.label)}</span> <span class="grp">${c.group}</span>${c.keys ? `<span class="k">${escHtml(c.keys)}</span>` : ''}</div>`).join('')
+    : '<div style="padding:1rem;color:var(--pro-mute);font-size:.85rem;">No matching tool</div>';
+  list.querySelector('.kb')?.scrollIntoView({ block: 'nearest' });
+}
+$pro('proCmdInput').addEventListener('input', e => proFilterCmd(e.target.value));
+$pro('proCmdInput').addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown') { e.preventDefault(); _proCmdSel = Math.min(_proCmdHits.length - 1, _proCmdSel + 1); proRenderCmd(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); _proCmdSel = Math.max(0, _proCmdSel - 1); proRenderCmd(); }
+  else if (e.key === 'Enter') { e.preventDefault(); const c = _proCmdHits[_proCmdSel]; proCloseCmd(); if (c) setTimeout(c.run, 10); }
+  else if (e.key === 'Escape') { e.preventDefault(); proCloseCmd(); }
+});
+$pro('proCmdList').addEventListener('click', e => { const el = e.target.closest('.mi'); if (!el) return; const c = _proCmdHits[+el.dataset.i]; proCloseCmd(); if (c) setTimeout(c.run, 10); });
+
+function proOpenKeys() {
+  const extra = [['Edit', 'Nudge 1 px / 10 px', '← → ↑ ↓ / Shift+arrows'], ['Edit', 'Rename layer', 'Double-click in Layers'], ['View', 'Zoom', 'Ctrl + mouse wheel / pinch'],
+    ['View', 'Pan the view', 'Space + drag'], ['View', 'Create guide', 'Drag from a ruler'], ['View', 'Delete guide', 'Drag it back onto the ruler'], ['Tools', 'Brush size', '[ and ]'],
+    ['Tools', 'Context menu', 'Right-click / long-press'], ['Tools', 'Search all tools', 'Ctrl+K']];
+  const rows = PRO_CMDS.filter(c => c.keys).map(c => [c.group, c.label, c.keys]).concat(extra);
+  const groups = [...new Set(rows.map(r => r[0]))];
+  $pro('proKeysList').innerHTML = groups.map(g => `<h4>${g}</h4>` + rows.filter(r => r[0] === g).map(r => `<div><span>${escHtml(r[1])}</span><span class="pro-kbd">${escHtml(r[2])}</span></div>`).join('')).join('');
+  $pro('proKeysOv').classList.add('open');
+}
+
+/* ── History panel ── */
+function proToggleHistory(force) {
+  proPrefs.history = typeof force === 'boolean' ? force : !proPrefs.history; proSavePrefs();
+  const p = $pro('proHistory');
+  p.classList.toggle('open', proPrefs.history);
+  if (proPrefs.history) {
+    const r = $pro('canvasArea').getBoundingClientRect();
+    p.style.left = Math.max(8, r.right - 262) + 'px'; p.style.top = (r.top + 30) + 'px';
+    renderHistoryPanel();
+  }
+}
+function renderHistoryPanel() {
+  const list = $pro('proHistList'); if (!list || !proPrefs.history) return;
+  const now = Date.now();
+  const ago = t => { const s = Math.round((now - t) / 1000); return s < 60 ? s + 's' : s < 3600 ? Math.round(s / 60) + 'm' : Math.round(s / 3600) + 'h'; };
+  list.innerHTML = hist.states.map((_, i) => `<div class="hi${i === hist.idx ? ' cur' : ''}${i > hist.idx ? ' future' : ''}" data-i="${i}"><i class="bi ${i === 0 ? 'bi-file-earmark' : 'bi-dot'}"></i>${escHtml(hist.labels[i] || 'Edit')}<span class="t">${hist.times[i] ? ago(hist.times[i]) : ''}</span></div>`).reverse().join('');
+}
+$pro('proHistList').addEventListener('click', e => { const el = e.target.closest('.hi'); if (el) histGoTo(+el.dataset.i); });
+
+/* ── Export dialog ── */
+let _proExp = { fmt: 'png', scale: 'print' };
+function _proChips(id, key, after) {
+  $pro(id).addEventListener('click', e => {
+    const c = e.target.closest('.pro-chip'); if (!c) return;
+    $pro(id).querySelectorAll('.pro-chip').forEach(x => x.classList.toggle('on', x === c));
+    _proExp[key] = c.dataset.v; after && after();
+  });
+}
+_proChips('proExpFmt', 'fmt', proExpUpdate); _proChips('proExpScale', 'scale', proExpUpdate);
+$pro('proExpSel').addEventListener('change', proExpUpdate);
+function _proExpMult() { return _proExp.scale === 'print' ? _printMultiplier() : +_proExp.scale; }
+function proExpUpdate() {
+  const f = _proExp.fmt;
+  $pro('proExpScaleRow').style.display = (f === 'svg' || f === 'pdf') ? 'none' : '';
+  $pro('proExpQualRow').style.display = (f === 'jpeg' || f === 'webp') ? '' : 'none';
+  const tr = $pro('proExpTrans'); tr.disabled = (f === 'jpeg' || f === 'pdf'); if (tr.disabled) tr.checked = false;
+  const a = canvas.getActiveObject(), sel = $pro('proExpSel');
+  sel.disabled = !a || f === 'pdf' || f === 'svg'; if (sel.disabled) sel.checked = false;
+  const b = sel.checked && a ? a.getBoundingRect(true, true) : { width: canvasW, height: canvasH };
+  const m = _proExpMult();
+  $pro('proExpDims').textContent = 'Output: ' + Math.round(b.width * m) + ' × ' + Math.round(b.height * m) + ' px';
+}
+function proOpenExport(selection) {
+  proCloseMenu();
+  $pro('proExpName').value = _fileBase();
+  $pro('proExpTrans').checked = !canvas.backgroundColor || canvas.backgroundColor === 'transparent';
+  $pro('proExportOv').classList.add('open');
+  proExpUpdate();
+  if (selection && canvas.getActiveObject()) { $pro('proExpSel').checked = true; proExpUpdate(); }
+}
+function proCloseExport() { $pro('proExportOv').classList.remove('open'); }
+function proDoExport() {
+  const f = _proExp.fmt, name = ($pro('proExpName').value.trim() || _fileBase()).replace(/[\\/:*?"<>|]+/g, '').slice(0, 80) || 'design';
+  const trans = $pro('proExpTrans').checked, onlySel = $pro('proExpSel').checked;
+  const q = +$pro('proExpQual').value / 100;
+  if (f === 'pdf') { proCloseExport(); exportPDF(); return; }
+  if (f === 'svg') {
+    const orig = canvas.backgroundColor; if (trans) canvas.backgroundColor = '';
+    try { const svg = canvas.toSVG({ width: canvasW, height: canvasH, viewBox: { x: 0, y: 0, width: canvasW, height: canvasH } }); _downloadBlob(new Blob([svg], { type: 'image/svg+xml' }), name + '.svg'); showToast('SVG exported'); }
+    catch (e) { showToast('SVG export failed: ' + e.message, 'err'); }
+    finally { canvas.backgroundColor = orig; canvas.requestRenderAll(); }
+    proCloseExport(); return;
+  }
+  const btn = $pro('proExpGo'); btn.disabled = true;
+  setTimeout(() => {
+    try {
+      const m = _proExpMult();
+      let url;
+      const a = canvas.getActiveObject();
+      if (onlySel && a) {
+        url = a.toDataURL({ format: f, quality: q, multiplier: m });
+        if (f === 'jpeg') {   // object export is transparent → put it on white for JPG
+          url = null;
+          const img = a.toCanvasElement({ multiplier: m });
+          const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+          const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0);
+          url = c.toDataURL('image/jpeg', q);
+        }
+      } else {
+        const orig = canvas.backgroundColor;
+        if (trans) canvas.backgroundColor = '';
+        canvas.discardActiveObject();
+        try { url = exportDataURL({ format: f, quality: q, multiplier: m }); }
+        finally { canvas.backgroundColor = orig; canvas.requestRenderAll(); }
+      }
+      const a2 = document.createElement('a'); a2.href = url; a2.download = name + '.' + (f === 'jpeg' ? 'jpg' : f);
+      document.body.appendChild(a2); a2.click(); a2.remove();
+      showToast('Exported ' + (f === 'jpeg' ? 'JPG' : f.toUpperCase()));
+      proCloseExport();
+    } catch (e) {
+      showToast('Export failed: ' + (/tainted|insecure/i.test(e.message) ? 'an image from another website blocks downloading — re-upload it' : e.message), 'err');
+    } finally { btn.disabled = false; }
+  }, 20);
+}
+
+/* ── QR code & barcode generator (vector — prints razor sharp) ── */
+const PRO_LIBS = {
+  qr: 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js',
+  bar: 'https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js',
+};
+const _proLibP = {};
+function proLoadLib(key) {
+  if (key === 'qr' && window.qrcode) return Promise.resolve();
+  if (key === 'bar' && window.JsBarcode) return Promise.resolve();
+  return _proLibP[key] || (_proLibP[key] = new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = PRO_LIBS[key]; s.async = true;
+    s.onload = res; s.onerror = () => { delete _proLibP[key]; rej(new Error('Could not load the generator — check your internet connection')); };
+    document.head.appendChild(s);
+  }));
+}
+let _proQr = { type: 'qr', editing: null };
+$pro('proQrType').addEventListener('click', e => { const c = e.target.closest('.pro-chip'); if (!c) return; _proQr.type = c.dataset.v; proQrTypeUI(); proQrPreview(); });
+['proQrVal', 'proQrFg', 'proQrBg', 'proQrEcc', 'proQrShowText'].forEach(id => $pro(id).addEventListener('input', () => { clearTimeout(_proQr.t); _proQr.t = setTimeout(proQrPreview, 150); }));
+function proQrTypeUI() {
+  const qr = _proQr.type === 'qr';
+  $pro('proQrType').querySelectorAll('.pro-chip').forEach(x => x.classList.toggle('on', x.dataset.v === _proQr.type));
+  $pro('proQrEccRow').style.display = qr ? '' : 'none';
+  $pro('proQrTextRow').style.display = qr ? 'none' : '';
+  $pro('proQrValLbl').textContent = qr ? 'Text / link / ID number' : _proQr.type === 'EAN13' ? '12 or 13 digits' : 'Number or text (e.g. admission no.)';
+}
+function proOpenQr(obj, type) {
+  proCloseMenu();
+  _proQr.editing = obj && obj.data?.qr ? obj : null;
+  const d = _proQr.editing ? obj.data.qr : null;
+  _proQr.type = d ? d.type : (type || 'qr');
+  $pro('proQrVal').value = d ? d.value : (_proQr.type === 'qr' ? 'https://' : '');
+  $pro('proQrFg').value = d ? d.fg : '#000000';
+  $pro('proQrBg').value = d ? d.bg : '#ffffff';
+  $pro('proQrEcc').value = d ? (d.ecc || 'M') : 'M';
+  $pro('proQrShowText').checked = d ? d.showText !== false : true;
+  $pro('proQrTitle').textContent = _proQr.editing ? 'Edit QR code / barcode' : 'QR Code / Barcode';
+  $pro('proQrGoLbl').textContent = _proQr.editing ? 'Update' : 'Add to design';
+  proQrTypeUI();
+  $pro('proQrOv').classList.add('open');
+  setTimeout(() => { $pro('proQrVal').focus(); $pro('proQrVal').select(); }, 40);
+  proQrPreview();
+}
+function proCloseQr() { $pro('proQrOv').classList.remove('open'); _proQr.editing = null; }
+/** Build the SVG markup for the current settings. */
+async function proQrSvg() {
+  const val = $pro('proQrVal').value.trim(), fg = $pro('proQrFg').value, bg = $pro('proQrBg').value;
+  if (!val) throw new Error('Enter the text or number to encode');
+  if (_proQr.type === 'qr') {
+    await proLoadLib('qr');
+    const q = window.qrcode(0, $pro('proQrEcc').value);
+    q.addData(unescape(encodeURIComponent(val)), 'Byte');   // UTF-8 (Hindi text works)
+    q.make();
+    const n = q.getModuleCount(), m = 4, size = n + m * 2;
+    let d = '';
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c + m} ${r + m}h1v1h-1z`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size * 8}" height="${size * 8}" shape-rendering="crispEdges"><rect width="${size}" height="${size}" fill="${bg}"/><path d="${d}" fill="${fg}"/></svg>`;
+  }
+  await proLoadLib('bar');
+  const el = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  let ok = true;
+  window.JsBarcode(el, val, { format: _proQr.type, lineColor: fg, background: bg, displayValue: $pro('proQrShowText').checked, font: 'monospace', fontSize: 18, height: 80, margin: 10, valid: v => { ok = v; } });
+  if (!ok) throw new Error(_proQr.type === 'EAN13' ? 'EAN-13 needs exactly 12 or 13 digits' : 'These characters cannot be used in this barcode type');
+  el.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  return new XMLSerializer().serializeToString(el);
+}
+async function proQrPreview() {
+  const box = $pro('proQrPreview'), msg = $pro('proQrMsg'), go = $pro('proQrGo');
+  try { const svg = await proQrSvg(); box.innerHTML = svg; msg.textContent = ''; go.disabled = false; }
+  catch (e) { box.innerHTML = '<span style="color:#64748b;font-size:.8rem;">' + escHtml(e.message) + '</span>'; msg.textContent = ''; go.disabled = true; }
+}
+async function proInsertQr() {
+  let svg;
+  try { svg = await proQrSvg(); } catch (e) { showToast(e.message, 'err'); return; }
+  const data = { qr: { type: _proQr.type, value: $pro('proQrVal').value.trim(), fg: $pro('proQrFg').value, bg: $pro('proQrBg').value, ecc: $pro('proQrEcc').value, showText: $pro('proQrShowText').checked } };
+  fabric.loadSVGFromString(svg, (objs, opts) => {
+    const g = fabric.util.groupSVGElements(objs, opts);
+    const old = _proQr.editing;
+    if (old && canvas.contains(old)) {
+      // Keep the old code's position, size and stacking.
+      const b = old.getBoundingRect(true, true), idx = canvas.getObjects().indexOf(old);
+      g.scaleToWidth(b.width);
+      g.set({ originX: 'center', originY: 'center', left: b.left + b.width / 2, top: b.top + b.height / 2, angle: 0,
+              data: Object.assign({}, old.data, data, { name: data.qr.type === 'qr' ? 'QR code' : 'Barcode' }) });
+      hist.locked = true; canvas.remove(old); canvas.add(g); canvas.moveTo(g, idx); hist.locked = false;
+      histSave('Edit ' + (data.qr.type === 'qr' ? 'QR code' : 'barcode'));
+    } else {
+      const target = Math.min(canvasW, canvasH) * (data.qr.type === 'qr' ? 0.28 : 0.45);
+      g.scaleToWidth(target);
+      g.set({ originX: 'center', originY: 'center', left: canvasW / 2, top: canvasH / 2, data: Object.assign({ name: data.qr.type === 'qr' ? 'QR code' : 'Barcode' }, data) });
+      histLabel('Add ' + (data.qr.type === 'qr' ? 'QR code' : 'barcode'));
+      canvas.add(g);
+    }
+    canvas.setActiveObject(g).requestRenderAll(); refreshLayers();
+    proCloseQr();
+    showToast((data.qr.type === 'qr' ? 'QR code' : 'Barcode') + ' added — double-click it to edit');
+  });
+}
+canvas.on('mouse:dblclick', e => { const o = e.target; if (o && o.data?.qr) proOpenQr(o); });
+
+/* ── Drag & drop images from the computer ── */
+(function () {
+  const area = $pro('canvasArea'), ov = $pro('proDrop');
+  let depth = 0;
+  const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
+  area.addEventListener('dragenter', e => { if (!hasFiles(e)) return; e.preventDefault(); depth++; ov.classList.add('on'); });
+  area.addEventListener('dragleave', e => { if (!hasFiles(e)) return; depth = Math.max(0, depth - 1); if (!depth) ov.classList.remove('on'); });
+  area.addEventListener('dragover', e => { if (hasFiles(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
+  area.addEventListener('drop', e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); depth = 0; ov.classList.remove('on');
+    const files = [...e.dataTransfer.files].filter(f => /^image\//.test(f.type));
+    if (!files.length) { showToast('Only image files can be dropped here', 'err'); return; }
+    const p = canvas.getPointer(e);
+    files.slice(0, 10).forEach((file, i) => _readImageFile(file, el => {
+      const img = new fabric.Image(el);
+      _placeImage(img, file.name);
+      img.set({ left: Math.max(0, Math.min(canvasW, p.x + i * 20)), top: Math.max(0, Math.min(canvasH, p.y + i * 20)) }).setCoords();
+      canvas.requestRenderAll();
+    }));
+  });
+})();
+
+/* ── Better history labels for the main actions (shown in History panel / Undo tooltip) ── */
+[['deleteSelected', 'Delete'], ['groupSelected', 'Group'], ['ungroupSelected', 'Ungroup'], ['flipImg', 'Flip'], ['alignObj', 'Align'],
+ ['distributeObjs', 'Distribute'], ['applyGradient', 'Gradient fill'], ['removeGradient', 'Remove gradient'], ['applyPatternFill', 'Pattern fill'],
+ ['toggleStyle', 'Text style'], ['applyBlendMode', 'Blend mode'], ['toggleShadow', 'Shadow'], ['applyTextEffect', 'Text effect'],
+ ['applyClipMask', 'Clip mask'], ['removeClipMask', 'Remove mask'], ['applySpotColor', 'Spot colour'], ['applyPickedColor', 'Picked colour'],
+ ['toggleTransparentBg', 'Background'], ['applyResize', 'Resize canvas'], ['bringFwd', 'Bring forward'], ['sendBwd', 'Send backward'],
+ ['toggleVis', 'Show / hide layer'], ['toggleLock', 'Lock / unlock'], ['toggleLockActive', 'Lock'], ['pasteSelected', 'Paste'], ['dupSelected', 'Duplicate']]
+.forEach(([fn, label]) => {
+  const f = window[fn]; if (typeof f !== 'function') return;
+  window[fn] = function () { histLabel(label); return f.apply(this, arguments); };
+});
+['applyProp', 'applyTextProp', 'applyImgFilter', 'updateShadow', 'setCanvasBg', 'applyRoundCorner', 'applyTextBg'].forEach(fn => {
+  const f = window[fn]; if (typeof f !== 'function') return;
+  const lbl = { applyProp: 'Change property', applyTextProp: 'Text', applyImgFilter: 'Image filter', updateShadow: 'Shadow', setCanvasBg: 'Background colour', applyRoundCorner: 'Corner radius', applyTextBg: 'Text background' }[fn];
+  window[fn] = function () { _histSoonLabel = lbl; return f.apply(this, arguments); };
+});
+
+/* ── Pro keyboard shortcuts (run before the editor's own handler) ── */
+document.addEventListener('keydown', e => {
+  if ($pro('proCmdOv').classList.contains('open') || $pro('proQrOv').classList.contains('open') || $pro('proExportOv').classList.contains('open') || $pro('proKeysOv').classList.contains('open')) {
+    if (e.key === 'Escape') { ['proCmdOv', 'proQrOv', 'proExportOv', 'proKeysOv'].forEach(id => $pro(id).classList.remove('open')); e.preventDefault(); e.stopImmediatePropagation(); }
+    else if (e.key === 'Enter' && $pro('proExportOv').classList.contains('open') && e.target.tagName !== 'BUTTON') { e.preventDefault(); proDoExport(); e.stopImmediatePropagation(); }
+    else if (!/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) e.stopImmediatePropagation();
+    return;
+  }
+  if (_proMenu.classList.contains('open') && e.key === 'Escape') { proCloseMenu(); e.stopImmediatePropagation(); return; }
+  const tag = (document.activeElement || {}).tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || canvas.getActiveObject()?.isEditing || _openModalId()) return;
+  const k = (e.key || '').toLowerCase(), mod = e.ctrlKey || e.metaKey;
+  let done = true;
+  if (mod && k === 'k') proOpenCmd();
+  else if (mod && k === 'e') proOpenExport();
+  else if (mod && k === 'r') proToggleRulers();
+  else if (mod && e.shiftKey && k === 'h') proToggleHistory();
+  else if (mod && k === '2') proZoomToSelection();
+  else if (!mod && !e.altKey && (e.key === '?' || (e.shiftKey && k === '/'))) proOpenKeys();
+  else if (!mod && !e.altKey && e.key === '/') proOpenCmd();
+  else done = false;
+  if (done) { e.preventDefault(); e.stopImmediatePropagation(); }
+}, true);
+
+/* ── Init ── */
+(function proInit() {
+  // Toolbar: Export opens the new dialog; add Search, History and Shortcuts buttons.
+  const pngBtn = document.querySelector('.ed-top-right .ed-btn[onclick="exportPng()"]');
+  if (pngBtn) { pngBtn.setAttribute('onclick', 'proOpenExport()'); pngBtn.title = 'Export… PNG / JPG / WebP / PDF / SVG (Ctrl+E)'; pngBtn.innerHTML = '<i class="bi bi-box-arrow-up"></i>'; }
+  const undoBtn = $pro('btnRedo');
+  if (undoBtn) {
+    const mk = (icon, title, fn, extra) => { const b = document.createElement('button'); b.className = 'ed-btn pro-top-btn'; b.title = title; b.innerHTML = '<i class="bi ' + icon + '"></i>' + (extra || ''); b.onclick = fn; return b; };
+    undoBtn.after(mk('bi-search', 'Search all tools (Ctrl+K)', proOpenCmd), mk('bi-clock-history', 'History (Ctrl+Shift+H)', () => proToggleHistory()), mk('bi-keyboard', 'Keyboard shortcuts (?)', proOpenKeys));
+  }
+  // Keep-proportions toggle under W/H
+  const grid = $pro('pW')?.closest('.props-grid2');
+  if (grid) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.style.cssText = 'background:#0f172a;border:1px solid #334155;color:#a5b4fc;border-radius:6px;padding:.2rem .5rem;font-size:.7rem;cursor:pointer;margin:-.3rem 0 .5rem;';
+    b.innerHTML = '<i class="bi bi-link-45deg"></i> Proportions locked'; b.onclick = () => proToggleRatio(b);
+    grid.after(b);
+  }
+  // QR / barcode button in the left toolbar (after Placeholder Slots)
+  const slots = document.querySelector('.ed-tools .tool-btn[onclick*="slotFlyout"]');
+  if (slots) {
+    const b = document.createElement('button'); b.className = 'tool-btn c-util'; b.style.color = '#22d3ee';
+    b.innerHTML = '<i class="bi bi-qr-code"></i><span class="tool-tooltip">QR Code / Barcode</span>';
+    b.onclick = () => { closeFlyouts(); proOpenQr(); };
+    slots.after(b);
+    const tip = document.getElementById('g-tip');
+    b.addEventListener('mouseenter', () => { if (!tip) return; tip.textContent = 'QR Code / Barcode'; tip.style.display = 'block'; const r = b.getBoundingClientRect(); tip.style.top = (r.top + r.height / 2 - 12) + 'px'; tip.style.left = (r.right + 10) + 'px'; });
+    b.addEventListener('mouseleave', () => { if (tip) tip.style.display = 'none'; });
+  }
+  if (proPrefs.history) setTimeout(() => proToggleHistory(true), 300);
+  setTimeout(proLayout, 50);
+  setTimeout(proLayout, 600);
+  // first-time hint
+  try { if (!localStorage.getItem('ed_pro_hint')) { localStorage.setItem('ed_pro_hint', '1'); setTimeout(() => showToast('New: right-click for quick actions · Ctrl+K searches every tool · drag from the rulers for guides', 'info'), 1500); } } catch (_) {}
+})();
+</script>
 
 </body>
 </html>

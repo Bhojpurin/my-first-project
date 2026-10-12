@@ -4,8 +4,12 @@ require_once __DIR__ . '/../includes/session.php';
 require_once __DIR__ . '/../includes/functions.php';
 
 if (empty($_SESSION['logged_in'])) { http_response_code(403); exit; }
+// Release the session lock: a slow remote image (up to 8 s) used to freeze every
+// other request from the same user (saving, autosave…) until it finished.
+session_write_close();
 
 $url = trim($_GET['url'] ?? '');
+if (strlen($url) > 2048) { http_response_code(400); exit; }
 if (!$url) { http_response_code(400); exit; }
 
 // Only allow http/https
@@ -66,47 +70,88 @@ function ipIsBlocked(string $ip): bool {
 // up (gethostbyname() on an IP literal just echoes it back, which used to be
 // misread here as "resolution failed" and blocked every literal-IP URL,
 // public ones included).
-if (filter_var($host, FILTER_VALIDATE_IP)) {
-    $resolvedIp = $host;
-} else {
-    $resolvedIp = null;
+/**
+ * Resolve + validate a host, then fetch with the connection pinned to that IP
+ * (CURLOPT_RESOLVE keeps the Host header / TLS SNI) — re-resolving at request
+ * time is exactly the DNS-rebinding TOCTOU window. Returns [body, http code,
+ * Location header]. The body is capped while downloading, not after.
+ */
+function resolveSafe(string $host): ?string {
+    if (filter_var($host, FILTER_VALIDATE_IP)) return ipIsBlocked($host) ? null : $host;
+    $ips = [];
     foreach ([DNS_A, DNS_AAAA] as $type) {
-        $records = @dns_get_record($host, $type);
-        if ($records) { $resolvedIp = $records[0][$type === DNS_A ? 'ip' : 'ipv6']; break; }
+        foreach ((array)@dns_get_record($host, $type) as $r) {
+            if (!empty($r['ip']))   $ips[] = $r['ip'];
+            if (!empty($r['ipv6'])) $ips[] = $r['ipv6'];
+        }
     }
-    if (!$resolvedIp) {
-        $gbn = @gethostbyname($host);
-        $resolvedIp = ($gbn !== $host) ? $gbn : null; // gethostbyname() returns the input unchanged on failure
-    }
+    if (!$ips) { $g = @gethostbyname($host); if ($g !== $host) $ips[] = $g; }
+    if (!$ips) return null;
+    // If ANY address of the name is private, refuse (avoids round-robin tricks).
+    foreach ($ips as $ip) if (ipIsBlocked($ip)) return null;
+    return $ips[0];
 }
-if (!$resolvedIp) { http_response_code(400); exit; } // resolution failed
-if (ipIsBlocked($resolvedIp)) { http_response_code(403); exit; }
+function fetchPinned(string $url, string $host, string $ip): array {
+    $port = parse_url($url, PHP_URL_PORT) ?: (str_starts_with(strtolower($url), 'https') ? 443 : 80);
+    $isV6 = (bool)filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6);
+    $max  = 10 * 1024 * 1024;
+    $buf  = '';
+    $location = '';
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => false,
+        CURLOPT_TIMEOUT        => 8,
+        CURLOPT_CONNECTTIMEOUT => 4,
+        CURLOPT_FOLLOWLOCATION => false, // redirects are followed manually below, re-validated each hop
+        CURLOPT_USERAGENT      => 'Mozilla/5.0 (compatible; SSZone-Editor/1.0)',
+        CURLOPT_HTTPHEADER     => ['Accept: image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8'],
+        CURLOPT_RESOLVE        => [$host . ':' . $port . ':' . ($isV6 ? '[' . $ip . ']' : $ip)],
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
+        CURLOPT_IPRESOLVE      => $isV6 ? CURL_IPRESOLVE_V6 : CURL_IPRESOLVE_V4,
+        CURLOPT_PROTOCOLS      => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+        CURLOPT_HEADERFUNCTION => function ($c, $h) use (&$location) {
+            if (stripos($h, 'location:') === 0) $location = trim(substr($h, 9));
+            return strlen($h);
+        },
+        // Abort as soon as the download passes 10 MB (it used to download all of it first).
+        CURLOPT_WRITEFUNCTION  => function ($c, $chunk) use (&$buf, $max) {
+            $buf .= $chunk;
+            return strlen($buf) > $max ? 0 : strlen($chunk);
+        },
+    ]);
+    $ok   = curl_exec($ch);
+    $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($ok === false && $code === 0) return [false, 0, ''];
+    return [strlen($buf) > $max ? false : $buf, $code, $location];
+}
 
-// Fetch by the IP we just validated (CURLOPT_RESOLVE pins the connection to
-// it while keeping the original Host header / TLS SNI) — a plain
-// file_get_contents($url) would re-resolve $host itself at request time,
-// which is exactly the TOCTOU window a DNS-rebinding attack needs: pass the
-// check with a public IP on the first lookup, then have the real fetch
-// resolve to 127.0.0.1 or the cloud metadata address on the second one.
-$port = parse_url($url, PHP_URL_PORT) ?: (str_starts_with(strtolower($url), 'https') ? 443 : 80);
-$ch = curl_init($url);
-curl_setopt_array($ch, [
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_TIMEOUT        => 8,
-    CURLOPT_FOLLOWLOCATION => false, // no redirects — a redirect could point anywhere, re-opening the SSRF window
-    CURLOPT_USERAGENT      => 'Mozilla/5.0 (compatible; SSZone-Editor/1.0)',
-    CURLOPT_HTTPHEADER     => ['Accept: image/*'],
-    CURLOPT_RESOLVE        => [$host . ':' . $port . ':' . $resolvedIp],
-    CURLOPT_SSL_VERIFYPEER => true,
-    CURLOPT_SSL_VERIFYHOST => 2,
-    CURLOPT_IPRESOLVE      => CURL_IPRESOLVE_V4,
-    CURLOPT_BUFFERSIZE     => 65536,
-]);
-$data = curl_exec($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-curl_close($ch);
+// Follow up to 3 redirects (most "copy image link" URLs redirect once — those
+// always failed before), validating every hop exactly like the first one.
+$data = false; $httpCode = 0;
+for ($hop = 0; $hop <= 3; $hop++) {
+    if (!preg_match('#^https?://#i', $url)) { http_response_code(400); exit; }
+    $host = parse_url($url, PHP_URL_HOST);
+    if (!$host) { http_response_code(400); exit; }
+    $host = trim($host, '[]');
+    $ip = resolveSafe($host);
+    if (!$ip) { http_response_code(403); exit; }
+    [$data, $httpCode, $loc] = fetchPinned($url, $host, $ip);
+    if (in_array($httpCode, [301, 302, 303, 307, 308], true) && $loc !== '') {
+        // Resolve a relative Location against the current URL.
+        if (!preg_match('#^https?://#i', $loc)) {
+            $p = parse_url($url);
+            $base = $p['scheme'] . '://' . $p['host'] . (isset($p['port']) ? ':' . $p['port'] : '');
+            $loc = str_starts_with($loc, '/') ? $base . $loc : $base . rtrim(dirname($p['path'] ?? '/'), '/') . '/' . $loc;
+        }
+        $url = $loc;
+        continue;
+    }
+    break;
+}
 
-if ($data === false || $httpCode !== 200 || strlen($data) < 10 || strlen($data) > 10 * 1024 * 1024) {
+if ($data === false || $httpCode !== 200 || strlen($data) < 10) {
     http_response_code(502); exit;
 }
 
@@ -123,6 +168,8 @@ if (!in_array($mime, ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], tru
 }
 
 header('Content-Type: ' . $mime);
-header('Access-Control-Allow-Origin: *');
-header('Cache-Control: public, max-age=3600');
+header('X-Content-Type-Options: nosniff');
+// Same-origin only (the editor is on this site); a wildcard CORS header on a
+// logged-in proxy was unnecessary. Private: the response is per-user.
+header('Cache-Control: private, max-age=3600');
 echo $data;

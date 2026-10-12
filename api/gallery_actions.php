@@ -43,7 +43,21 @@ ob_start();
 
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
 
-function jout(array $d): void { ob_end_clean(); echo json_encode($d); exit; }
+function jout(array $d): void {
+    if (ob_get_level() > 0) ob_end_clean();
+    // INVALID_UTF8_SUBSTITUTE: one bad byte in a design name used to make
+    // json_encode() return false → empty body → "Network error" in the editor.
+    $j = json_encode($d, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    echo $j === false ? '{"success":false,"message":"Encoding error"}' : $j;
+    exit;
+}
+/** Only a real base64 raster data-URI may be stored as a thumbnail — the value
+ *  is later printed into <img src="…"> on gallery pages, so anything else
+ *  (javascript:, an external URL, broken text) is dropped. */
+function cleanThumb(string $t): string {
+    if ($t === '' || strlen($t) > 700000) return '';
+    return preg_match('#^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$#', $t) ? $t : '';
+}
 function csrfOk(): bool { return isset($_POST['csrf_token']) && verifyCsrf($_POST['csrf_token']); }
 
 switch ($action) {
@@ -63,26 +77,37 @@ function doSave(PDO $pdo, array $user, bool $isOperator): void {
     $schoolId   = $isOperator ? 0 : (int)($user['school_id'] ?? 0);
     $userId     = (int)$user['id'];
     $galleryId  = (int)($_POST['gallery_id']  ?? 0);
-    $name       = trim($_POST['name']          ?? '') ?: 'My Design';
+    $name       = mb_substr(trim($_POST['name'] ?? ''), 0, 120) ?: 'My Design';
     $canvasJson = $_POST['canvas_json']        ?? '';
-    $rawThumb   = $_POST['thumbnail_data']     ?? '';
-    $thumb      = strlen($rawThumb) > 512000 ? '' : $rawThumb;
+    $thumb      = cleanThumb((string)($_POST['thumbnail_data'] ?? ''));
     $srcTplId   = (int)($_POST['source_template_id'] ?? 0) ?: null;
-    $width      = max(100, (int)($_POST['canvas_width']  ?? 856));
-    $height     = max(100, (int)($_POST['canvas_height'] ?? 540));
+    // Logos can be smaller than 100 px; the editor allows up to 16000 px.
+    $width      = min(16000, max(10, (int)($_POST['canvas_width']  ?? 856)));
+    $height     = min(16000, max(10, (int)($_POST['canvas_height'] ?? 540)));
     $roleMap    = [ROLE_SUPER_ADMIN=>'admin', ROLE_SCHOOL_ADMIN=>'school', ROLE_TEACHER=>'teacher', ROLE_OPERATOR=>'operator'];
     $userType   = $roleMap[$user['role']] ?? 'teacher';
 
     if (!$canvasJson) jout(['success'=>false,'message'=>'Canvas data missing']);
+    if (strlen($canvasJson) > 40 * 1024 * 1024) jout(['success'=>false,'message'=>'Design is too large to save (over 40 MB). Use smaller photos.']);
+    $decoded = json_decode($canvasJson, true);
+    if (!is_array($decoded) || !isset($decoded['objects']) || !is_array($decoded['objects'])) {
+        jout(['success'=>false,'message'=>'Design data is damaged — not saved. Please try again.']);
+    }
 
     try {
         if ($galleryId > 0) {
             // Operators: own by user_id (personal); school users: own by school_id (shared)
             $ownerWhere = $isOperator ? 'user_id=?' : 'school_id=?';
             $ownerVal   = $isOperator ? $userId : $schoolId;
-            $s = $pdo->prepare("UPDATE user_gallery SET name=?,canvas_json=?,thumbnail=?,updated_at=NOW() WHERE id=? AND $ownerWhere");
-            $s->execute([$name, $canvasJson, $thumb, $galleryId, $ownerVal]);
-            if ($s->rowCount() === 0) jout(['success'=>false,'message'=>'Gallery item not found']);
+            $s = $pdo->prepare("UPDATE user_gallery SET name=?,canvas_json=?,thumbnail=?,canvas_width=?,canvas_height=?,updated_at=NOW() WHERE id=? AND $ownerWhere");
+            $s->execute([$name, $canvasJson, $thumb, $width, $height, $galleryId, $ownerVal]);
+            // rowCount() is 0 both for "not yours / missing" and for "saved
+            // identical data" — tell them apart instead of reporting a false error.
+            if ($s->rowCount() === 0) {
+                $chk = $pdo->prepare("SELECT 1 FROM user_gallery WHERE id=? AND $ownerWhere");
+                $chk->execute([$galleryId, $ownerVal]);
+                if (!$chk->fetchColumn()) jout(['success'=>false,'message'=>'Gallery item not found']);
+            }
             logActivity($userId, 'gallery_updated', 'Design updated: ' . $name, $pdo);
             jout(['success'=>true,'gallery_id'=>$galleryId,'message'=>'Design updated in gallery!']);
         } else {
@@ -132,6 +157,13 @@ function doList(PDO $pdo, array $user, bool $isOperator): void {
     try {
         $whereClause = $isOperator ? 'g.user_id = ?' : 'g.school_id = ?';
         $whereVal    = $isOperator ? $userId : $schoolId;
+        // ?kind=logo — only Logo Studio designs (they carry an "_lsp" block), so
+        // "My Logos" no longer lists every ID-card design too (and vice versa).
+        $kind = $_GET['kind'] ?? '';
+        // (older logos predate the "_lsp" block but always contain "lspName")
+        $isLogo = "(g.canvas_json LIKE '%\"_lsp\"%' OR g.canvas_json LIKE '%\"lspName\"%')";
+        if ($kind === 'logo')   $whereClause .= " AND $isLogo";
+        if ($kind === 'design') $whereClause .= " AND NOT $isLogo";
         $s = $pdo->prepare("
             SELECT g.id, g.name, g.thumbnail, g.canvas_width, g.canvas_height,
                    g.source_template_id, g.created_at, g.updated_at,
@@ -176,11 +208,14 @@ function doRename(PDO $pdo, array $user, bool $isOperator): void {
     $userId   = (int)$user['id'];
     $schoolId = $isOperator ? 0 : (int)($user['school_id'] ?? 0);
     $id   = (int)($_POST['id']   ?? 0);
-    $name = trim($_POST['name']  ?? '') ?: 'My Design';
+    $name = mb_substr(trim($_POST['name'] ?? ''), 0, 120) ?: 'My Design';
     if (!$id) jout(['success'=>false,'message'=>'Invalid ID']);
     try {
         $ownerWhere = $isOperator ? 'user_id=?' : 'school_id=?';
         $ownerVal   = $isOperator ? $userId : $schoolId;
+        $chk = $pdo->prepare("SELECT 1 FROM user_gallery WHERE id=? AND $ownerWhere");
+        $chk->execute([$id, $ownerVal]);
+        if (!$chk->fetchColumn()) jout(['success'=>false,'message'=>'Not found or access denied']);
         $s = $pdo->prepare("UPDATE user_gallery SET name=? WHERE id=? AND $ownerWhere");
         $s->execute([$name, $id, $ownerVal]);
         logActivity($userId, 'gallery_renamed', 'Renamed to: ' . $name, $pdo);

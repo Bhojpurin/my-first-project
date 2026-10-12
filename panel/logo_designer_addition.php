@@ -3832,7 +3832,7 @@ function lspLoadGallery(page){
   const body=document.getElementById('gallery-body');
   if(!page)body.innerHTML='<div style="text-align:center;color:var(--text-dim);padding:2rem;font-size:.75rem;">Loading…</div>';
   document.getElementById('gal-more')?.remove();
-  lspGet('../api/gallery_actions.php?action=list&page='+page)
+  lspGet('../api/gallery_actions.php?action=list&kind=logo&limit=30&page='+page)
     .then(d=>{
       if(!d||!d.success){body.innerHTML='<div style="text-align:center;color:var(--red);padding:2rem;font-size:.75rem;">Could not load gallery.<br><button class="lsp-micro-btn" style="margin-top:.5rem;" onclick="lspLoadGallery()">Retry</button></div>';return;}
       const items=d.items||[];
