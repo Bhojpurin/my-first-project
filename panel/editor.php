@@ -771,6 +771,58 @@ body.crop-mode .canvas-shadow { outline:2px dashed #f59e0b; outline-offset:2px; 
 .pro-top-btn { position:relative; }
 .pro-badge-new { position:absolute; top:-5px; right:-5px; background:#22c55e; color:#04260f; font-size:.5rem; font-weight:800; padding:1px 4px; border-radius:6px; }
 </style>
+<style>
+/* ═══════════ EDITOR PRO 2 — pen, boolean, adjustments, auto-fit, palette, layer fx ═══════════ */
+.p2-sec { border-bottom:1px solid #334155; padding:.85rem 1rem; }
+.p2-title { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#64748b; margin-bottom:.6rem; display:flex; align-items:center; gap:.4rem; }
+.p2-title .badge { background:#4f46e5; color:#fff; font-size:.55rem; padding:1px 5px; border-radius:4px; letter-spacing:.04em; }
+.p2-row { display:flex; align-items:center; gap:.45rem; margin-bottom:.45rem; font-size:.78rem; color:#94a3b8; }
+.p2-row > label:first-child { min-width:64px; }
+.p2-row input[type=range] { flex:1; accent-color:#6366f1; }
+.p2-row input[type=number] { width:62px; background:#0f172a; border:1px solid #334155; border-radius:6px; color:#e2e8f0; padding:.2rem .35rem; font-size:.76rem; }
+.p2-row .val { min-width:30px; text-align:right; color:#e2e8f0; font-size:.74rem; font-variant-numeric:tabular-nums; }
+.p2-btn { background:#0f172a; border:1px solid #334155; color:#cbd5e1; border-radius:7px; padding:.32rem .6rem; font-size:.74rem; cursor:pointer; display:inline-flex; align-items:center; gap:.3rem; }
+.p2-btn:hover { border-color:#6366f1; color:#fff; }
+.p2-btn.primary { background:#4f46e5; border-color:#4f46e5; color:#fff; }
+.p2-btn.on { background:#312e81; border-color:#6366f1; color:#fff; }
+.p2-btns { display:flex; flex-wrap:wrap; gap:.3rem; }
+.p2-fx { border:1px solid #334155; border-radius:8px; margin-bottom:.45rem; overflow:hidden; }
+.p2-fx-hd { display:flex; align-items:center; gap:.45rem; padding:.4rem .55rem; background:#0f172a; font-size:.76rem; color:#e2e8f0; cursor:pointer; user-select:none; }
+.p2-fx-hd input { margin:0; }
+.p2-fx-hd .chev { margin-left:auto; color:#64748b; transition:transform .15s; }
+.p2-fx.open .p2-fx-hd .chev { transform:rotate(90deg); }
+.p2-fx-bd { display:none; padding:.5rem .55rem .2rem; }
+.p2-fx.open .p2-fx-bd { display:block; }
+/* palette */
+.p2-pal { display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
+.p2-sw { width:22px; height:22px; border-radius:5px; cursor:pointer; border:1px solid rgba(255,255,255,.18); position:relative; flex:none; }
+.p2-sw:hover { transform:scale(1.15); box-shadow:0 0 0 2px #6366f1; }
+.p2-sw.add { display:flex; align-items:center; justify-content:center; color:#94a3b8; background:#0f172a; border:1px dashed #475569; font-size:.85rem; }
+.p2-pal-lbl { font-size:.64rem; color:#64748b; margin:.35rem 0 .2rem; }
+/* pen tool */
+body.pen-mode .canvas-shadow { outline:2px solid #22d3ee; outline-offset:2px; }
+#p2PenBar { position:fixed; z-index:46; display:none; align-items:center; gap:.5rem; padding:.4rem .6rem; background:#0e7490; color:#ecfeff; border-radius:10px; font-size:.76rem; box-shadow:0 10px 30px rgba(0,0,0,.45); }
+#p2PenBar.on { display:flex; }
+#p2PenBar button { background:rgba(255,255,255,.15); border:none; color:#fff; border-radius:6px; padding:.25rem .55rem; font-size:.74rem; cursor:pointer; }
+#p2PenBar button:hover { background:rgba(255,255,255,.3); }
+/* adjustments modal */
+#p2AdjOv .pro-box { max-width:720px; }
+.p2-adj { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+@media (max-width:700px) { .p2-adj { grid-template-columns:1fr; } }
+#p2Hist, #p2Curve { width:100%; background:#0f172a; border:1px solid #334155; border-radius:8px; display:block; }
+#p2Curve { cursor:crosshair; touch-action:none; }
+.p2-ch { display:flex; gap:.25rem; margin-bottom:.4rem; }
+.p2-ch span { padding:.15rem .55rem; border-radius:999px; border:1px solid #334155; font-size:.7rem; cursor:pointer; color:#94a3b8; }
+.p2-ch span.on { background:#4f46e5; border-color:#4f46e5; color:#fff; }
+.p2-lv { position:relative; height:16px; margin-top:4px; }
+.p2-lv input { position:absolute; inset:0; width:100%; pointer-events:none; -webkit-appearance:none; appearance:none; background:transparent; }
+.p2-lv input::-webkit-slider-thumb { pointer-events:auto; -webkit-appearance:none; width:12px; height:14px; border-radius:2px; background:#e2e8f0; border:1px solid #0f172a; cursor:ew-resize; }
+.p2-lv input::-moz-range-thumb { pointer-events:auto; width:12px; height:14px; border-radius:2px; background:#e2e8f0; border:1px solid #0f172a; cursor:ew-resize; }
+.p2-lv input.g::-webkit-slider-thumb { background:#94a3b8; }
+.p2-lv input.w::-webkit-slider-thumb { background:#fff; }
+.p2-lv input.b::-webkit-slider-thumb { background:#000; border-color:#94a3b8; }
+.p2-lv .track { position:absolute; left:0; right:0; top:6px; height:4px; border-radius:2px; background:linear-gradient(90deg,#000,#fff); }
+</style>
 </head>
 <body>
 <div class="eraser-cursor" id="eraserCursor"></div>
@@ -8261,6 +8313,53 @@ if ('serviceWorker' in navigator) {
   </div>
 </div>
 
+<!-- ═══════════ EDITOR PRO 2 UI ═══════════ -->
+<div id="p2PenBar">
+  <i class="bi bi-vector-pen"></i> <span id="p2PenMsg">Pen: click = corner point · click &amp; drag = curve · click the first point to close</span>
+  <button onclick="p2PenFinish(false)" title="Finish as an open line (Enter)">Done</button>
+  <button onclick="p2PenUndoPoint()" title="Remove last point (Backspace)">⌫ Point</button>
+  <button onclick="p2PenCancel()" title="Cancel (Esc)">Cancel</button>
+</div>
+
+<div id="p2AdjOv" class="pro-ov" onclick="if(event.target===this)p2AdjCancel()">
+  <div class="pro-box">
+    <div class="pro-box-hd"><i class="bi bi-sliders"></i> Image Adjustments <span style="font-weight:500;color:var(--pro-mute);font-size:.72rem;">live preview on the canvas</span><button class="x" onclick="p2AdjCancel()">✕</button></div>
+    <div class="pro-box-bd">
+      <div class="p2-btns" style="margin-bottom:.8rem;">
+        <button class="p2-btn primary" onclick="p2AutoEnhance()"><i class="bi bi-magic"></i> Auto-enhance</button>
+        <button class="p2-btn" onclick="p2AdjPreset('bright')">Brighten</button>
+        <button class="p2-btn" onclick="p2AdjPreset('contrast')">More contrast</button>
+        <button class="p2-btn" onclick="p2AdjPreset('faded')">Fix faded photo</button>
+        <button class="p2-btn" onclick="p2AdjPreset('dark')">Lift shadows</button>
+        <button class="p2-btn" onclick="p2AdjReset()"><i class="bi bi-arrow-counterclockwise"></i> Reset</button>
+      </div>
+      <div class="p2-adj">
+        <div>
+          <div class="p2-title">Levels</div>
+          <canvas id="p2Hist" width="512" height="160"></canvas>
+          <div class="p2-lv"><div class="track"></div>
+            <input type="range" class="b" id="p2LvB" min="0" max="254" value="0">
+            <input type="range" class="g" id="p2LvG" min="10" max="990" value="500">
+            <input type="range" class="w" id="p2LvW" min="1" max="255" value="255">
+          </div>
+          <div class="p2-row" style="margin-top:.4rem;"><label>Input</label><span class="val" id="p2LvBv">0</span><span style="flex:1;text-align:center;" class="val" id="p2LvGv">1.00</span><span class="val" id="p2LvWv">255</span></div>
+          <div class="p2-row"><label>Output</label><input type="range" id="p2OutB" min="0" max="128" value="0"><input type="range" id="p2OutW" min="128" max="255" value="255"></div>
+          <div class="p2-title" style="margin-top:.6rem;">Detail</div>
+          <div class="p2-row"><label>Sharpen</label><input type="range" id="p2Sharp" min="0" max="100" value="0"><span class="val" id="p2SharpV">0</span></div>
+          <div class="p2-row"><label>Saturation</label><input type="range" id="p2Sat" min="-100" max="100" value="0"><span class="val" id="p2SatV">0</span></div>
+          <div class="p2-row"><label>Warmth</label><input type="range" id="p2Warm" min="-100" max="100" value="0"><span class="val" id="p2WarmV">0</span></div>
+        </div>
+        <div>
+          <div class="p2-title">Curves <span style="text-transform:none;letter-spacing:0;font-weight:500;">click to add point · drag · double-click to remove</span></div>
+          <div class="p2-ch" id="p2CurveCh"><span class="on" data-c="rgb">RGB</span><span data-c="r">Red</span><span data-c="g">Green</span><span data-c="b">Blue</span></div>
+          <canvas id="p2Curve" width="512" height="512"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="pro-actions"><button class="pro-btn" onclick="p2AdjCancel()">Cancel</button><button class="pro-btn primary" onclick="p2AdjApply()"><i class="bi bi-check-lg"></i> Apply</button></div>
+  </div>
+</div>
+
 <!-- ═══ LOGO STUDIO PRO — IFRAME MODAL ═══ -->
 <div id="lspIframeModal" onclick="if(event.target===this)closeLspModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:3000;align-items:center;justify-content:center;padding:12px;">
   <div style="position:relative;width:100%;height:100%;max-width:1600px;border-radius:14px;overflow:hidden;box-shadow:0 30px 100px rgba(0,0,0,.95),0 0 0 1px rgba(168,85,247,.25);">
@@ -9019,6 +9118,969 @@ document.addEventListener('keydown', e => {
   // first-time hint
   try { if (!localStorage.getItem('ed_pro_hint')) { localStorage.setItem('ed_pro_hint', '1'); setTimeout(() => showToast('New: right-click for quick actions · Ctrl+K searches every tool · drag from the rulers for guides', 'info'), 1500); } } catch (_) {}
 })();
+</script>
+<script>
+/* ═════════════════════════════════════════════════════════════════════
+   EDITOR PRO 2 — Pen / Bezier tool + point editing, shape boolean
+   (Union / Subtract / Intersect / Exclude), Levels / Curves / Sharpen /
+   Auto-enhance, text auto-fit + overflow warnings, brand colour palette,
+   and editable layer effects (stroke, outer glow, inner glow,
+   gradient overlay).
+   ═════════════════════════════════════════════════════════════════════ */
+const $p2 = id => document.getElementById(id);
+const p2Clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+/* ─────────────────────────── 1. LAYER EFFECTS ENGINE ───────────────────────────
+   Effects live in obj.data.fx, so they are saved, undoable and editable later.
+   They are rendered at draw time on an off-screen bitmap at the CURRENT
+   resolution (screen zoom or export multiplier), so they stay sharp in print. */
+const P2_FX_DEFAULTS = {
+  stroke:   { on: false, color: '#ffffff', size: 4, opacity: 100 },
+  outer:    { on: false, color: '#fbbf24', size: 14, opacity: 85 },
+  inner:    { on: false, color: '#ffffff', size: 10, opacity: 70 },
+  overlay:  { on: false, c1: '#f59e0b', c2: '#ef4444', angle: 90, opacity: 100 },
+};
+function p2HasFx(fx) { return !!fx && ['stroke', 'outer', 'inner', 'overlay'].some(k => fx[k] && fx[k].on); }
+function p2FxPad(fx) {   // design px of extra room needed around the object
+  let p = 0;
+  if (fx.stroke?.on) p = Math.max(p, +fx.stroke.size || 0);
+  if (fx.outer?.on)  p = Math.max(p, (+fx.outer.size || 0) * 1.6);
+  return p + 2;
+}
+function p2Rgba(hex, a) {
+  const h = colorToHex(hex);
+  return `rgba(${parseInt(h.slice(1, 3), 16)},${parseInt(h.slice(3, 5), 16)},${parseInt(h.slice(5, 7), 16)},${a})`;
+}
+function _p2Canvas(o, key, w, h) {
+  o.__p2 = o.__p2 || {};
+  let c = o.__p2[key];
+  if (!c) c = o.__p2[key] = document.createElement('canvas');
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; } else c.getContext('2d').clearRect(0, 0, w, h);
+  return c;
+}
+function p2DrawWithFx(obj, ctx, fx, origDraw) {
+  const m = ctx.getTransform();
+  let s = Math.hypot(m.a, m.b) || 1;                     // device px per local unit
+  const sc = obj.getObjectScaling(), objScale = (Math.abs(sc.scaleX) + Math.abs(sc.scaleY)) / 2 || 1;
+  const sw = obj.stroke && obj.strokeWidth ? obj.strokeWidth : 0;
+  const lw = (obj.width || 1) + sw, lh = (obj.height || 1) + sw;
+  // cap the bitmap so a huge export can't run out of memory
+  const maxSide = 6000;
+  if (lw * s > maxSide || lh * s > maxSide) s = maxSide / Math.max(lw, lh);
+  const k = s / objScale;                                  // device px per design px
+  const pad = Math.ceil(p2FxPad(fx) * k);
+  const W = Math.max(1, Math.ceil(lw * s + pad * 2)), H = Math.max(1, Math.ceil(lh * s + pad * 2));
+  const ox = pad + lw * s / 2, oy = pad + lh * s / 2;
+
+  // a) the object itself
+  const c1 = _p2Canvas(obj, 'c1', W, H), x1 = c1.getContext('2d');
+  x1.save(); x1.setTransform(s, 0, 0, s, ox, oy); origDraw.call(obj, x1); x1.restore();
+
+  // b) gradient overlay (inside the shape only)
+  if (fx.overlay?.on) {
+    const o = fx.overlay, a = (+o.angle || 0) * Math.PI / 180;
+    const cx = ox, cy = oy, half = Math.abs(lw * s / 2 * Math.cos(a)) + Math.abs(lh * s / 2 * Math.sin(a));
+    const g = x1.createLinearGradient(cx - Math.cos(a) * half, cy - Math.sin(a) * half, cx + Math.cos(a) * half, cy + Math.sin(a) * half);
+    g.addColorStop(0, o.c1); g.addColorStop(1, o.c2);
+    x1.save(); x1.globalCompositeOperation = 'source-atop'; x1.globalAlpha = p2Clamp((+o.opacity || 0) / 100, 0, 1);
+    x1.fillStyle = g; x1.fillRect(0, 0, W, H); x1.restore();
+  }
+  // c) inner glow — blurred colour from the shape's edge inward
+  if (fx.inner?.on) {
+    const o = fx.inner, t = _p2Canvas(obj, 'tmp', W, H), xt = t.getContext('2d');
+    xt.fillStyle = '#000'; xt.fillRect(0, 0, W, H);
+    xt.globalCompositeOperation = 'destination-out'; xt.drawImage(c1, 0, 0); xt.globalCompositeOperation = 'source-over';
+    x1.save(); x1.globalCompositeOperation = 'source-atop';
+    x1.shadowColor = p2Rgba(o.color, p2Clamp((+o.opacity || 0) / 100, 0, 1));
+    x1.shadowBlur = Math.max(1, (+o.size || 0) * k); x1.shadowOffsetX = W * 2;
+    x1.drawImage(t, -W * 2, 0); x1.drawImage(t, -W * 2, 0);
+    x1.restore();
+  }
+  // d) silhouette for stroke / outer glow (works for text, shapes AND photos)
+  let fin = c1;
+  if (fx.stroke?.on || fx.outer?.on) {
+    fin = _p2Canvas(obj, 'fin', W, H);
+    const xf = fin.getContext('2d');
+    const sil = _p2Canvas(obj, 'sil', W, H), xs = sil.getContext('2d');
+    if (fx.outer?.on) {
+      const o = fx.outer;
+      xs.drawImage(c1, 0, 0); xs.globalCompositeOperation = 'source-in'; xs.fillStyle = o.color; xs.fillRect(0, 0, W, H); xs.globalCompositeOperation = 'source-over';
+      xf.save(); xf.globalAlpha = p2Clamp((+o.opacity || 0) / 100, 0, 1);
+      xf.shadowColor = o.color; xf.shadowBlur = Math.max(1, (+o.size || 0) * k); xf.shadowOffsetX = W * 2;
+      xf.drawImage(sil, -W * 2, 0); xf.drawImage(sil, -W * 2, 0);
+      xf.restore();
+      xs.clearRect(0, 0, W, H);
+    }
+    if (fx.stroke?.on) {
+      const o = fx.stroke, r = Math.max(0.5, (+o.size || 0) * k);
+      xs.drawImage(c1, 0, 0); xs.globalCompositeOperation = 'source-in'; xs.fillStyle = o.color; xs.fillRect(0, 0, W, H); xs.globalCompositeOperation = 'source-over';
+      const n = Math.min(64, Math.max(16, Math.ceil(r * 2)));
+      xf.save(); xf.globalAlpha = p2Clamp((+o.opacity || 0) / 100, 0, 1);
+      // draw the silhouette around a circle (plus inner rings for thick strokes) → solid outline
+      for (let ring = r; ring > 0; ring -= Math.max(1, r / 3)) for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2; xf.drawImage(sil, Math.cos(a) * ring, Math.sin(a) * ring); }
+      xf.restore();
+    }
+    xf.drawImage(c1, 0, 0);
+  }
+  ctx.drawImage(fin, -ox / s, -oy / s, W / s, H / s);
+}
+function _p2WrapDraw(proto) {
+  const orig = proto.drawObject;
+  proto.drawObject = function (ctx, forClipping) {
+    const fx = !forClipping && this.data && this.data.fx;
+    if (!fx || !p2HasFx(fx) || this.type === 'activeSelection') return orig.call(this, ctx, forClipping);
+    try { p2DrawWithFx(this, ctx, fx, orig); } catch (e) { orig.call(this, ctx, forClipping); }
+  };
+}
+_p2WrapDraw(fabric.Object.prototype);
+_p2WrapDraw(fabric.Group.prototype);
+(function () {
+  const so = fabric.Object.prototype.shouldCache;
+  fabric.Object.prototype.shouldCache = function () { if (this.data && p2HasFx(this.data.fx)) { this.ownCaching = false; return false; } return so.call(this); };
+  const sg = fabric.Group.prototype.shouldCache;
+  const anyFx = g => g._objects.some(o => (o.data && p2HasFx(o.data.fx)) || (o._objects && anyFx(o)));
+  fabric.Group.prototype.shouldCache = function () { if (anyFx(this)) { this.ownCaching = false; return false; } return sg.call(this); };
+})();
+
+/* ─────────────────────────── 2. TONE FILTER (Levels / Curves / Sharpen) ───────────────────────────
+   One custom filter keeps every adjustment editable and saved with the design. */
+fabric.filterBackend = new fabric.Canvas2dFilterBackend();   // custom filters run in 2D (works on every device)
+function p2CurveLUT(pts) {
+  // monotone cubic interpolation through the control points → 256-entry table
+  const p = (pts && pts.length >= 2 ? pts : [[0, 0], [255, 255]]).slice().sort((a, b) => a[0] - b[0]);
+  const n = p.length, xs = p.map(q => q[0]), ys = p.map(q => q[1]);
+  const d = [], mm = [];
+  for (let i = 0; i < n - 1; i++) d.push((ys[i + 1] - ys[i]) / ((xs[i + 1] - xs[i]) || 1));
+  mm[0] = d[0]; mm[n - 1] = d[n - 2];
+  for (let i = 1; i < n - 1; i++) mm[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+  for (let i = 0; i < n - 1; i++) { if (d[i] === 0) { mm[i] = mm[i + 1] = 0; continue; } const a = mm[i] / d[i], b = mm[i + 1] / d[i], h = a * a + b * b; if (h > 9) { const t = 3 / Math.sqrt(h); mm[i] = t * a * d[i]; mm[i + 1] = t * b * d[i]; } }
+  const lut = new Uint8ClampedArray(256);
+  for (let x = 0; x < 256; x++) {
+    if (x <= xs[0]) { lut[x] = ys[0]; continue; } if (x >= xs[n - 1]) { lut[x] = ys[n - 1]; continue; }
+    let i = 0; while (x > xs[i + 1]) i++;
+    const hh = xs[i + 1] - xs[i], t = (x - xs[i]) / hh, t2 = t * t, t3 = t2 * t;
+    lut[x] = (2 * t3 - 3 * t2 + 1) * ys[i] + (t3 - 2 * t2 + t) * hh * mm[i] + (-2 * t3 + 3 * t2) * ys[i + 1] + (t3 - t2) * hh * mm[i + 1];
+  }
+  return lut;
+}
+const P2_TONE_DEFAULT = () => ({ levels: { b: 0, g: 1, w: 255, ob: 0, ow: 255 }, curves: { rgb: [[0, 0], [255, 255]], r: [[0, 0], [255, 255]], g: [[0, 0], [255, 255]], b: [[0, 0], [255, 255]] }, sharpen: 0, sat: 0, warm: 0 });
+fabric.Image.filters.ToneLUT = fabric.util.createClass(fabric.Image.filters.BaseFilter, {
+  type: 'ToneLUT',
+  levels: null, curves: null, sharpen: 0, sat: 0, warm: 0,
+  initialize: function (opts) { Object.assign(this, P2_TONE_DEFAULT(), opts || {}); },
+  _tables: function () {
+    const L = this.levels, C = this.curves;
+    const lv = new Uint8ClampedArray(256), range = Math.max(1, L.w - L.b);
+    for (let v = 0; v < 256; v++) { let x = p2Clamp((v - L.b) / range, 0, 1); x = Math.pow(x, 1 / (L.g || 1)); lv[v] = L.ob + x * (L.ow - L.ob); }
+    const all = p2CurveLUT(C.rgb), ch = [p2CurveLUT(C.r), p2CurveLUT(C.g), p2CurveLUT(C.b)];
+    return ch.map(t => { const o = new Uint8ClampedArray(256); for (let v = 0; v < 256; v++) o[v] = t[all[lv[v]]]; return o; });
+  },
+  applyTo2d: function (options) {
+    const img = options.imageData, d = img.data, [tr, tg, tb] = this._tables();
+    const sat = 1 + (this.sat || 0) / 100, warm = (this.warm || 0) * 0.3;
+    for (let i = 0; i < d.length; i += 4) {
+      let r = tr[d[i]], g = tg[d[i + 1]], b = tb[d[i + 2]];
+      if (sat !== 1) { const l = 0.299 * r + 0.587 * g + 0.114 * b; r = l + (r - l) * sat; g = l + (g - l) * sat; b = l + (b - l) * sat; }
+      if (warm) { r += warm; b -= warm; }
+      d[i] = r; d[i + 1] = g; d[i + 2] = b;
+    }
+    const amt = (this.sharpen || 0) / 100 * 1.4;
+    if (amt > 0) {   // unsharp mask, 3×3
+      const w = img.width, h = img.height, src = new Uint8ClampedArray(d);
+      for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+        const i = (y * w + x) * 4;
+        for (let c = 0; c < 3; c++) {
+          const v = src[i + c], blur = (src[i + c - 4] + src[i + c + 4] + src[i + c - w * 4] + src[i + c + w * 4]) / 4;
+          d[i + c] = v + (v - blur) * amt;
+        }
+      }
+    }
+  },
+  isNeutralState: function () {
+    const L = this.levels, C = this.curves, id = p => p.length === 2 && p[0][0] === 0 && p[0][1] === 0 && p[1][0] === 255 && p[1][1] === 255;
+    return L.b === 0 && L.w === 255 && L.g === 1 && L.ob === 0 && L.ow === 255 && id(C.rgb) && id(C.r) && id(C.g) && id(C.b) && !this.sharpen && !this.sat && !this.warm;
+  },
+  toObject: function () { return { type: this.type, levels: this.levels, curves: this.curves, sharpen: this.sharpen, sat: this.sat, warm: this.warm }; },
+});
+fabric.Image.filters.ToneLUT.fromObject = fabric.Image.filters.BaseFilter.fromObject;
+
+/* ─────────────────────────── 3. PEN / BEZIER TOOL + POINT EDITING ─────────────────────────── */
+const pen = { active: false, mode: null, pts: [], closed: false, drag: null, hover: null, sel: -1, target: null, cursor: null, style: null };
+const _pt = (x, y) => ({ x, y, ix: x, iy: y, ox: x, oy: y });
+function p2PenPathData(pts, closed) {
+  if (!pts.length) return '';
+  let d = `M ${pts[0].x} ${pts[0].y}`;
+  const seg = (a, b) => (a.ox === a.x && a.oy === a.y && b.ix === b.x && b.iy === b.y) ? ` L ${b.x} ${b.y}` : ` C ${a.ox} ${a.oy} ${b.ix} ${b.iy} ${b.x} ${b.y}`;
+  for (let i = 1; i < pts.length; i++) d += seg(pts[i - 1], pts[i]);
+  if (closed && pts.length > 2) d += seg(pts[pts.length - 1], pts[0]) + ' Z';
+  return d;
+}
+function p2PenBar(msg) {
+  const bar = $p2('p2PenBar');
+  bar.classList.toggle('on', pen.active);
+  if (msg) $p2('p2PenMsg').innerHTML = msg;
+  const r = $p2('canvasArea').getBoundingClientRect();
+  bar.style.left = (r.left + r.width / 2 - bar.offsetWidth / 2) + 'px'; bar.style.top = (r.top + 28) + 'px';
+}
+function p2PenStart() {
+  if (pen.active) { p2PenFinish(false); return; }
+  setActiveTool('select'); closeFlyouts();
+  canvas.discardActiveObject();
+  Object.assign(pen, { active: true, mode: 'draw', pts: [], closed: false, drag: null, hover: null, sel: -1, target: null });
+  canvas.selection = false; canvas.skipTargetFind = true; canvas.defaultCursor = 'crosshair'; canvas.hoverCursor = 'crosshair';
+  document.body.classList.add('pen-mode');
+  $p2('tPen')?.classList.add('active');
+  p2PenBar('Pen: <b>click</b> = corner point · <b>click &amp; drag</b> = smooth curve · click the <b>first point</b> to close · <b>Enter</b> = finish');
+  canvas.requestRenderAll();
+}
+function _p2PenStop() {
+  pen.active = false; pen.mode = null; pen.pts = []; pen.drag = null; pen.target = null; pen.sel = -1;
+  canvas.selection = true; canvas.skipTargetFind = false; canvas.defaultCursor = 'default'; canvas.hoverCursor = 'move';
+  document.body.classList.remove('pen-mode');
+  $p2('tPen')?.classList.remove('active');
+  p2PenBar(); canvas.requestRenderAll();
+}
+function p2PenCancel() {
+  if (pen.mode === 'edit' && pen.target) { pen.target.set({ visible: true }); const t = pen.target; _p2PenStop(); canvas.setActiveObject(t); canvas.requestRenderAll(); return; }
+  _p2PenStop();
+}
+function p2PenUndoPoint() { if (pen.mode === 'draw' && pen.pts.length) { pen.pts.pop(); canvas.requestRenderAll(); } }
+/** Build a fabric.Path from the pen points (canvas coordinates). */
+function _p2MakePath(pts, closed, style) {
+  const p = new fabric.Path(p2PenPathData(pts, closed), Object.assign({
+    fill: closed ? (document.getElementById('pFill')?.value || '#4f46e5') : '',
+    stroke: '#1f2937', strokeWidth: Math.max(1, Math.round(Math.min(canvasW, canvasH) / 270)), strokeLineCap: 'round', strokeLineJoin: 'round',
+  }, style || {}));
+  p.setCoords();
+  p.data = Object.assign({}, p.data, { pen: { pts: pts.map(q => Object.assign({}, q)), closed: !!closed, m0: p.calcTransformMatrix() } });
+  return p;
+}
+function p2PenFinish(close) {
+  if (!pen.active) return;
+  if (pen.mode === 'edit') { _p2EditCommit(); return; }
+  // drop duplicate points (a double-click adds two clicks on the same spot)
+  const pts = pen.pts.filter((q, i, a) => i === 0 || Math.hypot(q.x - a[i - 1].x, q.y - a[i - 1].y) > 0.5);
+  if (pts.length < 2) { _p2PenStop(); showToast('Pen cancelled — place at least 2 points', 'info'); return; }
+  const path = _p2MakePath(pts, close && pts.length > 2);
+  _p2PenStop();
+  histLabel(close ? 'Pen shape' : 'Pen line');
+  canvas.add(path); canvas.setActiveObject(path).requestRenderAll();
+  showToast((close ? 'Shape' : 'Line') + ' created — double-click it to edit its points', 'ok');
+}
+/** Points of an existing path / polygon in CANVAS coordinates (for editing). */
+function _p2PointsOf(o) {
+  const M = o.calcTransformMatrix(), tp = (x, y) => fabric.util.transformPoint({ x, y }, M);
+  if (o.data?.pen?.pts && o.data.pen.m0) {
+    const T = fabric.util.multiplyTransformMatrices(M, fabric.util.invertTransform(o.data.pen.m0));
+    const f = (x, y) => fabric.util.transformPoint({ x, y }, T);
+    return { closed: o.data.pen.closed, pts: o.data.pen.pts.map(q => { const a = f(q.x, q.y), i = f(q.ix, q.iy), b = f(q.ox, q.oy); return { x: a.x, y: a.y, ix: i.x, iy: i.y, ox: b.x, oy: b.y }; }) };
+  }
+  if (o.type === 'polygon' || o.type === 'polyline') {
+    const off = o.pathOffset;
+    return { closed: o.type === 'polygon', pts: o.points.map(q => { const a = tp(q.x - off.x, q.y - off.y); return _pt(a.x, a.y); }) };
+  }
+  if (o.type === 'path' && Array.isArray(o.path)) {
+    const off = o.pathOffset, pts = []; let closed = false, start = null;
+    const P = (x, y) => tp(x - off.x, y - off.y);
+    for (const seg of o.path) {
+      const c = seg[0];
+      if (c === 'M') { if (pts.length) break; const a = P(seg[1], seg[2]); pts.push(_pt(a.x, a.y)); start = pts[0]; }
+      else if (c === 'L') { const a = P(seg[1], seg[2]); pts.push(_pt(a.x, a.y)); }
+      else if (c === 'C' || c === 'Q') {
+        const last = pts[pts.length - 1];
+        let c1, c2, e;
+        if (c === 'C') { c1 = P(seg[1], seg[2]); c2 = P(seg[3], seg[4]); e = P(seg[5], seg[6]); }
+        else { const q = P(seg[1], seg[2]); e = P(seg[3], seg[4]); c1 = { x: last.x + 2 / 3 * (q.x - last.x), y: last.y + 2 / 3 * (q.y - last.y) }; c2 = { x: e.x + 2 / 3 * (q.x - e.x), y: e.y + 2 / 3 * (q.y - e.y) }; }
+        last.ox = c1.x; last.oy = c1.y;
+        const n = _pt(e.x, e.y); n.ix = c2.x; n.iy = c2.y; pts.push(n);
+      } else if (c === 'Z' || c === 'z') { closed = true; break; }
+      else return null;   // arcs etc. — not editable
+    }
+    if (closed && pts.length > 2) {   // merge a closing point that duplicates the start
+      const l = pts[pts.length - 1];
+      if (Math.hypot(l.x - start.x, l.y - start.y) < 0.5) { start.ix = l.ix; start.iy = l.iy; pts.pop(); }
+    }
+    return pts.length >= 2 ? { closed, pts } : null;
+  }
+  return null;
+}
+function p2EditPoints(o) {
+  o = o || canvas.getActiveObject();
+  if (!o || !['path', 'polygon', 'polyline'].includes(o.type)) { showToast('Select a pen shape, path, star or polygon to edit its points', 'info'); return; }
+  const r = _p2PointsOf(o);
+  if (!r) { showToast('This shape contains arcs and cannot be point-edited', 'err'); return; }
+  setActiveTool('select'); canvas.discardActiveObject();
+  Object.assign(pen, { active: true, mode: 'edit', pts: r.pts, closed: r.closed, target: o, drag: null, sel: -1 });
+  o.set({ visible: false });
+  canvas.selection = false; canvas.skipTargetFind = true; canvas.defaultCursor = 'default';
+  document.body.classList.add('pen-mode');
+  p2PenBar('Edit points: <b>drag</b> points or handles · click the line to <b>add</b> a point · <b>double-click</b> a point = corner/smooth · <b>Del</b> = remove · <b>Enter</b> = done');
+  canvas.requestRenderAll();
+}
+function _p2EditCommit() {
+  const o = pen.target, pts = pen.pts, closed = pen.closed;
+  if (!o) { _p2PenStop(); return; }
+  const keep = { fill: o.fill, stroke: o.stroke, strokeWidth: o.strokeWidth, strokeDashArray: o.strokeDashArray, strokeLineCap: o.strokeLineCap, strokeLineJoin: o.strokeLineJoin,
+    opacity: o.opacity, shadow: o.shadow, globalCompositeOperation: o.globalCompositeOperation, fillRule: o.fillRule };
+  const np = _p2MakePath(pts, closed, keep);
+  np.data = Object.assign({}, o.data, { pen: np.data.pen });
+  const idx = canvas.getObjects().indexOf(o);
+  hist.locked = true; canvas.remove(o); canvas.add(np); if (idx >= 0) canvas.moveTo(np, idx); hist.locked = false;
+  _p2PenStop();
+  canvas.setActiveObject(np).requestRenderAll();
+  histSave('Edit points'); refreshLayers();
+}
+function _p2Bez(a, b, t) {   // point on segment a→b at t
+  const u = 1 - t;
+  return { x: u * u * u * a.x + 3 * u * u * t * a.ox + 3 * u * t * t * b.ix + t * t * t * b.x, y: u * u * u * a.y + 3 * u * u * t * a.oy + 3 * u * t * t * b.iy + t * t * t * b.y };
+}
+function _p2Split(a, b, t) {   // de Casteljau → new middle point, updates a.out / b.in
+  const L = (p, q) => ({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t });
+  const p0 = { x: a.x, y: a.y }, p1 = { x: a.ox, y: a.oy }, p2 = { x: b.ix, y: b.iy }, p3 = { x: b.x, y: b.y };
+  const q0 = L(p0, p1), q1 = L(p1, p2), q2 = L(p2, p3), r0 = L(q0, q1), r1 = L(q1, q2), s = L(r0, r1);
+  a.ox = q0.x; a.oy = q0.y; b.ix = q2.x; b.iy = q2.y;
+  return { x: s.x, y: s.y, ix: r0.x, iy: r0.y, ox: r1.x, oy: r1.y };
+}
+function _p2Hit(p) {   // what is under the pointer in edit/draw mode
+  const z = canvas.getZoom() || 1, R = 7 / z, pts = pen.pts;
+  for (let i = 0; i < pts.length; i++) {
+    const q = pts[i];
+    if ((i === pen.sel || pen.mode === 'draw') && (q.ox !== q.x || q.oy !== q.y) && Math.hypot(p.x - q.ox, p.y - q.oy) < R) return { kind: 'out', i };
+    if ((i === pen.sel || pen.mode === 'draw') && (q.ix !== q.x || q.iy !== q.y) && Math.hypot(p.x - q.ix, p.y - q.iy) < R) return { kind: 'in', i };
+  }
+  for (let i = 0; i < pts.length; i++) if (Math.hypot(p.x - pts[i].x, p.y - pts[i].y) < R) return { kind: 'anchor', i };
+  if (pen.mode === 'edit') {
+    const n = pts.length, segs = pen.closed ? n : n - 1;
+    let best = null;
+    for (let s = 0; s < segs; s++) {
+      const a = pts[s], b = pts[(s + 1) % n];
+      for (let k = 1; k < 40; k++) { const t = k / 40, q = _p2Bez(a, b, t), d = Math.hypot(p.x - q.x, p.y - q.y); if (d < R && (!best || d < best.d)) best = { kind: 'segment', i: s, t, d }; }
+    }
+    if (best) return best;
+  }
+  return null;
+}
+canvas.on('mouse:down', o => {
+  if (!pen.active) return;
+  const p = canvas.getPointer(o.e), z = canvas.getZoom() || 1;
+  if (pen.mode === 'draw') {
+    if (pen.pts.length >= 2 && Math.hypot(p.x - pen.pts[0].x, p.y - pen.pts[0].y) < 9 / z) { p2PenFinish(true); return; }
+    const h = _p2Hit(p);
+    if (h && (h.kind === 'in' || h.kind === 'out')) { pen.drag = h; return; }
+    pen.pts.push(_pt(p.x, p.y)); pen.drag = { kind: 'new', i: pen.pts.length - 1 };
+  } else {
+    const h = _p2Hit(p);
+    if (!h) { _p2EditCommit(); return; }
+    if (h.kind === 'segment') {
+      const n = pen.pts.length, a = pen.pts[h.i], b = pen.pts[(h.i + 1) % n];
+      pen.pts.splice(h.i + 1, 0, _p2Split(a, b, h.t)); pen.sel = h.i + 1; pen.drag = { kind: 'anchor', i: h.i + 1, sx: p.x, sy: p.y };
+    } else { if (h.kind === 'anchor') pen.sel = h.i; pen.drag = Object.assign(h, { sx: p.x, sy: p.y }); }
+  }
+  canvas.requestRenderAll();
+});
+canvas.on('mouse:move', o => {
+  if (!pen.active) return;
+  const p = canvas.getPointer(o.e); pen.cursor = p;
+  const d = pen.drag;
+  if (d) {
+    const q = pen.pts[d.i];
+    if (d.kind === 'new') { q.ox = p.x; q.oy = p.y; q.ix = 2 * q.x - p.x; q.iy = 2 * q.y - p.y; }
+    else if (d.kind === 'anchor') { const dx = p.x - d.sx, dy = p.y - d.sy; d.sx = p.x; d.sy = p.y; q.x += dx; q.y += dy; q.ix += dx; q.iy += dy; q.ox += dx; q.oy += dy; }
+    else {
+      const k = d.kind === 'out' ? ['ox', 'oy', 'ix', 'iy'] : ['ix', 'iy', 'ox', 'oy'];
+      q[k[0]] = p.x; q[k[1]] = p.y;
+      if (!o.e.altKey) {   // keep the curve smooth: mirror the other handle (Alt = break into a corner)
+        const len = Math.hypot(q[k[2]] - q.x, q[k[3]] - q.y) || Math.hypot(p.x - q.x, p.y - q.y);
+        const ang = Math.atan2(p.y - q.y, p.x - q.x) + Math.PI;
+        q[k[2]] = q.x + Math.cos(ang) * len; q[k[3]] = q.y + Math.sin(ang) * len;
+      }
+    }
+  } else {
+    const h = _p2Hit(p);
+    canvas.setCursor(h ? (h.kind === 'segment' ? 'copy' : 'move') : pen.mode === 'draw' ? 'crosshair' : 'default');
+    pen.hover = h;
+  }
+  canvas.requestRenderAll();
+});
+canvas.on('mouse:up', () => { if (pen.active) pen.drag = null; });
+canvas.on('mouse:dblclick', o => {
+  if (pen.active && pen.mode === 'draw') { p2PenFinish(false); return; }
+  if (pen.active && pen.mode === 'edit') {
+    const h = _p2Hit(canvas.getPointer(o.e));
+    if (h && h.kind === 'anchor') {   // toggle corner ↔ smooth
+      const q = pen.pts[h.i], n = pen.pts.length;
+      if (q.ix !== q.x || q.iy !== q.y || q.ox !== q.x || q.oy !== q.y) { q.ix = q.ox = q.x; q.iy = q.oy = q.y; }
+      else {
+        const pr = pen.pts[(h.i - 1 + n) % n], nx = pen.pts[(h.i + 1) % n];
+        const ax = nx.x - pr.x, ay = nx.y - pr.y, al = Math.hypot(ax, ay) || 1;
+        const l1 = Math.hypot(q.x - pr.x, q.y - pr.y) / 3, l2 = Math.hypot(nx.x - q.x, nx.y - q.y) / 3;
+        q.ix = q.x - ax / al * l1; q.iy = q.y - ay / al * l1; q.ox = q.x + ax / al * l2; q.oy = q.y + ay / al * l2;
+      }
+      canvas.requestRenderAll();
+    }
+    return;
+  }
+  const t = o.target;
+  if (t && !t.data?.qr && ['path', 'polygon', 'polyline'].includes(t.type) && !t.data?.eraserPath) p2EditPoints(t);
+});
+canvas.on('after:render', opt => {
+  if (!pen.active || opt.ctx !== canvas.contextContainer) return;
+  const ctx = opt.ctx, v = canvas.viewportTransform, z = v[0] || 1, pts = pen.pts;
+  ctx.save(); ctx.transform(v[0], v[1], v[2], v[3], v[4], v[5]);
+  ctx.lineWidth = 1.5 / z; ctx.strokeStyle = '#22d3ee';
+  if (pts.length) {
+    ctx.beginPath(); const p = new Path2D(p2PenPathData(pts, pen.closed)); ctx.stroke(p);
+    if (pen.mode === 'draw' && pen.cursor && !pen.drag) {   // rubber band to the cursor
+      const l = pts[pts.length - 1]; ctx.setLineDash([4 / z, 4 / z]); ctx.beginPath(); ctx.moveTo(l.x, l.y);
+      ctx.bezierCurveTo(l.ox, l.oy, pen.cursor.x, pen.cursor.y, pen.cursor.x, pen.cursor.y); ctx.stroke(); ctx.setLineDash([]);
+    }
+  }
+  const sz = 4.5 / z;
+  pts.forEach((q, i) => {
+    const showH = pen.mode === 'draw' ? i >= pts.length - 2 : (i === pen.sel || i === pen.sel - 1 || i === pen.sel + 1);
+    if (showH) {
+      ctx.strokeStyle = '#a5f3fc'; ctx.lineWidth = 1 / z;
+      [['ix', 'iy'], ['ox', 'oy']].forEach(([hx, hy]) => { if (q[hx] === q.x && q[hy] === q.y) return; ctx.beginPath(); ctx.moveTo(q.x, q.y); ctx.lineTo(q[hx], q[hy]); ctx.stroke(); ctx.beginPath(); ctx.arc(q[hx], q[hy], 3.5 / z, 0, Math.PI * 2); ctx.fillStyle = '#0e7490'; ctx.fill(); ctx.stroke(); });
+    }
+    const close = pen.mode === 'draw' && i === 0 && pts.length >= 2 && pen.cursor && Math.hypot(pen.cursor.x - q.x, pen.cursor.y - q.y) < 9 / z;
+    ctx.fillStyle = i === pen.sel ? '#22d3ee' : '#ffffff'; ctx.strokeStyle = '#0e7490'; ctx.lineWidth = 1.5 / z;
+    const s2 = close ? sz * 1.8 : sz;
+    ctx.fillRect(q.x - s2, q.y - s2, s2 * 2, s2 * 2); ctx.strokeRect(q.x - s2, q.y - s2, s2 * 2, s2 * 2);
+  });
+  ctx.restore();
+});
+
+/* ─────────────────────────── 4. SHAPE BOOLEAN (Union / Subtract / Intersect / Exclude) ─────────────────────────── */
+const P2_PAPER_URL = 'https://cdn.jsdelivr.net/npm/paper@0.12.18/dist/paper-core.min.js';
+let _p2PaperP = null, _p2Scope = null;
+function p2LoadPaper() {
+  if (window.paper) return Promise.resolve();
+  return _p2PaperP || (_p2PaperP = new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = P2_PAPER_URL; s.async = true;
+    s.onload = res; s.onerror = () => { _p2PaperP = null; rej(new Error('Could not load the shape engine — check your internet connection')); };
+    document.head.appendChild(s);
+  }));
+}
+const P2_BOOL_TYPES = ['rect', 'circle', 'ellipse', 'triangle', 'polygon', 'polyline', 'path', 'group'];
+function _p2ToPaper(scope, o) {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg">' + o.toSVG() + '</svg>';
+  const item = scope.project.importSVG(svg, { expandShapes: true, insert: true });
+  const parts = item.getItems({ class: scope.PathItem }).filter(p => !(p.parent instanceof scope.CompoundPath));
+  if (!parts.length) { item.remove(); return null; }
+  let r = parts[0].clone({ insert: false });
+  for (let i = 1; i < parts.length; i++) r = r.unite(parts[i], { insert: false });
+  item.remove();
+  return r;
+}
+async function p2Boolean(op) {
+  const sel = canvas.getActiveObjects();
+  if (sel.length < 2) { showToast('Select 2 or more shapes (Shift+click), then choose Union / Subtract / Intersect / Exclude', 'info'); return; }
+  const bad = sel.find(o => !P2_BOOL_TYPES.includes(o.type) || (o.type === 'group' && o.getObjects().some(c => isTextObj(c) || c.type === 'image')));
+  if (bad) { showToast('Only shapes can be combined (not text or photos) — "' + _layerLabel(bad) + '" is not a shape', 'err'); return; }
+  showToast('Combining shapes…', 'info');
+  try { await p2LoadPaper(); } catch (e) { showToast(e.message, 'err'); return; }
+  if (!_p2Scope) { _p2Scope = new paper.PaperScope(); _p2Scope.setup(document.createElement('canvas')); }
+  const scope = _p2Scope;
+  const all = canvas.getObjects();
+  const objs = sel.slice().sort((a, b) => all.indexOf(a) - all.indexOf(b));   // back → front
+  let res;
+  try {
+    const paths = objs.map(o => _p2ToPaper(scope, o));
+    if (paths.some(p => !p)) throw new Error('One of the shapes has no outline');
+    res = paths[0];
+    for (let i = 1; i < paths.length; i++) {
+      const p = paths[i];
+      res = op === 'union' ? res.unite(p, { insert: false }) : op === 'subtract' ? res.subtract(p, { insert: false })
+          : op === 'intersect' ? res.intersect(p, { insert: false }) : res.exclude(p, { insert: false });
+    }
+  } catch (e) { showToast('Could not combine: ' + e.message, 'err'); return; }
+  const d = res.pathData;
+  if (!d || res.isEmpty && res.isEmpty()) { showToast(op === 'intersect' ? 'These shapes do not overlap' : 'Nothing is left after this operation', 'err'); return; }
+  const base = objs[0];
+  const src = base.type === 'group' ? base.getObjects()[0] : base;
+  const out = new fabric.Path(d, {
+    fill: src.fill || '#4f46e5', stroke: src.stroke || null, strokeWidth: src.strokeWidth || 0, opacity: base.opacity,
+    fillRule: op === 'exclude' ? 'evenodd' : 'nonzero', shadow: base.shadow,
+    data: Object.assign({}, base.data && base.data.fx ? { fx: base.data.fx } : {}, { name: { union: 'Union', subtract: 'Subtracted shape', intersect: 'Intersection', exclude: 'Excluded shape' }[op] }),
+  });
+  const idx = all.indexOf(base);
+  hist.locked = true;
+  canvas.discardActiveObject();
+  objs.forEach(o => canvas.remove(o));
+  canvas.add(out); canvas.moveTo(out, idx);
+  hist.locked = false;
+  canvas.setActiveObject(out).requestRenderAll();
+  histSave({ union: 'Union shapes', subtract: 'Subtract shapes', intersect: 'Intersect shapes', exclude: 'Exclude shapes' }[op]);
+  refreshLayers();
+  showToast('Done — double-click the new shape to edit its points');
+}
+
+/* ─────────────────────────── 5. IMAGE ADJUSTMENTS DIALOG ─────────────────────────── */
+const adj = { obj: null, before: null, tone: null, ch: 'rgb', drag: -1, hist: null, raf: 0 };
+function p2ToneOf(o) { return (o.filters || []).find(f => f && f.type === 'ToneLUT'); }
+function p2OpenAdjust() {
+  const o = canvas.getActiveObject();
+  if (!o || o.type !== 'image') { showToast('Select a photo first', 'info'); return; }
+  adj.obj = o;
+  adj.before = (o.filters || []).map(f => f && f.toObject ? f.toObject() : null);
+  let t = p2ToneOf(o);
+  if (!t) { t = new fabric.Image.filters.ToneLUT(); o.filters = (o.filters || []).concat(t); }
+  adj.tone = t;
+  adj.hist = p2Histogram(o);
+  p2AdjSyncUI();
+  $p2('p2AdjOv').classList.add('open');
+}
+function p2Histogram(o) {
+  const el = o._originalElement || o.getElement(), k = Math.min(1, 400 / Math.max(el.naturalWidth || el.width, el.naturalHeight || el.height));
+  const c = document.createElement('canvas'); c.width = Math.max(1, Math.round((el.naturalWidth || el.width) * k)); c.height = Math.max(1, Math.round((el.naturalHeight || el.height) * k));
+  const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(el, 0, 0, c.width, c.height);
+  const h = { l: new Uint32Array(256), r: new Uint32Array(256), g: new Uint32Array(256), b: new Uint32Array(256), n: 0 };
+  try {
+    const d = x.getImageData(0, 0, c.width, c.height).data;
+    for (let i = 0; i < d.length; i += 4) { if (d[i + 3] < 20) continue; h.r[d[i]]++; h.g[d[i + 1]]++; h.b[d[i + 2]]++; h.l[Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2])]++; h.n++; }
+  } catch (e) { /* cross-origin photo — histogram unavailable */ }
+  return h;
+}
+function p2AdjSyncUI() {
+  const L = adj.tone.levels;
+  $p2('p2LvB').value = L.b; $p2('p2LvW').value = L.w; $p2('p2LvG').value = Math.round((Math.log(L.g) / Math.log(10) + 1) * 500);
+  $p2('p2OutB').value = L.ob; $p2('p2OutW').value = L.ow;
+  $p2('p2Sharp').value = adj.tone.sharpen; $p2('p2Sat').value = adj.tone.sat; $p2('p2Warm').value = adj.tone.warm;
+  ['Sharp', 'Sat', 'Warm'].forEach(k => $p2('p2' + k + 'V').textContent = $p2('p2' + k).value);
+  $p2('p2LvBv').textContent = L.b; $p2('p2LvWv').textContent = L.w; $p2('p2LvGv').textContent = L.g.toFixed(2);
+  p2DrawHist(); p2DrawCurve();
+}
+function p2DrawHist() {
+  const c = $p2('p2Hist'), x = c.getContext('2d'), h = adj.hist, W = c.width, H = c.height;
+  x.clearRect(0, 0, W, H);
+  if (!h || !h.n) { x.fillStyle = '#64748b'; x.font = '22px system-ui'; x.fillText('Histogram not available', 20, H / 2); return; }
+  const max = Math.max(...Array.from(h.l).slice(2, 254)) || 1;
+  x.fillStyle = 'rgba(148,163,184,.55)';
+  for (let v = 0; v < 256; v++) { const bh = Math.min(H, h.l[v] / max * H); x.fillRect(v * 2, H - bh, 2, bh); }
+  const L = adj.tone.levels; x.fillStyle = 'rgba(99,102,241,.25)'; x.fillRect(0, 0, L.b * 2, H); x.fillRect(L.w * 2, 0, W - L.w * 2, H);
+}
+function p2DrawCurve() {
+  const c = $p2('p2Curve'), x = c.getContext('2d'), W = c.width, k = W / 255;
+  x.clearRect(0, 0, W, W);
+  x.strokeStyle = '#1e293b'; x.lineWidth = 1;
+  for (let i = 1; i < 4; i++) { x.beginPath(); x.moveTo(i * W / 4, 0); x.lineTo(i * W / 4, W); x.moveTo(0, i * W / 4); x.lineTo(W, i * W / 4); x.stroke(); }
+  x.strokeStyle = '#334155'; x.beginPath(); x.moveTo(0, W); x.lineTo(W, 0); x.stroke();
+  const col = { rgb: '#e2e8f0', r: '#f87171', g: '#4ade80', b: '#60a5fa' }[adj.ch];
+  const pts = adj.tone.curves[adj.ch], lut = p2CurveLUT(pts);
+  x.strokeStyle = col; x.lineWidth = 3; x.beginPath();
+  for (let v = 0; v < 256; v++) { const px = v * k, py = W - lut[v] * k; v ? x.lineTo(px, py) : x.moveTo(px, py); }
+  x.stroke();
+  pts.forEach((p, i) => { x.beginPath(); x.arc(p[0] * k, W - p[1] * k, 9, 0, Math.PI * 2); x.fillStyle = i === adj.drag ? col : '#0f172a'; x.fill(); x.strokeStyle = col; x.lineWidth = 3; x.stroke(); });
+}
+function p2AdjLive() {
+  if (adj.raf) return;
+  adj.raf = requestAnimationFrame(() => { adj.raf = 0; if (!adj.obj) return; try { adj.obj.applyFilters(); } catch (e) {} canvas.requestRenderAll(); });
+}
+function p2AdjRead() {
+  const L = adj.tone.levels;
+  let b = +$p2('p2LvB').value, w = +$p2('p2LvW').value; if (w - b < 2) { if (document.activeElement === $p2('p2LvB')) b = w - 2; else w = b + 2; }
+  L.b = b; L.w = w; L.g = Math.round(Math.pow(10, +$p2('p2LvG').value / 500 - 1) * 100) / 100;
+  L.ob = +$p2('p2OutB').value; L.ow = +$p2('p2OutW').value;
+  adj.tone.sharpen = +$p2('p2Sharp').value; adj.tone.sat = +$p2('p2Sat').value; adj.tone.warm = +$p2('p2Warm').value;
+  p2AdjSyncUI(); p2AdjLive();
+}
+['p2LvB', 'p2LvG', 'p2LvW', 'p2OutB', 'p2OutW', 'p2Sharp', 'p2Sat', 'p2Warm'].forEach(id => $p2(id).addEventListener('input', p2AdjRead));
+$p2('p2CurveCh').addEventListener('click', e => { const s = e.target.closest('span'); if (!s) return; adj.ch = s.dataset.c; $p2('p2CurveCh').querySelectorAll('span').forEach(x => x.classList.toggle('on', x === s)); p2DrawCurve(); });
+(function () {
+  const c = $p2('p2Curve');
+  const pos = e => { const r = c.getBoundingClientRect(); return [p2Clamp((e.clientX - r.left) / r.width * 255, 0, 255), p2Clamp(255 - (e.clientY - r.top) / r.height * 255, 0, 255)]; };
+  const near = p => adj.tone.curves[adj.ch].findIndex(q => Math.hypot(q[0] - p[0], q[1] - p[1]) < 10);
+  c.addEventListener('pointerdown', e => {
+    const p = pos(e), pts = adj.tone.curves[adj.ch];
+    let i = near(p);
+    if (i < 0) { pts.push([Math.round(p[0]), Math.round(p[1])]); pts.sort((a, b) => a[0] - b[0]); i = pts.findIndex(q => q[0] === Math.round(p[0]) && q[1] === Math.round(p[1])); }
+    adj.drag = i; c.setPointerCapture(e.pointerId); p2DrawCurve(); p2AdjLive();
+  });
+  c.addEventListener('pointermove', e => {
+    if (adj.drag < 0) return;
+    const p = pos(e), pts = adj.tone.curves[adj.ch], i = adj.drag;
+    const lo = i > 0 ? pts[i - 1][0] + 2 : 0, hi = i < pts.length - 1 ? pts[i + 1][0] - 2 : 255;
+    pts[i] = [Math.round(p2Clamp(p[0], lo, hi)), Math.round(p[1])];
+    p2DrawCurve(); p2AdjLive();
+  });
+  c.addEventListener('pointerup', () => { adj.drag = -1; p2DrawCurve(); });
+  c.addEventListener('dblclick', e => { const pts = adj.tone.curves[adj.ch], i = near(pos(e)); if (i > 0 && i < pts.length - 1) { pts.splice(i, 1); p2DrawCurve(); p2AdjLive(); } });
+})();
+function p2AdjReset() { const d = P2_TONE_DEFAULT(); Object.assign(adj.tone, d); p2AdjSyncUI(); p2AdjLive(); }
+function p2AdjPreset(name) {
+  const t = adj.tone; p2AdjReset();
+  if (name === 'bright') t.curves.rgb = [[0, 0], [110, 150], [255, 255]];
+  if (name === 'contrast') t.curves.rgb = [[0, 0], [64, 48], [192, 210], [255, 255]];
+  if (name === 'dark') { t.curves.rgb = [[0, 0], [50, 90], [255, 255]]; }
+  if (name === 'faded') { p2AutoEnhance(true); t.sat = 25; t.curves.rgb = [[0, 0], [64, 52], [192, 205], [255, 255]]; }
+  p2AdjSyncUI(); p2AdjLive();
+}
+/** One-click photo clean-up: stretch levels to the real black/white points,
+ *  balance mid-tones, correct colour cast, add a little saturation + sharpness. */
+function p2AutoEnhance(keepOpen) {
+  const h = adj.hist, t = adj.tone;
+  if (!h || !h.n) { showToast('Auto-enhance needs a photo uploaded from your device', 'err'); return; }
+  const pct = (arr, q) => { let s = 0; const target = h.n * q; for (let v = 0; v < 256; v++) { s += arr[v]; if (s >= target) return v; } return 255; };
+  const b = pct(h.l, 0.005), w = Math.max(b + 10, pct(h.l, 0.995)), med = pct(h.l, 0.5);
+  const tmid = p2Clamp((med - b) / (w - b), 0.05, 0.95);
+  t.levels = { b, w, g: Math.round(p2Clamp(Math.log(tmid) / Math.log(0.5), 0.6, 1.8) * 100) / 100, ob: 0, ow: 255 };
+  // colour cast: per-channel curves so each channel's 99.5% point maps to the same white
+  ['r', 'g', 'b'].forEach(c => { const hi = pct(h[c], 0.995), lo = pct(h[c], 0.005); t.curves[c] = [[0, 0], [lo, Math.min(lo, b)], [Math.max(hi, lo + 10), Math.max(w, Math.min(255, hi))], [255, 255]].filter((p, i, a) => i === 0 || p[0] > a[i - 1][0]); });
+  t.sat = 12; t.sharpen = 25;
+  p2AdjSyncUI(); p2AdjLive();
+  if (!keepOpen) showToast('Auto-enhanced — fine-tune or press Apply', 'ok');
+}
+function p2AdjCancel() {
+  const o = adj.obj; $p2('p2AdjOv').classList.remove('open');
+  if (!o) return;
+  o.filters = (adj.before || []).filter(Boolean).map(f => { const C = fabric.Image.filters[f.type]; return C ? (C.fromObject ? C.fromObject(f) : new C(f)) : null; }).filter(Boolean);
+  try { o.applyFilters(); } catch (e) {}
+  canvas.requestRenderAll(); adj.obj = null;
+}
+function p2AdjApply() {
+  const o = adj.obj; $p2('p2AdjOv').classList.remove('open');
+  if (!o) return;
+  if (adj.tone.isNeutralState()) o.filters = o.filters.filter(f => f !== adj.tone);
+  try { o.applyFilters(); } catch (e) {}
+  adj.obj = null; canvas.requestRenderAll(); histSave('Image adjustments');
+  showToast('Adjustments applied — you can re-open and change them any time');
+}
+
+/* ─────────────────────────── 6. TEXT AUTO-FIT + OVERFLOW WARNINGS ─────────────────────────── */
+function p2FitText(o) {
+  const af = o && o.data && o.data.autoFit; if (!af || !isTextObj(o)) return false;
+  const c = o.getCenterPoint(), min = af.min || 6, max = af.size || o.fontSize;
+  const fits = () => o.type === 'textbox' ? (o._textLines || o.textLines || []).length <= (af.lines || 1) : o.width * o.scaleX <= af.w + 0.5;
+  o.set('fontSize', max); o.initDimensions();
+  if (!fits()) {
+    let lo = min, hi = max;
+    for (let i = 0; i < 14; i++) { const mid = (lo + hi) / 2; o.set('fontSize', mid); o.initDimensions(); if (fits()) lo = mid; else hi = mid; }
+    o.set('fontSize', Math.floor(lo * 10) / 10); o.initDimensions();
+  }
+  o.setPositionByOrigin(c, 'center', 'center'); o.setCoords(); o.dirty = true;
+  af.overflow = !fits();
+  return true;
+}
+function p2SetAutoFit(on) {
+  const objs = canvas.getActiveObjects().filter(isTextObj); if (!objs.length) return;
+  objs.forEach(o => {
+    if (on) {
+      const lines = o.type === 'textbox' ? (o._textLines || o.textLines || []).length || 1 : 1;
+      o.data = Object.assign({}, o.data, { autoFit: { w: Math.round(o.width * o.scaleX), size: o.fontSize, min: 6, lines } });
+      p2FitText(o);
+    } else if (o.data && o.data.autoFit) { o.set('fontSize', o.data.autoFit.size || o.fontSize); const d = Object.assign({}, o.data); delete d.autoFit; o.data = d; o.initDimensions(); o.setCoords(); }
+  });
+  canvas.requestRenderAll(); histSave(on ? 'Auto-fit text on' : 'Auto-fit text off'); refreshProps();
+  if (on) showToast('Auto-fit on — long names now shrink to stay inside ' + (objs[0].type === 'textbox' ? 'their lines' : 'this width'), 'ok');
+}
+canvas.on('text:changed', e => { if (p2FitText(e.target)) canvas.requestRenderAll(); });
+/** Text sticking out of the canvas, or still too long at the smallest auto-fit size, gets a warning outline. */
+canvas.on('after:render', opt => {
+  if (opt.ctx !== canvas.contextContainer || pen.active) return;
+  const ctx = opt.ctx, v = canvas.viewportTransform, z = v[0] || 1;
+  const warn = [];
+  canvas.getObjects().forEach(o => {
+    if (!isTextObj(o) || o.visible === false || o.isEditing) return;
+    const b = o.getBoundingRect(true, true);
+    const out = b.left < -1 || b.top < -1 || b.left + b.width > canvasW + 1 || b.top + b.height > canvasH + 1;
+    const long = o.data?.autoFit?.overflow;
+    if (out || long) warn.push({ b, msg: long ? 'Text too long' : 'Outside the card' });
+  });
+  if (!warn.length) return;
+  ctx.save(); ctx.transform(v[0], v[1], v[2], v[3], v[4], v[5]);
+  warn.forEach(w => {
+    ctx.strokeStyle = '#f97316'; ctx.lineWidth = 1.5 / z; ctx.setLineDash([4 / z, 3 / z]);
+    ctx.strokeRect(w.b.left, w.b.top, w.b.width, w.b.height); ctx.setLineDash([]);
+    ctx.font = `600 ${11 / z}px system-ui`; const tw = ctx.measureText('⚠ ' + w.msg).width;
+    // keep the label inside the visible canvas area, even when the text itself sticks out
+    const vl = -v[4] / z, vt = -v[5] / z, vr = (canvas.getWidth() - v[4]) / z, bw = tw + 8 / z;
+    const lx = Math.max(vl + 2 / z, Math.min(w.b.left, vr - bw - 2 / z));
+    const ly = w.b.top - 16 / z < vt ? w.b.top + w.b.height + 1 / z : w.b.top - 16 / z;
+    ctx.fillStyle = '#f97316'; ctx.fillRect(lx, ly, bw, 15 / z);
+    ctx.fillStyle = '#fff'; ctx.fillText('⚠ ' + w.msg, lx + 4 / z, ly + 11.5 / z);
+  });
+  ctx.restore();
+});
+
+/* ─────────────────────────── 7. BRAND COLOUR PALETTE ─────────────────────────── */
+const P2_PAL_KEY = 'ed_brand_palette';
+let p2Palette = [];
+try { p2Palette = JSON.parse(localStorage.getItem(P2_PAL_KEY) || '[]').filter(c => /^#[0-9a-f]{6}$/i.test(c)); } catch (_) {}
+try {   // a palette saved inside the opened design comes along with it
+  const dp = ED.canvas_json ? JSON.parse(ED.canvas_json)._palette : null;
+  if (Array.isArray(dp)) dp.forEach(c => { if (/^#[0-9a-f]{6}$/i.test(c) && !p2Palette.includes(c.toLowerCase())) p2Palette.push(c.toLowerCase()); });
+} catch (_) {}
+function p2SavePalette() { try { localStorage.setItem(P2_PAL_KEY, JSON.stringify(p2Palette)); } catch (_) {} p2RenderPalette(); markDirty(); }
+const _p2PrevJSON = canvasJSON;
+canvasJSON = function () { const j = _p2PrevJSON(); if (p2Palette.length) j._palette = p2Palette.slice(0, 24); return j; };
+function p2DocColors() {
+  const set = new Map();
+  const add = c => { if (typeof c !== 'string' || !c || c === 'transparent') return; const h = colorToHex(c).toLowerCase(); if (h !== '#000000' || /^#000|black|rgba?\(0, ?0, ?0/.test(c)) set.set(h, (set.get(h) || 0) + 1); };
+  const walk = o => { if (o._objects) o._objects.forEach(walk); add(o.fill); add(o.stroke); if (o.data?.fx) Object.values(o.data.fx).forEach(f => f && f.on && (add(f.color), add(f.c1), add(f.c2))); };
+  canvas.getObjects().forEach(walk);
+  add(canvas.backgroundColor);
+  return [...set.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]).slice(0, 14);
+}
+function p2ApplyColor(hex, asStroke) {
+  const objs = canvas.getActiveObjects();
+  if (!objs.length) { setCanvasBg(hex); const el = $p2('pCanvasBg'); if (el) el.value = hex; showToast('Background set to ' + hex); return; }
+  objs.forEach(o => {
+    if (asStroke) { o.set('stroke', hex); if (!o.strokeWidth) o.set('strokeWidth', isTextObj(o) ? 1 : 2); }
+    else if (o.type === 'group') o.getObjects().forEach(c => { if (c.fill && c.fill !== 'transparent' && typeof c.fill === 'string') c.set('fill', hex); });
+    else if (o.type !== 'image') { o.set('fill', hex); if (o.data && o.data._grad) o.data._grad = null; }
+    o.dirty = true;
+  });
+  canvas.requestRenderAll(); histSave(asStroke ? 'Stroke colour' : 'Fill colour'); refreshProps();
+}
+function p2PaletteAdd() {
+  const o = canvas.getActiveObject();
+  const cur = o && typeof o.fill === 'string' && o.fill && o.fill !== 'transparent' ? colorToHex(o.fill) : null;
+  const inp = document.createElement('input'); inp.type = 'color'; inp.value = cur || '#4f46e5';
+  if (cur && !p2Palette.includes(cur.toLowerCase())) { p2Palette.push(cur.toLowerCase()); p2SavePalette(); showToast('Added ' + cur + ' to brand colours'); return; }
+  inp.addEventListener('change', () => { const c = inp.value.toLowerCase(); if (!p2Palette.includes(c)) { p2Palette.push(c); p2SavePalette(); } });
+  inp.click();
+}
+/** Pull the main colours out of a selected logo / photo into the brand palette. */
+function p2PaletteFromImage() {
+  const o = canvas.getActiveObject();
+  if (!o || o.type !== 'image') { showToast('Select your school logo (an image) first', 'info'); return; }
+  const el = o._originalElement || o.getElement(), c = document.createElement('canvas'), k = Math.min(1, 160 / Math.max(el.width, el.height));
+  c.width = Math.max(1, el.width * k | 0); c.height = Math.max(1, el.height * k | 0);
+  const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(el, 0, 0, c.width, c.height);
+  let d; try { d = x.getImageData(0, 0, c.width, c.height).data; } catch (e) { showToast('This image is from another website — upload it from your device', 'err'); return; }
+  const buckets = new Map();
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 128) continue;
+    const r = d[i], g = d[i + 1], b = d[i + 2], mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    if (mx > 238 && mn > 238) continue;   // skip white paper
+    const key = (r >> 4) << 8 | (g >> 4) << 4 | (b >> 4);
+    const e = buckets.get(key) || { n: 0, r: 0, g: 0, b: 0 }; e.n++; e.r += r; e.g += g; e.b += b; buckets.set(key, e);
+  }
+  const picked = [];
+  [...buckets.values()].sort((a, b) => b.n - a.n).forEach(e => {
+    if (picked.length >= 6) return;
+    const col = [e.r / e.n, e.g / e.n, e.b / e.n];
+    if (picked.every(p => Math.hypot(p[0] - col[0], p[1] - col[1], p[2] - col[2]) > 60)) picked.push(col);
+  });
+  const hexes = picked.map(p => '#' + p.map(v => Math.round(v).toString(16).padStart(2, '0')).join(''));
+  hexes.forEach(h => { if (!p2Palette.includes(h)) p2Palette.push(h); });
+  p2SavePalette(); showToast(hexes.length + ' colours taken from the logo', 'ok');
+}
+function p2RenderPalette() {
+  const box = $p2('p2PalSec'); if (!box) return;
+  const sw = (c, brand) => `<div class="p2-sw" style="background:${c}" data-c="${c}" data-brand="${brand ? 1 : 0}" title="${c} — click: fill · Shift+click: outline${brand ? ' · right-click: remove' : ''}"></div>`;
+  const doc = p2DocColors();
+  box.innerHTML = `<div class="p2-title"><i class="bi bi-palette-fill" style="color:#a78bfa;"></i> Brand colours <span style="margin-left:auto;text-transform:none;letter-spacing:0;font-weight:500;">${canvas.getActiveObject() ? 'applies to selection' : 'click = background'}</span></div>
+    <div class="p2-pal">${p2Palette.map(c => sw(c, true)).join('')}<div class="p2-sw add" title="Add colour (adds the selected object's colour, or pick one)" onclick="p2PaletteAdd()">+</div>
+    <button class="p2-btn" style="padding:.15rem .45rem;font-size:.66rem;" onclick="p2PaletteFromImage()" title="Select your logo image, then click to take its colours"><i class="bi bi-eyedropper"></i> From logo</button></div>
+    ${doc.length ? `<div class="p2-pal-lbl">Colours in this design</div><div class="p2-pal">${doc.map(c => sw(c, false)).join('')}</div>` : ''}`;
+}
+document.addEventListener('click', e => { const s = e.target.closest('#p2PalSec .p2-sw:not(.add)'); if (s) p2ApplyColor(s.dataset.c, e.shiftKey); });
+document.addEventListener('contextmenu', e => {
+  const s = e.target.closest('#p2PalSec .p2-sw[data-brand="1"]'); if (!s) return;
+  e.preventDefault(); p2Palette = p2Palette.filter(c => c !== s.dataset.c); p2SavePalette(); showToast('Colour removed from brand palette');
+});
+
+/* ─────────────────────────── 8. PANELS (fx, auto-fit, combine, adjust, edit points) ─────────────────────────── */
+let p2FxClipboard = null;
+function p2FxSet(key, prop, val) {
+  const objs = canvas.getActiveObjects(); if (!objs.length) return;
+  objs.forEach(o => {
+    const fx = JSON.parse(JSON.stringify((o.data && o.data.fx) || {}));
+    fx[key] = Object.assign({}, P2_FX_DEFAULTS[key], fx[key] || {}, { [prop]: val });
+    o.data = Object.assign({}, o.data, { fx }); o.dirty = true;
+  });
+  canvas.requestRenderAll(); histSaveSoon('Layer effects');
+  if (prop === 'on') p2RenderFx();
+}
+function p2FxClear() { canvas.getActiveObjects().forEach(o => { if (o.data && o.data.fx) { const d = Object.assign({}, o.data); delete d.fx; o.data = d; o.dirty = true; } }); canvas.requestRenderAll(); histSave('Clear effects'); p2RenderFx(); }
+function p2FxCopy() { const o = canvas.getActiveObject(); if (!o || !o.data || !p2HasFx(o.data.fx)) { showToast('This layer has no effects to copy', 'info'); return; } p2FxClipboard = JSON.parse(JSON.stringify(o.data.fx)); showToast('Effects copied — select other layers and Paste effects'); p2RenderFx(); }
+function p2FxPaste() { if (!p2FxClipboard) return; canvas.getActiveObjects().forEach(o => { o.data = Object.assign({}, o.data, { fx: JSON.parse(JSON.stringify(p2FxClipboard)) }); o.dirty = true; }); canvas.requestRenderAll(); histSave('Paste effects'); p2RenderFx(); }
+/** Bake effects into a picture (for pages/printers that don't understand effects). */
+function p2FxFlatten() {
+  const o = canvas.getActiveObject(); if (!o || !p2HasFx(o.data?.fx)) return;
+  const pad = p2FxPad(o.data.fx), oldShadow = o.shadow;
+  o.shadow = new fabric.Shadow({ color: 'rgba(0,0,0,0)', blur: pad, offsetX: 0, offsetY: 0 });   // makes room for glow in the export box
+  const el = o.toCanvasElement({ multiplier: 3 });
+  o.shadow = oldShadow;
+  const c = o.getCenterPoint();
+  const img = new fabric.Image(el, { originX: 'center', originY: 'center', left: c.x, top: c.y, scaleX: 1 / 3, scaleY: 1 / 3, opacity: 1, shadow: oldShadow, data: { name: _layerLabel(o) + ' (flattened)' } });
+  const idx = canvas.getObjects().indexOf(o);
+  hist.locked = true; canvas.remove(o); canvas.add(img); canvas.moveTo(img, idx); hist.locked = false;
+  canvas.setActiveObject(img).requestRenderAll(); histSave('Flatten effects'); refreshLayers();
+}
+function p2RenderFx() {
+  const box = $p2('p2FxSec'); if (!box) return;
+  const a = canvas.getActiveObject();
+  if (!a) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  const ref = a.type === 'activeSelection' ? a.getObjects()[0] : a;
+  const fx = (ref.data && ref.data.fx) || {};
+  const v = (k, p) => (fx[k] && fx[k][p] !== undefined ? fx[k][p] : P2_FX_DEFAULTS[k][p]);
+  const open = k => fx[k] && fx[k].on ? ' open' : '';
+  const range = (k, p, lbl, min, max) => `<div class="p2-row"><label>${lbl}</label><input type="range" min="${min}" max="${max}" value="${v(k, p)}" oninput="p2FxSet('${k}','${p}',+this.value);this.nextElementSibling.textContent=this.value"><span class="val">${v(k, p)}</span></div>`;
+  const color = (k, p, lbl) => `<div class="p2-row"><label>${lbl}</label><input type="color" value="${colorToHex(v(k, p))}" oninput="p2FxSet('${k}','${p}',this.value)"></div>`;
+  const item = (k, title, body) => `<div class="p2-fx${open(k)}"><div class="p2-fx-hd" onclick="if(event.target.tagName!=='INPUT')this.parentNode.classList.toggle('open')"><input type="checkbox" ${v(k, 'on') ? 'checked' : ''} onchange="p2FxSet('${k}','on',this.checked)"> ${title}<i class="bi bi-chevron-right chev"></i></div><div class="p2-fx-bd">${body}</div></div>`;
+  box.innerHTML = `<div class="p2-title"><i class="bi bi-stars" style="color:#f472b6;"></i> Layer effects <span class="badge">EDITABLE</span></div>
+    ${item('stroke', 'Stroke (outline)', color('stroke', 'color', 'Colour') + range('stroke', 'size', 'Size', 1, 40) + range('stroke', 'opacity', 'Opacity', 5, 100))}
+    ${item('outer', 'Outer glow', color('outer', 'color', 'Colour') + range('outer', 'size', 'Size', 1, 80) + range('outer', 'opacity', 'Opacity', 5, 100))}
+    ${item('inner', 'Inner glow', color('inner', 'color', 'Colour') + range('inner', 'size', 'Size', 1, 60) + range('inner', 'opacity', 'Opacity', 5, 100))}
+    ${item('overlay', 'Gradient overlay', color('overlay', 'c1', 'From') + color('overlay', 'c2', 'To') + range('overlay', 'angle', 'Angle', 0, 360) + range('overlay', 'opacity', 'Opacity', 5, 100))}
+    <div class="p2-btns" style="margin-top:.3rem;">
+      <button class="p2-btn" onclick="p2FxCopy()"><i class="bi bi-files"></i> Copy</button>
+      <button class="p2-btn" onclick="p2FxPaste()" ${p2FxClipboard ? '' : 'disabled style="opacity:.45"'}><i class="bi bi-clipboard"></i> Paste</button>
+      <button class="p2-btn" onclick="p2FxClear()"><i class="bi bi-x-lg"></i> Clear</button>
+      <button class="p2-btn" onclick="p2FxFlatten()" title="Turn this layer + its effects into a picture (for printers/pages that don't support effects)"><i class="bi bi-image"></i> Flatten</button>
+    </div>`;
+}
+function p2RenderExtra() {
+  const a = canvas.getActiveObject();
+  // Combine shapes (multi-selection)
+  const cb = $p2('p2BoolSec');
+  if (cb) {
+    const multi = a && a.type === 'activeSelection';
+    cb.style.display = multi ? '' : 'none';
+  }
+  // Auto-fit (text)
+  const af = $p2('p2FitSec');
+  if (af) {
+    const t = canvas.getActiveObjects().filter(isTextObj)[0];
+    af.style.display = t ? '' : 'none';
+    if (t) {
+      const on = !!t.data?.autoFit;
+      af.innerHTML = `<div class="p2-title"><i class="bi bi-arrows-collapse-vertical"></i> Auto-fit</div>
+        <label class="p2-row" style="cursor:pointer;color:#e2e8f0;"><input type="checkbox" ${on ? 'checked' : ''} onchange="p2SetAutoFit(this.checked)"> Shrink text to fit ${t.type === 'textbox' ? 'its lines' : 'its width'}</label>
+        ${on && t.type !== 'textbox' ? `<div class="p2-row"><label>Max width</label><input type="number" min="10" value="${t.data.autoFit.w}" onchange="p2AutoFitWidth(+this.value)"> px <button class="p2-btn" onclick="p2AutoFitWidth(Math.round(canvasW*0.9))" title="90% of the canvas width">Card width</button></div>` : ''}
+        ${on ? `<div class="pro-note" style="margin:0;">${t.data.autoFit.overflow ? '<span style="color:#fb923c;">⚠ Still too long at the smallest size — shorten the text.</span>' : 'Size now ' + Math.round(t.fontSize) + ' px (max ' + Math.round(t.data.autoFit.size) + ').'}</div>` : '<div class="pro-note" style="margin:0;">Turn on for names/addresses so long ones never overflow.</div>'}`;
+    }
+  }
+  // Image tools
+  const im = $p2('p2ImgSec');
+  if (im) im.style.display = a && a.type === 'image' ? '' : 'none';
+  // Edit points
+  const ep = $p2('p2PtsSec');
+  if (ep) ep.style.display = a && ['path', 'polygon', 'polyline'].includes(a.type) && !a.data?.eraserPath ? '' : 'none';
+}
+function p2AutoFitWidth(w) {
+  if (!(w > 5)) return;
+  canvas.getActiveObjects().filter(o => isTextObj(o) && o.data?.autoFit).forEach(o => { o.data.autoFit.w = w; p2FitText(o); });
+  canvas.requestRenderAll(); histSave('Auto-fit width'); p2RenderExtra();
+}
+
+/* ─────────────────────────── 9. WIRING ─────────────────────────── */
+(function p2Init() {
+  const props = document.querySelector('.ed-props-scroll'), pObj = $p2('pObj');
+  // brand palette — always visible at the top of the panel
+  const pal = document.createElement('div'); pal.className = 'p2-sec'; pal.id = 'p2PalSec'; props.insertBefore(pal, props.firstChild);
+  // combine shapes
+  const bs = document.createElement('div'); bs.className = 'p2-sec'; bs.id = 'p2BoolSec'; bs.style.display = 'none';
+  bs.innerHTML = `<div class="p2-title"><i class="bi bi-intersect" style="color:#22d3ee;"></i> Combine shapes</div>
+    <div class="p2-btns">
+      <button class="p2-btn" onclick="p2Boolean('union')" title="Merge into one shape"><i class="bi bi-union"></i> Union</button>
+      <button class="p2-btn" onclick="p2Boolean('subtract')" title="Cut the front shapes out of the back one"><i class="bi bi-subtract"></i> Subtract</button>
+      <button class="p2-btn" onclick="p2Boolean('intersect')" title="Keep only the overlapping part"><i class="bi bi-intersect"></i> Intersect</button>
+      <button class="p2-btn" onclick="p2Boolean('exclude')" title="Keep everything except the overlap"><i class="bi bi-exclude"></i> Exclude</button>
+    </div><div class="pro-note">Back-most shape keeps its colour. Works on shapes, stars, pen paths.</div>`;
+  pObj.insertBefore(bs, pObj.firstChild);
+  // edit points
+  const ps = document.createElement('div'); ps.className = 'p2-sec'; ps.id = 'p2PtsSec'; ps.style.display = 'none';
+  ps.innerHTML = `<div class="p2-title"><i class="bi bi-bezier" style="color:#22d3ee;"></i> Shape points</div><button class="p2-btn primary" onclick="p2EditPoints()"><i class="bi bi-bezier2"></i> Edit points</button> <span class="pro-note">or double-click the shape</span>`;
+  pObj.insertBefore(ps, bs.nextSibling);
+  // auto-fit inside the text section
+  const fit = document.createElement('div'); fit.id = 'p2FitSec'; fit.style.cssText = 'margin-top:.6rem;border-top:1px solid #334155;padding-top:.6rem;';
+  $p2('pTextSec').appendChild(fit);
+  // image adjust buttons at the top of the image section
+  const im = document.createElement('div'); im.id = 'p2ImgSec'; im.style.marginBottom = '.6rem';
+  im.innerHTML = `<div class="p2-btns"><button class="p2-btn primary" onclick="p2OpenAdjust()"><i class="bi bi-sliders"></i> Levels / Curves</button><button class="p2-btn" onclick="p2QuickEnhance()"><i class="bi bi-magic"></i> Auto-enhance</button></div>`;
+  const imgSec = $p2('pImgSec'); imgSec.insertBefore(im, imgSec.children[1] || null);
+  // layer effects at the end of the object panel
+  const fx = document.createElement('div'); fx.className = 'p2-sec'; fx.id = 'p2FxSec'; pObj.appendChild(fx);
+  // pen tool button after Shapes
+  const shapes = $p2('tShapes');
+  if (shapes) {
+    const b = document.createElement('button'); b.className = 'tool-btn c-shape'; b.id = 'tPen'; b.style.color = '#22d3ee';
+    b.innerHTML = '<i class="bi bi-vector-pen"></i><span class="tool-tooltip">Pen / Bezier (P)</span>';
+    b.onclick = () => { closeFlyouts(); p2PenStart(); };
+    shapes.after(b);
+    const tip = document.getElementById('g-tip');
+    b.addEventListener('mouseenter', () => { if (!tip) return; tip.textContent = 'Pen / Bezier tool (P)'; tip.style.display = 'block'; const r = b.getBoundingClientRect(); tip.style.top = (r.top + r.height / 2 - 12) + 'px'; tip.style.left = (r.right + 10) + 'px'; });
+    b.addEventListener('mouseleave', () => { if (tip) tip.style.display = 'none'; });
+  }
+  // refresh our panels whenever the editor refreshes its own
+  const rp = refreshProps;
+  refreshProps = function () { const r = rp.apply(this, arguments); try { p2RenderExtra(); p2RenderFx(); p2RenderPalette(); } catch (e) { console.warn(e); } return r; };
+  // keep the tone filter when the classic filter sliders rebuild the filter list
+  const af = applyImgFilter;
+  applyImgFilter = function () {
+    const o = canvas.getActiveObject(), tone = o && o.type === 'image' ? p2ToneOf(o) : null;
+    const r = af.apply(this, arguments);
+    if (tone && o.filters && !o.filters.includes(tone) && !p2ResetAll) { o.filters.push(tone); try { o.applyFilters(); } catch (e) {} canvas.requestRenderAll(); }
+    return r;
+  };
+  const rf = resetImgFilters;
+  resetImgFilters = function () { p2ResetAll = true; try { return rf.apply(this, arguments); } finally { p2ResetAll = false; } };
+  // font size typed in the panel becomes the auto-fit maximum; other text changes re-fit
+  const atp = applyTextProp;
+  applyTextProp = function (prop, val) {
+    const r = atp.apply(this, arguments);
+    canvas.getActiveObjects().filter(o => isTextObj(o) && o.data?.autoFit).forEach(o => { if (prop === 'fontSize' && val > 0) o.data.autoFit.size = val; p2FitText(o); });
+    canvas.requestRenderAll(); return r;
+  };
+  // leaving the pen when another tool is chosen
+  const sat = setActiveTool;
+  setActiveTool = function () { if (pen.active && pen.mode === 'draw' && pen.pts.length >= 2) p2PenFinish(false); else if (pen.active) p2PenCancel(); return sat.apply(this, arguments); };
+  // context menu + command palette entries
+  const om = proOpenMenu;
+  proOpenMenu = function (x, y, items) {
+    const a = canvas.getActiveObject(), extra = [];
+    if (a && a.type === 'activeSelection') extra.push(proMenuItem('bi-union', 'Union shapes', '', () => p2Boolean('union')), proMenuItem('bi-subtract', 'Subtract (back minus front)', '', () => p2Boolean('subtract')), proMenuItem('bi-intersect', 'Intersect', '', () => p2Boolean('intersect')), proMenuItem('bi-exclude', 'Exclude overlap', '', () => p2Boolean('exclude')));
+    if (a && ['path', 'polygon', 'polyline'].includes(a.type)) extra.push(proMenuItem('bi-bezier2', 'Edit points', 'Dbl-click', () => p2EditPoints(a)));
+    if (a && a.type === 'image') extra.push(proMenuItem('bi-sliders', 'Levels / Curves…', '', p2OpenAdjust), proMenuItem('bi-magic', 'Auto-enhance photo', '', p2QuickEnhance));
+    if (a) extra.push(proMenuItem('bi-stars', 'Copy effects', '', p2FxCopy, { off: !p2HasFx(a.data?.fx) }), proMenuItem('bi-stars', 'Paste effects', '', p2FxPaste, { off: !p2FxClipboard }));
+    if (extra.length) { const at = Math.max(0, items.indexOf('-')); items = items.slice(0, at + 1).concat(extra, ['-'], items.slice(at + 1)); }
+    if (!a) items = items.concat(['-', proMenuItem('bi-vector-pen', 'Pen tool', 'P', p2PenStart)]);
+    return om.call(this, x, y, items);
+  };
+  PRO_CMDS.push(
+    { group: 'Tools', icon: 'bi-vector-pen', label: 'Pen / Bezier tool', keys: 'P', run: p2PenStart },
+    { group: 'Tools', icon: 'bi-bezier2', label: 'Edit shape points', keys: '', run: () => p2EditPoints() },
+    { group: 'Arrange', icon: 'bi-union', label: 'Union shapes', keys: '', run: () => p2Boolean('union') },
+    { group: 'Arrange', icon: 'bi-subtract', label: 'Subtract shapes', keys: '', run: () => p2Boolean('subtract') },
+    { group: 'Arrange', icon: 'bi-intersect', label: 'Intersect shapes', keys: '', run: () => p2Boolean('intersect') },
+    { group: 'Arrange', icon: 'bi-exclude', label: 'Exclude shapes', keys: '', run: () => p2Boolean('exclude') },
+    { group: 'Tools', icon: 'bi-sliders', label: 'Levels / Curves (photo)', keys: '', run: p2OpenAdjust },
+    { group: 'Tools', icon: 'bi-magic', label: 'Auto-enhance photo', keys: '', run: p2QuickEnhance },
+    { group: 'Edit', icon: 'bi-stars', label: 'Copy layer effects', keys: '', run: p2FxCopy },
+    { group: 'Edit', icon: 'bi-stars', label: 'Paste layer effects', keys: '', run: p2FxPaste },
+    { group: 'Edit', icon: 'bi-arrows-collapse-vertical', label: 'Auto-fit text on', keys: '', run: () => p2SetAutoFit(true) },
+    { group: 'Edit', icon: 'bi-palette-fill', label: 'Take brand colours from logo', keys: '', run: p2PaletteFromImage },
+  );
+  p2RenderPalette(); p2RenderFx(); p2RenderExtra();
+})();
+var p2ResetAll = false;
+function p2QuickEnhance() {
+  const o = canvas.getActiveObject(); if (!o || o.type !== 'image') { showToast('Select a photo first', 'info'); return; }
+  p2OpenAdjust(); p2AutoEnhance(true); p2AdjApply();
+  showToast('Photo auto-enhanced (Ctrl+Z to undo, Levels/Curves to fine-tune)', 'ok');
+}
+// Pen keyboard: P starts the pen; while drawing Enter/Esc/Backspace control it.
+document.addEventListener('keydown', e => {
+  if ($p2('p2AdjOv').classList.contains('open')) { if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); p2AdjCancel(); } return; }
+  if (pen.active) {
+    const k = e.key;
+    if (k === 'Enter') p2PenFinish(false);
+    else if (k === 'Escape') p2PenCancel();
+    else if ((k === 'Backspace' || k === 'Delete') && pen.mode === 'draw') p2PenUndoPoint();
+    else if ((k === 'Backspace' || k === 'Delete') && pen.mode === 'edit' && pen.sel >= 0 && pen.pts.length > 2) { pen.pts.splice(pen.sel, 1); pen.sel = -1; canvas.requestRenderAll(); }
+    else if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === 'z' && pen.mode === 'draw') p2PenUndoPoint();
+    else if (!(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault(); e.stopImmediatePropagation(); return;
+  }
+  const tag = (document.activeElement || {}).tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || canvas.getActiveObject()?.isEditing || _openModalId()) return;
+  if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'p' && !document.querySelector('.pro-ov.open')) { e.preventDefault(); e.stopImmediatePropagation(); p2PenStart(); }
+}, true);
+window.addEventListener('resize', () => { if (pen.active) p2PenBar(); });
 </script>
 
 </body>
