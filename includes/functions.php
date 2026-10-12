@@ -8,7 +8,7 @@ require_once __DIR__ . '/../config/constants.php';
 // a category's icon or name can come back NULL, and a strict `string` type here
 // turned that into a fatal TypeError that blanked the whole page (e.g. the
 // editor) instead of just printing an empty value.
-function e(mixed $str): string {
+function e($str): string {
     if ($str === null || is_array($str) || is_object($str)) return '';
     return htmlspecialchars((string)$str, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
