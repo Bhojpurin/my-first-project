@@ -4,7 +4,10 @@ require_once __DIR__ . '/../includes/session.php';
 // shop customer, etc.) — the role list was simply missing, not a deliberate
 // "open to everyone" choice. Matches editor.php, its sibling nav entry, which
 // already restricts to the iCard panel's actual user base.
-requireLogin(ROLE_SUPER_ADMIN, ROLE_OPERATOR, ROLE_SCHOOL_ADMIN);
+// ROLE_TEACHER added: editor.php (which embeds this page as an iframe from its
+// "Logo Designer Studio" button) already admits teachers, so a teacher clicking
+// that button got a raw 403 inside the modal instead of the studio.
+requireLogin(ROLE_SUPER_ADMIN, ROLE_OPERATOR, ROLE_SCHOOL_ADMIN, ROLE_TEACHER);
 $fromEditor = !empty($_GET['from']) && $_GET['from'] === 'editor';
 $isIframe   = !empty($_GET['mode']) && $_GET['mode'] === 'iframe';
 $galleryId  = (int)($_GET['gallery_id'] ?? 0);
@@ -162,17 +165,25 @@ body{display:flex;flex-direction:column;}
 #tool-ring.active{background:rgba(232,121,249,.12);color:#e879f9;}
 
 /* ── CANVAS AREA ── */
+/* align/justify flex-start + margin:auto on the wrap (below): a canvas larger
+   than the viewport used to be centred with justify-content:center, which made
+   its left/top part unreachable — you could not scroll to it. */
 #lsp-canvas-area{
-  flex:1;display:flex;flex-direction:column;align-items:center;
-  justify-content:center;background:var(--bg-void);position:relative;overflow:auto;
+  flex:1;display:flex;flex-direction:column;align-items:flex-start;
+  justify-content:flex-start;background:var(--bg-void);position:relative;overflow:auto;
+  padding:24px 24px 64px;
   background-image:radial-gradient(circle,#1a1530 1px,transparent 1px);
   background-size:24px 24px;
   scrollbar-width:thin;scrollbar-color:var(--border) transparent;
 }
 #lsp-canvas-wrap{
   position:relative;box-shadow:0 0 0 1px rgba(168,85,247,.2), 0 20px 80px rgba(0,0,0,.8);
-  border-radius:2px;flex-shrink:0;
+  border-radius:2px;flex-shrink:0;margin:auto;
 }
+#lsp-canvas-area.lsp-panning, #lsp-canvas-area.lsp-panning *{cursor:grabbing !important;}
+#lsp-dirty-dot{width:8px;height:8px;border-radius:50%;background:#f59e0b;display:none;flex-shrink:0;box-shadow:0 0 8px #f59e0b;}
+#lsp-dirty-dot.show{display:inline-block;}
+.lsp-num{width:62px;flex:0 0 auto;}
 #lsp-canvas-wrap .canvas-container{border-radius:2px;}
 #lsp-main-canvas{display:block;cursor:default;}
 .lsp-canvas-overlay{position:absolute;pointer-events:none;}
@@ -413,7 +424,7 @@ body{display:flex;flex-direction:column;}
 
   /* ── Body stacks: canvas on top, tool rail becomes a bottom bar ── */
   #lsp-body { flex-direction:column; }
-  #lsp-canvas-area { order:1; flex:1; min-height:0; }
+  #lsp-canvas-area { order:1; flex:1; min-height:0; padding:12px 12px 56px; }
   #lsp-left {
     order:2; width:100%; height:auto; flex-direction:row; flex-shrink:0;
     overflow-x:auto; overflow-y:visible; -webkit-overflow-scrolling:touch;
@@ -504,6 +515,7 @@ body{display:flex;flex-direction:column;}
       </div>
     </div>
   </div>
+  <span id="lsp-dirty-dot" title="Unsaved changes"></span>
   <div class="lsp-top-sep"></div>
 
   <!-- File -->
@@ -570,25 +582,25 @@ body{display:flex;flex-direction:column;}
   <!-- LEFT TOOL SIDEBAR -->
   <div id="lsp-left">
     <button class="lsp-tool-btn active" id="tool-select" onclick="lspSetTool('select',this)" title="Select (V)"><i class="bi bi-cursor-fill"></i><span>Select</span></button>
-    <button class="lsp-tool-btn" id="tool-move" onclick="lspSetTool('move',this)" title="Move (M)"><i class="bi bi-arrows-move"></i><span>Move</span></button>
+    <button class="lsp-tool-btn" id="tool-move" onclick="lspSetTool('move',this)" title="Hand / Pan view (H) — drag to scroll a zoomed canvas"><i class="bi bi-hand-index"></i><span>Pan</span></button>
     <div class="lsp-tool-sep"></div>
-    <button class="lsp-tool-btn" id="tool-text" onclick="lspSetTool('text',this);lspAddText()" title="Text (T)"><i class="bi bi-type"></i><span>Text</span></button>
-    <button class="lsp-tool-btn" id="tool-shape" onclick="lspSetTool('shape',this);lspOpenShapes()" title="Shape (S)"><i class="bi bi-pentagon"></i><span>Shape</span></button>
-    <button class="lsp-tool-btn" id="tool-icon" onclick="lspSetTool('icon',this);lspOpenIcons()" title="Icons (I)"><i class="bi bi-grid-3x3-gap"></i><span>Icons</span></button>
+    <button class="lsp-tool-btn" id="tool-text" onclick="lspAddText()" title="Text (T)"><i class="bi bi-type"></i><span>Text</span></button>
+    <button class="lsp-tool-btn" id="tool-shape" onclick="lspOpenShapes()" title="Shape (S)"><i class="bi bi-pentagon"></i><span>Shape</span></button>
+    <button class="lsp-tool-btn" id="tool-icon" onclick="lspOpenIcons()" title="Icons (I)"><i class="bi bi-grid-3x3-gap"></i><span>Icons</span></button>
     <div class="lsp-tool-sep"></div>
-    <button class="lsp-tool-btn" id="tool-image" onclick="lspSetTool('image',this);lspUploadImage()" title="Image (P)"><i class="bi bi-image"></i><span>Image</span></button>
-    <button class="lsp-tool-btn" id="tool-frame" onclick="lspSetTool('frame',this);lspOpenFrames()" title="Frames (F)"><i class="bi bi-circle"></i><span>Frame</span></button>
+    <button class="lsp-tool-btn" id="tool-image" onclick="lspUploadImage()" title="Image (P)"><i class="bi bi-image"></i><span>Image</span></button>
+    <button class="lsp-tool-btn" id="tool-frame" onclick="lspOpenFrames()" title="Frames (F)"><i class="bi bi-circle"></i><span>Frame</span></button>
     <div class="lsp-tool-sep"></div>
     <button class="lsp-tool-btn" id="tool-draw" onclick="lspStartDraw()" title="Draw / Brush (D)"><i class="bi bi-pen"></i><span>Draw</span></button>
     <button class="lsp-tool-btn" id="tool-curved" onclick="lspAddCircularText('top')" title="Circular Arc Text — Smooth text along circle path"><i class="bi bi-arrow-repeat"></i><span>Arc</span></button>
-    <button class="lsp-tool-btn" id="tool-badge" onclick="lspSetTool('badge',this);lspOpenBadgeBuilder()" title="School Badge Builder — Complete circular badge designer"><i class="bi bi-patch-check-fill"></i><span>Badge</span></button>
+    <button class="lsp-tool-btn" id="tool-badge" onclick="lspOpenBadgeBuilder()" title="School Badge Builder — Complete circular badge designer"><i class="bi bi-patch-check-fill"></i><span>Badge</span></button>
     <div class="lsp-tool-sep"></div>
     <button class="lsp-tool-btn" onclick="lspOpenColorHarmony()" title="Color Harmony"><i class="bi bi-palette2"></i><span>Palette</span></button>
     <button class="lsp-tool-btn" onclick="lspOpenTemplates()" title="Templates"><i class="bi bi-layout-wtf"></i><span>Templates</span></button>
   </div>
 
   <!-- CANVAS AREA -->
-  <div id="lsp-canvas-area" id="lspCanvasArea">
+  <div id="lsp-canvas-area">
     <div id="lsp-canvas-wrap">
       <canvas id="lsp-main-canvas"></canvas>
       <canvas id="lsp-grid-overlay"></canvas>
@@ -629,7 +641,9 @@ body{display:flex;flex-direction:column;}
     <button class="lsp-layer-action" onclick="lspDeleteLayer()" title="Delete"><i class="bi bi-trash"></i></button>
     <button class="lsp-layer-action" onclick="lspLayerUp()" title="Move Up"><i class="bi bi-arrow-up"></i></button>
     <button class="lsp-layer-action" onclick="lspLayerDown()" title="Move Down"><i class="bi bi-arrow-down"></i></button>
-    <button class="lsp-layer-action" onclick="lspGroupLayers()" title="Group Selected"><i class="bi bi-collection"></i></button>
+    <button class="lsp-layer-action" onclick="lspGroupLayers()" title="Group Selected (Ctrl+G)"><i class="bi bi-collection"></i></button>
+    <button class="lsp-layer-action" onclick="lspUngroupLayers()" title="Ungroup (Ctrl+Shift+G)"><i class="bi bi-collection-fill"></i></button>
+    <button class="lsp-layer-action" onclick="lspToggleLockActive()" title="Lock / Unlock selected"><i class="bi bi-lock"></i></button>
     <div style="flex:1;"></div>
     <span style="font-size:.68rem;color:#8b9ed4;font-weight:600;" id="lsp-layer-count">0 layers</span>
   </div>
@@ -808,9 +822,7 @@ body{display:flex;flex-direction:column;}
 </div>
 
 <!-- FILE INPUT for image upload -->
-<input type="file" id="lsp-file-input" accept="image/*" style="display:none" onchange="lspHandleImageUpload(event)">
-</body>
-</html>
+<input type="file" id="lsp-file-input" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" style="display:none" onchange="lspHandleImageUpload(event)">
 <script>
 /* LOGO STUDIO PRO — JavaScript Engine */
 /* Bigger touch handles for corner/rotate controls on touchscreens only — desktop mouse behavior (cornerSize) is untouched */
@@ -824,7 +836,98 @@ const LSP = {
   gridSize:20, snapThreshold:8, isDrawing:false, animTimer:null,
   exportFormat:'png', exportScale:3, exportTight:true,
   currentGalleryId:0, _galleryName:'My Logo Design',
+  dirty:false, _restoring:false, clipboard:null, _pasteCount:0,
 };
+
+/* ══════════════ CORE HELPERS (shared by every tool below) ══════════════ */
+/* Image filters on photos larger than 2048px were silently cropped by the
+   default WebGL tile size — raise it (uploads are also capped to 4096px). */
+fabric.textureSize = 4096;
+/* Every custom property that must survive undo/redo, save and duplicate.
+   Without these, lock state, layer names and "not selectable" decorations
+   were lost the moment you pressed Undo or re-opened a saved logo. */
+const LSP_JSON_PROPS = ['lspName','lspDrawn','lspEraser','selectable','evented','hasControls',
+  'lockMovementX','lockMovementY','lockRotation','lockScalingX','lockScalingY'];
+function lspEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function lspIsText(o){return !!o&&(o.type==='i-text'||o.type==='text'||o.type==='textbox');}
+/* Objects a property change should apply to: every member of a multi-selection
+   (setting fill on an ActiveSelection itself does nothing), else the single object. */
+function lspTargets(){const c=LSP.canvas;if(!c)return[];const a=c.getActiveObjects();return a&&a.length?a:[];}
+function lspMarkDirty(){LSP.dirty=true;document.getElementById('lsp-dirty-dot')?.classList.add('show');}
+function lspMarkClean(){LSP.dirty=false;document.getElementById('lsp-dirty-dot')?.classList.remove('show');}
+/* Render + record one undo step. Every property setter funnels through here so
+   colour/size/font/etc. changes are undoable (previously only mouse drags were). */
+function lspTouch(){LSP.canvas.requestRenderAll();lspSaveHistory();}
+/* Hex colour + alpha → rgba(). Templates did `'#fff'+'55'`, which builds the
+   invalid colour '#fff55' and rendered black/transparent instead of a tint. */
+function lspAlpha(color,a){
+  const h=lspToHexColor(color);
+  const r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16),b=parseInt(h.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+/* Load a web font before measuring text with it — Fabric caches glyph widths,
+   so text set in a not-yet-loaded font kept a wrong width/clipped box forever. */
+function lspEnsureFont(family,weight){
+  if(!family||!document.fonts||!document.fonts.load)return Promise.resolve();
+  return document.fonts.load(`${weight||'normal'} 40px "${family}"`).then(()=>{
+    try{fabric.util.clearFabricFontCache(family);}catch(e){}
+  }).catch(()=>{});
+}
+function lspRefreshTextMetrics(objs){
+  (objs||LSP.canvas.getObjects()).forEach(o=>{
+    if(o.type==='group'){lspRefreshTextMetrics(o.getObjects());o.dirty=true;return;}
+    if(lspIsText(o)&&o.initDimensions){o.initDimensions();o.setCoords();o.dirty=true;}
+    if(o.type==='circularText'){o._recalcSize();o.dirty=true;}
+  });
+  LSP.canvas.requestRenderAll();
+}
+/* Zoom-independent export. Fabric's toDataURL multiplies the *on-screen*
+   (zoomed) size, so the same "3× Print" export came out smaller whenever the
+   view was zoomed out (always on phones). Dividing by the zoom fixes it. */
+function lspDataURL(opts){
+  opts=opts||{};
+  const c=LSP.canvas,z=c.getZoom()||1,fmt=opts.format||'png';
+  const origBg=c.backgroundColor;
+  let bg=origBg;
+  if(opts.transparent)bg='';
+  if((fmt==='jpeg'||fmt==='jpg')&&(!bg||bg==='transparent'))bg='#ffffff'; // JPG has no alpha → black otherwise
+  c.backgroundColor=bg;
+  try{
+    return c.toDataURL({format:fmt==='jpg'?'jpeg':fmt,quality:opts.quality,multiplier:(opts.multiplier||1)/z});
+  }finally{c.backgroundColor=origBg;}
+}
+/* Trim empty margins around the design (shared by Smart-crop export and Apply). */
+function lspSmartCrop(url,mime,quality,cb){
+  const img=new Image();
+  img.onload=()=>{
+    const c=document.createElement('canvas');c.width=img.width;c.height=img.height;
+    const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0);
+    let d;try{d=ctx.getImageData(0,0,c.width,c.height).data;}catch(e){cb(url,img.width,img.height);return;}
+    let bgR=0,bgG=0,bgB=0,bgA=0,sp=0;
+    for(let by=0;by<Math.min(8,c.height);by++)for(let bx=0;bx<Math.min(8,c.width);bx++){
+      const bi=(by*c.width+bx)*4;bgR+=d[bi];bgG+=d[bi+1];bgB+=d[bi+2];bgA+=d[bi+3];sp++;
+    }
+    bgR/=sp;bgG/=sp;bgB/=sp;bgA/=sp;
+    const isBgTransp=bgA<15,TOL=16;
+    let x0=c.width,y0=c.height,x1=-1,y1=-1;
+    for(let y=0;y<c.height;y++){const row=y*c.width*4;for(let x=0;x<c.width;x++){
+      const i=row+x*4;
+      const empty=isBgTransp?d[i+3]<10:(Math.abs(d[i]-bgR)<TOL&&Math.abs(d[i+1]-bgG)<TOL&&Math.abs(d[i+2]-bgB)<TOL&&d[i+3]>180);
+      if(!empty){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;}
+    }}
+    if(x1<0){cb(url,c.width,c.height);return;}
+    const pad=Math.max(12,Math.round(Math.max(c.width,c.height)*.02));
+    x0=Math.max(0,x0-pad);y0=Math.max(0,y0-pad);x1=Math.min(c.width,x1+pad+1);y1=Math.min(c.height,y1+pad+1);
+    const cw=x1-x0,ch=y1-y0;
+    if(cw<30||ch<30){cb(url,c.width,c.height);return;}
+    const out=document.createElement('canvas');out.width=cw;out.height=ch;
+    out.getContext('2d').drawImage(c,x0,y0,cw,ch,0,0,cw,ch);
+    cb(out.toDataURL(mime||'image/png',quality),cw,ch);
+  };
+  img.onerror=()=>cb(url,0,0);
+  img.src=url;
+}
+window.addEventListener('beforeunload',e=>{if(LSP.dirty&&LSP.canvas&&LSP.canvas.getObjects().length){e.preventDefault();e.returnValue='';}});
 
 /* 300+ ICONS */
 const LSP_ICONS = {
@@ -1168,6 +1271,10 @@ const LSP_TEMPLATES=(()=>{
   const out=[];
   _TBASE.forEach((t,bi)=>{
     out.push(t);
+    // Badge templates are drawn from outer/inner colours, not primary/secondary,
+    // so the generated "v1…v6" copies of them all rendered identically (120
+    // duplicate-looking cards). Only emblem templates get colour variants.
+    if(t.cfg.type==='badge')return;
     _CV.forEach((cv,vi)=>{
       if(vi===0&&t.cfg.primaryColor===cv.p)return;
       out.push({id:t.id+'v'+(vi+1),label:t.label+' v'+(vi+1),cat:t.cat,
@@ -1196,8 +1303,11 @@ const LSP_PALETTES=[
 /* INIT */
 document.addEventListener('DOMContentLoaded',()=>{
   lspInitCanvas();lspRenderPanel('design');lspInitKeyboard();lspUpdateUndoRedo();
-  if(window.innerWidth<=900) lspZoomFit();
+  lspZoomFit();
   lspShowToast('👋 Logo Studio Pro ready! Choose a template to start.',3000);
+  // Web fonts finish loading after first paint — re-measure text so boxes fit.
+  if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{try{fabric.util.clearFabricFontCache();}catch(e){}lspRefreshTextMetrics();});
+  lspOfferDraftRestore();
   // Track designer open (once per session)
   try{const _cs=document.querySelector('meta[name=csrf]')?.content||'';if(_cs){const _f=new FormData();_f.append('action','record');_f.append('csrf_token',_cs);_f.append('action_type','logo_designer');_f.append('panel','icard');_f.append('count',1);idmFetch('../api/usage_stats.php',{method:'POST',body:_f},10000).catch(()=>{});}}catch(e){}
   // Deliberately no auto-open of the Templates flyout here anymore — it used
@@ -1225,6 +1335,11 @@ fabric.CircularText = fabric.util.createClass(fabric.Object, {
   side: 'top',
   rotateOffset: 0,
   letterSpacing: 8,
+  /* Fabric re-renders a cached bitmap unless a property listed here changes —
+     so editing the text, side, spacing, font… from the panel used to show no
+     change on the canvas until something else happened to refresh it. */
+  cacheProperties: fabric.Object.prototype.cacheProperties.concat(
+    ['text','radius','fontSize','fontFamily','fontWeight','fontStyle','side','rotateOffset','letterSpacing']),
 
   initialize: function(options) {
     options = options || {};
@@ -1238,65 +1353,68 @@ fabric.CircularText = fabric.util.createClass(fabric.Object, {
     this.setCoords();
   },
 
-  _render: function(ctx) {
-    if (!this.text || !this.text.length) return;
-    ctx.save();
-
-    var fStyle = (this.fontStyle && this.fontStyle !== 'normal') ? this.fontStyle + ' ' : '';
-    ctx.font = fStyle + (this.fontWeight || 'bold') + ' ' + this.fontSize + 'px "' + this.fontFamily + '", sans-serif';
-    ctx.fillStyle = this.fill || '#1e3a8a';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
-
-    var chars = this.text.split('');
+  /* Shared layout used by both canvas rendering and SVG export. */
+  _layout: function(ctx) {
+    var chars = Array.from(this.text || '');
     var r = Math.max(20, this.radius);
     var ls = this.letterSpacing || 0;
     var offsetRad = (this.rotateOffset || 0) * Math.PI / 180;
+    var widths = chars.map(function(ch) { return Math.max(ctx.measureText(ch).width, 4); });
+    var totalW = widths.reduce(function(a, b) { return a + b; }, 0) + ls * Math.max(chars.length - 1, 0);
+    var totalAngle = totalW / r, pos = 0, out = [];
+    var top = this.side === 'top';
+    var start = top ? -(totalAngle / 2) + offsetRad : Math.PI + (totalAngle / 2) + offsetRad;
+    for (var i = 0; i < chars.length; i++) {
+      var a = top ? start + (pos + widths[i] / 2) / r : start - (pos + widths[i] / 2) / r;
+      out.push({ ch: chars[i], angle: a, flip: !top });
+      pos += widths[i] + ls;
+    }
+    return { r: r, items: out };
+  },
 
-    /* Measure per-character widths for proportional spacing */
-    var charWidths = chars.map(function(ch) { return Math.max(ctx.measureText(ch).width, 4); });
-    var totalW = charWidths.reduce(function(a, b) { return a + b; }, 0) + ls * Math.max(chars.length - 1, 0);
-    var totalAngle = totalW / r;
+  _fontString: function() {
+    var fStyle = (this.fontStyle && this.fontStyle !== 'normal') ? this.fontStyle + ' ' : '';
+    return fStyle + (this.fontWeight || 'bold') + ' ' + this.fontSize + 'px "' + this.fontFamily + '", sans-serif';
+  },
 
-    var i, charAngle, pos;
+  /* SVG export used to throw ("this._toSVG is not a function") for any design
+     containing arc text, so SVG export of every badge failed. */
+  _toSVG: function() {
+    var c = document.createElement('canvas').getContext('2d');
+    c.font = this._fontString();
+    var L = this._layout(c), self = this;
+    var esc = function(s){ return String(s).replace(/[&<>"']/g, function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]; }); };
+    var fill = typeof this.fill === 'string' ? this.fill : '#000000';
+    var out = ['<g>\n'];
+    L.items.forEach(function(it) {
+      var deg = it.angle * 180 / Math.PI;
+      out.push('<text text-anchor="middle" font-family="' + esc(self.fontFamily) + ', sans-serif" font-size="' + self.fontSize +
+        '" font-weight="' + esc(self.fontWeight || 'bold') + '" font-style="' + esc(self.fontStyle || 'normal') + '" fill="' + esc(fill) +
+        '" transform="rotate(' + deg.toFixed(3) + ') translate(0 ' + (-L.r) + ')' + (it.flip ? ' rotate(180)' : '') + '">' + esc(it.ch) + '</text>\n');
+    });
+    out.push('</g>\n');
+    return out;
+  },
 
-    if (this.side === 'top') {
-      /*
-       * TOP ARC  — characters along the top, reading left→right (clockwise).
-       * Convention: angle=0 = 12 o'clock.
-       * ctx.rotate(A) then ctx.translate(0, -r) places char at clock-angle A.
-       * The character's baseline touches the circle; text extends outward.
-       */
-      pos = 0;
-      var startA = -(totalAngle / 2) + offsetRad;
-      for (i = 0; i < chars.length; i++) {
-        charAngle = startA + (pos + charWidths[i] / 2) / r;
-        ctx.save();
-        ctx.rotate(charAngle);
-        ctx.translate(0, -r);
-        ctx.fillText(chars[i], 0, 0);
-        ctx.restore();
-        pos += charWidths[i] + ls;
-      }
-    } else {
-      /*
-       * BOTTOM ARC — characters along the bottom, reading left→right from outside.
-       * angle=π = 6 o'clock. We go counter-clockwise (decreasing angle) so
-       * characters read naturally from outside the circle.
-       * ctx.rotate(A) + translate(0,-r) + rotate(π) flips char to face outward.
-       */
-      pos = 0;
-      var startAB = Math.PI + (totalAngle / 2) + offsetRad;
-      for (i = 0; i < chars.length; i++) {
-        charAngle = startAB - (pos + charWidths[i] / 2) / r;
-        ctx.save();
-        ctx.rotate(charAngle);
-        ctx.translate(0, -r);
-        ctx.rotate(Math.PI);
-        ctx.fillText(chars[i], 0, 0);
-        ctx.restore();
-        pos += charWidths[i] + ls;
-      }
+  _render: function(ctx) {
+    if (!this.text || !this.text.length) return;
+    ctx.save();
+    ctx.font = this._fontString();
+    ctx.fillStyle = this.fill || '#1e3a8a';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    /* Same algorithm as before (top arc reads clockwise, bottom arc reads
+       left→right from outside), now via _layout() so SVG export matches and
+       emoji / Devanagari clusters are not split into broken halves. */
+    var L = this._layout(ctx);
+    for (var i = 0; i < L.items.length; i++) {
+      var it = L.items[i];
+      ctx.save();
+      ctx.rotate(it.angle);
+      ctx.translate(0, -L.r);
+      if (it.flip) ctx.rotate(Math.PI);
+      ctx.fillText(it.ch, 0, 0);
+      ctx.restore();
     }
     ctx.restore();
   },
@@ -1329,30 +1447,36 @@ function lspInitCanvas(){
     width:LSP.canvasW,height:LSP.canvasH,backgroundColor:'#ffffff',
     preserveObjectStacking:true,selection:true,
     enableRetinaScaling:true,imageSmoothingEnabled:true,
+    stopContextMenu:true,
   });
+  const cv=LSP.canvas;
   // Force high-quality image smoothing on all canvas contexts
-  ['lowerCanvasEl','upperCanvasEl'].forEach(k=>{const ctx=LSP.canvas[k]?.getContext('2d');if(ctx)ctx.imageSmoothingQuality='high';});
-  LSP.canvas.on('object:modified',()=>{lspClearGuides();lspSaveHistory();});
-  LSP.canvas.on('object:added',()=>{lspRefreshLayers();lspSaveHistory();});
-  LSP.canvas.on('object:removed',()=>{lspRefreshLayers();lspSaveHistory();});
-  LSP.canvas.on('selection:created',(e)=>{LSP.selectedObj=e.selected[0];lspOnSelect();});
-  LSP.canvas.on('selection:updated',(e)=>{LSP.selectedObj=e.selected[0];lspOnSelect();});
-  LSP.canvas.on('selection:cleared',()=>{LSP.selectedObj=null;lspRenderPanel(LSP.activePanel);});
-  LSP.canvas.on('mouse:wheel',(opt)=>{
+  ['lowerCanvasEl','upperCanvasEl'].forEach(k=>{const ctx=cv[k]?.getContext('2d');if(ctx)ctx.imageSmoothingQuality='high';});
+  cv.on('object:modified',()=>{lspClearGuides();lspSaveHistory();lspRenderPanelSoon();});
+  cv.on('object:added',()=>{lspRefreshLayers();lspSaveHistory();});
+  cv.on('object:removed',()=>{lspRefreshLayers();lspSaveHistory();});
+  // Typing into a text layer never reached the undo history before.
+  cv.on('text:editing:exited',()=>{lspSaveHistory();lspRefreshLayers();});
+  cv.on('text:changed',()=>{lspMarkDirty();});
+  cv.on('selection:created',(e)=>{LSP.selectedObj=e.selected?.[0]||null;lspOnSelect();});
+  cv.on('selection:updated',(e)=>{LSP.selectedObj=e.selected?.[0]||null;lspOnSelect();});
+  cv.on('selection:cleared',()=>{LSP.selectedObj=null;lspRenderPanel(LSP.activePanel);lspRefreshLayers();});
+  cv.on('mouse:wheel',(opt)=>{
     const e=opt.e;
     if(!e.ctrlKey&&!e.metaKey)return;
-    e.preventDefault();
+    e.preventDefault();e.stopPropagation();
     const factor=e.deltaY>0?0.9:1.1;
     lspApplyZoom(Math.max(0.1,Math.min(5,LSP.zoom*factor)));
   });
-  LSP.canvas.on('object:moving',function(e){
+  cv.on('object:moving',function(e){
+    const o=e.target;
     if(LSP.showSnap){
-      const o=e.target,g=LSP.gridSize||20;
+      const g=LSP.gridSize||20;
       o.set({left:Math.round(o.left/g)*g,top:Math.round(o.top/g)*g});
     }
-    if(LSP.showGuides) lspApplyAlignGuides(e.target);
+    if(LSP.showGuides) lspApplyAlignGuides(o);
   });
-  LSP.canvas.on('object:scaling',function(e){
+  cv.on('object:scaling',function(e){
     if(!LSP.showSnap)return;
     const o=e.target,g=LSP.gridSize||20;
     const newW=Math.round(o.getScaledWidth()/g)*g;
@@ -1360,41 +1484,77 @@ function lspInitCanvas(){
     if(newW>0)o.scaleX=newW/o.width;
     if(newH>0)o.scaleY=newH/o.height;
   });
-  // Delete key = remove selected
-  LSP.canvas.on('key:down',function(e){
-    if((e.key==='Delete'||e.key==='Backspace')&&LSP.canvas.getActiveObject())lspDeleteLayer();
+  cv.on('mouse:up',()=>{lspClearGuides();});
+  // Drawn strokes: tag them so "Clear Strokes" also removes spray/round-brush
+  // groups (it only matched plain paths before) and set up the eraser.
+  cv.on('path:created',(e)=>{
+    const p=e.path;if(!p)return;
+    p.lspDrawn=true;
+    if(LSP._drawBrush==='eraser'){
+      p.lspEraser=true;p.lspName='Eraser stroke';
+      p.set({selectable:false,evented:false});
+      // A transparent background has no colour to paint over — cut real holes instead.
+      if(LSP.isBgTransparent)p.set({globalCompositeOperation:'destination-out',stroke:'rgba(0,0,0,1)'});
+    } else p.lspName='Drawing';
+    lspRefreshLayers();lspSaveHistory();
   });
-  lspSetCanvasSize(500,500,'Square',document.querySelector('.lsp-size-pill.active'));
+  // Double-click arc text / emoji text → quick edit (fabric.Text is not editable in place).
+  cv.on('mouse:dblclick',(e)=>{
+    const o=e.target;if(!o)return;
+    if(o.type==='circularText'){
+      lspPromptModal('Edit arc text',[{id:'t',label:'Text',value:o.text}],v=>{
+        if(v.t==null)return;o.set('text',v.t);o._recalcSize();lspTouch();lspRenderPanel(LSP.activePanel);lspRefreshLayers();
+      });
+    } else if(o.type==='text'){
+      lspPromptModal('Edit text / symbol',[{id:'t',label:'Text or emoji',value:o.text}],v=>{
+        if(!v.t)return;o.set('text',v.t);o.initDimensions&&o.initDimensions();o.setCoords();lspTouch();lspRefreshLayers();
+      });
+    }
+  });
+  // Smart guides are painted as an overlay instead of being added as real
+  // objects — the old Line objects polluted the undo history, the Layers tray,
+  // Select-All and colour palettes on every drag.
+  cv.on('after:render',(opt)=>{
+    if(!_lspGuideLines.length||opt.ctx!==cv.contextContainer)return;
+    const ctx=opt.ctx,v=cv.viewportTransform;
+    ctx.save();ctx.transform(v[0],v[1],v[2],v[3],v[4],v[5]);
+    ctx.strokeStyle='#a855f7';ctx.lineWidth=1/(LSP.zoom||1);ctx.setLineDash([5/(LSP.zoom||1),4/(LSP.zoom||1)]);
+    _lspGuideLines.forEach(g=>{
+      ctx.beginPath();
+      if(g.t==='v'){ctx.moveTo(g.p,0);ctx.lineTo(g.p,LSP.canvasH);}else{ctx.moveTo(0,g.p);ctx.lineTo(LSP.canvasW,g.p);}
+      ctx.stroke();
+    });
+    ctx.restore();
+  });
+  lspInitPan();
+  lspSetCanvasSize(500,500,'Square',document.querySelector('.lsp-size-pill.active'),true);
   lspSaveHistory();lspUpdateGridOverlay();lspUpdateZoomDisplay();
+  setTimeout(lspMarkClean,200);
 }
 
 /* CANVAS CONTROLS */
-function lspSetCanvasSize(w,h,label,btn){
+function lspSetCanvasSize(w,h,label,btn,quiet){
+  w=Math.round(+w);h=Math.round(+h);
+  if(!(w>=50&&h>=50&&w<=5000&&h<=5000)){lspShowToast('Size must be between 50 and 5000 px');return;}
   LSP.canvasW=w;LSP.canvasH=h;
-  const z=LSP.zoom||1;
-  const newW=Math.round(w*z),newH=Math.round(h*z);
-  LSP.canvas.setZoom(z);
-  LSP.canvas.setDimensions({width:newW,height:newH});
-  LSP.canvas.setBackgroundColor(LSP.bgColor==='transparent'?'':LSP.bgColor,LSP.canvas.renderAll.bind(LSP.canvas));
-  const wrap=document.getElementById('lsp-canvas-wrap');
-  wrap.style.width=newW+'px';wrap.style.height=newH+'px';
-  wrap.style.transform='';
+  LSP.canvas.setBackgroundColor(LSP.isBgTransparent?'':LSP.bgColor,()=>{});
   document.querySelectorAll('.lsp-size-pill').forEach(b=>b.classList.remove('active'));
   if(btn)btn.classList.add('active');
-  lspUpdateGridOverlay();lspShowToast('Canvas: '+w+'×'+h);
-  if(window.innerWidth<=900) lspZoomFit();
+  lspApplyZoom(LSP.zoom||1);
+  lspZoomFit(); // always refit — a 1000px canvas used to overflow the desktop view
+  if(!quiet){lspShowToast('Canvas: '+w+'×'+h);lspSaveHistory();}
 }
 function lspCustomSize(){
-  lspPromptModal('Custom Canvas Size',[
+  lspPromptModal('Custom Canvas Size (50 – 5000 px)',[
     {id:'w',label:'Width (px)',value:LSP.canvasW,type:'number'},
     {id:'h',label:'Height (px)',value:LSP.canvasH,type:'number'},
   ],vals=>{
-    const w=parseInt(vals.w)||0, h=parseInt(vals.h)||0;
-    if(w>0&&h>0)lspSetCanvasSize(w,h,'Custom',null);
+    const w=parseInt(vals.w,10)||0, h=parseInt(vals.h,10)||0;
+    lspSetCanvasSize(w,h,'Custom',null);
   });
 }
 function lspSetBg(color){
-  LSP.bgColor=color;LSP.isBgTransparent=(color==='transparent');
+  LSP.bgColor=color;LSP.isBgTransparent=(color==='transparent'||color==='');
   const wrap=document.getElementById('lsp-canvas-wrap');
   if(LSP.isBgTransparent){
     LSP.canvas.setBackgroundColor('',LSP.canvas.renderAll.bind(LSP.canvas));
@@ -1403,15 +1563,26 @@ function lspSetBg(color){
     LSP.canvas.setBackgroundColor(color,LSP.canvas.renderAll.bind(LSP.canvas));
     wrap.style.background='';
   }
+  // Eraser strokes painted in the old background colour would otherwise show
+  // up as coloured scribbles after the background is changed.
+  LSP.canvas.getObjects().forEach(o=>{
+    if(!o.lspEraser)return;
+    if(LSP.isBgTransparent)o.set({globalCompositeOperation:'destination-out',stroke:'rgba(0,0,0,1)'});
+    else o.set({globalCompositeOperation:'source-over',stroke:color});
+  });
+  if(LSP.canvas.freeDrawingBrush&&LSP._drawBrush==='eraser')LSP.canvas.freeDrawingBrush.color=LSP.isBgTransparent?'rgba(0,0,0,1)':color;
+  lspTouch();
 }
 function lspZoomIn(){lspApplyZoom(Math.min(LSP.zoom*1.2,5));}
 function lspZoomOut(){lspApplyZoom(Math.max(LSP.zoom/1.2,0.1));}
 function lspZoomFit(){
   const area=document.getElementById('lsp-canvas-area');
-  const pad=window.innerWidth<=900?24:80;
-  const aw=area.clientWidth-pad,ah=area.clientHeight-pad;
-  const z=Math.max(0.1,Math.min(aw/LSP.canvasW,ah/LSP.canvasH,3));
-  lspApplyZoom(z);
+  if(!area||!LSP.canvas)return;
+  const mob=window.innerWidth<=900;
+  const aw=area.clientWidth-(mob?24:64),ah=area.clientHeight-(mob?70:96);
+  if(aw<=0||ah<=0)return;
+  const z=Math.max(0.1,Math.min(aw/LSP.canvasW,ah/LSP.canvasH,2));
+  lspApplyZoom(Math.round(z*100)/100);
 }
 let _lspResizeTid=null;
 window.addEventListener('resize',()=>{
@@ -1446,48 +1617,41 @@ function lspApplyZoom(z){
 }
 function lspUpdateZoomDisplay(){document.getElementById('lsp-zoom-display').textContent=Math.round(LSP.zoom*100)+'%';}
 function lspToggleGrid(){LSP.showGrid=!LSP.showGrid;document.getElementById('btnGrid').classList.toggle('active',LSP.showGrid);lspUpdateGridOverlay();}
-function lspToggleSnap(){LSP.showSnap=!LSP.showSnap;document.getElementById('btnSnap').classList.toggle('active',LSP.showSnap);lspShowToast(LSP.showSnap?'Snap ON':'Snap OFF');}
+function lspToggleSnap(){LSP.showSnap=!LSP.showSnap;document.getElementById('btnSnap').classList.toggle('active',LSP.showSnap);lspShowToast(LSP.showSnap?'Snap to grid ON':'Snap to grid OFF');}
 function lspToggleGuides(){
   LSP.showGuides=!LSP.showGuides;
   document.getElementById('btnGuides').classList.toggle('active',LSP.showGuides);
   if(!LSP.showGuides) lspClearGuides();
-  lspShowToast(LSP.showGuides?'Alignment guides ON — drag near center/edges':'Alignment guides OFF');
+  lspShowToast(LSP.showGuides?'Smart guides ON — snaps to canvas & other objects':'Smart guides OFF');
 }
-/* ── Alignment guides: dashed lines + magnetic snap to canvas center/edges while dragging ── */
+/* ── Smart guides: snap to canvas centre/edges AND to other objects' centres/edges ── */
 let _lspGuideLines=[];
 function lspClearGuides(){
-  if(!LSP.canvas) return;
-  _lspGuideLines.forEach(g=>{clearTimeout(g._t);LSP.canvas.remove(g);});
+  if(!_lspGuideLines.length)return;
   _lspGuideLines=[];
+  LSP.canvas&&LSP.canvas.requestRenderAll();
 }
-function lspShowGuideLine(type,pos){
-  const line=new fabric.Line(
-    type==='v'?[pos,0,pos,LSP.canvasH]:[0,pos,LSP.canvasW,pos],
-    {stroke:'#a855f7',strokeWidth:1,selectable:false,evented:false,strokeDashArray:[5,4],opacity:.9,excludeFromExport:true}
-  );
-  LSP.canvas.add(line);
-  _lspGuideLines.push(line);
-  line._t=setTimeout(()=>{ LSP.canvas.remove(line); _lspGuideLines=_lspGuideLines.filter(g=>g!==line); LSP.canvas.renderAll(); },650);
-}
+function lspShowGuideLine(type,pos){_lspGuideLines.push({t:type,p:pos});}
 function lspApplyAlignGuides(obj){
-  lspClearGuides();
-  const snapT=8;
-  const canCX=LSP.canvasW/2, canCY=LSP.canvasH/2;
-  const sw=obj.getScaledWidth(), sh=obj.getScaledHeight();
-  const objCX=obj.originX==='center'?obj.left:obj.left+sw/2;
-  const objCY=obj.originY==='center'?obj.top:obj.top+sh/2;
-  const objL =obj.originX==='center'?obj.left-sw/2:obj.left;
-  const objT =obj.originY==='center'?obj.top -sh/2:obj.top;
-  const objR =objL+sw, objB=objT+sh;
-  const setX=px=>{obj.left=obj.originX==='center'?px:px-sw/2;};
-  const setY=py=>{obj.top =obj.originY==='center'?py:py-sh/2;};
-  if      (Math.abs(objCX-canCX)      <snapT){ setX(canCX);              lspShowGuideLine('v',canCX);      }
-  else if (Math.abs(objL)             <snapT){ setX(sw/2);               lspShowGuideLine('v',0);          }
-  else if (Math.abs(objR-LSP.canvasW) <snapT){ setX(LSP.canvasW-sw/2);   lspShowGuideLine('v',LSP.canvasW);}
-  if      (Math.abs(objCY-canCY)      <snapT){ setY(canCY);              lspShowGuideLine('h',canCY);      }
-  else if (Math.abs(objT)             <snapT){ setY(sh/2);               lspShowGuideLine('h',0);          }
-  else if (Math.abs(objB-LSP.canvasH) <snapT){ setY(LSP.canvasH-sh/2);   lspShowGuideLine('h',LSP.canvasH);}
-  if(_lspGuideLines.length) obj.setCoords();
+  _lspGuideLines=[];
+  const snapT=6/(LSP.zoom||1);
+  const br=obj.getBoundingRect(true,true);
+  const xs=[{v:br.left,k:0},{v:br.left+br.width/2,k:.5},{v:br.left+br.width,k:1}];
+  const ys=[{v:br.top,k:0},{v:br.top+br.height/2,k:.5},{v:br.top+br.height,k:1}];
+  const tx=[0,LSP.canvasW/2,LSP.canvasW],ty=[0,LSP.canvasH/2,LSP.canvasH];
+  const members=obj.type==='activeSelection'?obj.getObjects():[obj];
+  LSP.canvas.getObjects().forEach(o=>{
+    if(members.includes(o)||!o.visible)return;
+    const b=o.getBoundingRect(true,true);
+    tx.push(b.left,b.left+b.width/2,b.left+b.width);ty.push(b.top,b.top+b.height/2,b.top+b.height);
+  });
+  let best=null;
+  xs.forEach(s=>tx.forEach(t=>{const d=t-s.v;if(Math.abs(d)<snapT&&(!best||Math.abs(d)<Math.abs(best.d)))best={d,t};}));
+  if(best){obj.left+=best.d;lspShowGuideLine('v',best.t);}
+  best=null;
+  ys.forEach(s=>ty.forEach(t=>{const d=t-s.v;if(Math.abs(d)<snapT&&(!best||Math.abs(d)<Math.abs(best.d)))best={d,t};}));
+  if(best){obj.top+=best.d;lspShowGuideLine('h',best.t);}
+  obj.setCoords();
 }
 function lspUpdateGridOverlay(){
   const gv=document.getElementById('lsp-grid-overlay');
@@ -1496,61 +1660,145 @@ function lspUpdateGridOverlay(){
   gv.width=dW;gv.height=dH;
   gv.style.display=LSP.showGrid?'block':'none';
   if(!LSP.showGrid)return;
-  const gs=Math.round(LSP.gridSize*z);
+  const gs=Math.max(4,LSP.gridSize*z);
   const ctx=gv.getContext('2d');ctx.clearRect(0,0,dW,dH);
-  ctx.strokeStyle='rgba(168,85,247,0.2)';ctx.lineWidth=0.7;
-  for(let x=0;x<dW;x+=gs){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,dH);ctx.stroke();}
-  for(let y=0;y<dH;y+=gs){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(dW,y);ctx.stroke();}
+  ctx.strokeStyle='rgba(168,85,247,0.55)';ctx.lineWidth=0.7;
+  for(let x=0;x<dW;x+=gs){ctx.beginPath();ctx.moveTo(Math.round(x)+.5,0);ctx.lineTo(Math.round(x)+.5,dH);ctx.stroke();}
+  for(let y=0;y<dH;y+=gs){ctx.beginPath();ctx.moveTo(0,Math.round(y)+.5);ctx.lineTo(dW,Math.round(y)+.5);ctx.stroke();}
 }
 
 /* HISTORY */
 let _histTimer=null;
-function lspSaveHistory(){clearTimeout(_histTimer);_histTimer=setTimeout(_commitHistory,120);}
+function lspSnapshot(){
+  const j=LSP.canvas.toJSON(LSP_JSON_PROPS);
+  j._lsp={w:LSP.canvasW,h:LSP.canvasH,bg:LSP.isBgTransparent?'transparent':LSP.bgColor};
+  return JSON.stringify(j);
+}
+function lspSaveHistory(){if(LSP._restoring)return;clearTimeout(_histTimer);_histTimer=setTimeout(_commitHistory,150);}
 function _commitHistory(){
-  const j=JSON.stringify(LSP.canvas.toJSON(['lspName']));
+  if(LSP._restoring||!LSP.canvas)return;
+  const j=lspSnapshot();
   if(LSP.histIdx>=0&&LSP.history[LSP.histIdx]===j)return; // no change
   if(LSP.histIdx<LSP.history.length-1)LSP.history=LSP.history.slice(0,LSP.histIdx+1);
   LSP.history.push(j);
   if(LSP.history.length>LSP.maxHistory)LSP.history.shift();
   LSP.histIdx=LSP.history.length-1;
   lspUpdateUndoRedo();
+  if(LSP.history.length>1)lspMarkDirty();
+  lspSaveDraftSoon();
+}
+/* Restore a snapshot: canvas size + background come back too (undoing a size
+   change used to leave the objects on the wrong-sized canvas). */
+function lspRestore(json,cb){
+  LSP._restoring=true;clearTimeout(_histTimer);
+  let meta=null;try{meta=JSON.parse(json)._lsp||null;}catch(e){}
+  if(meta&&(meta.w!==LSP.canvasW||meta.h!==LSP.canvasH)){LSP.canvasW=meta.w;LSP.canvasH=meta.h;lspZoomFit();}
+  LSP.canvas.loadFromJSON(json,()=>{
+    LSP.canvas.getObjects().forEach(o=>{if(o.type==='circularText'&&o._recalcSize)o._recalcSize();});
+    if(meta){
+      LSP.isBgTransparent=meta.bg==='transparent';LSP.bgColor=LSP.isBgTransparent?'transparent':meta.bg;
+      document.getElementById('lsp-canvas-wrap').style.background=LSP.isBgTransparent?'repeating-conic-gradient(#aaa 0% 25%,#fff 0% 50%) 0 0/12px 12px':'';
+    }
+    LSP.canvas.renderAll();
+    LSP._restoring=false;
+    lspRefreshLayers();lspRenderPanel(LSP.activePanel);
+    if(cb)cb();
+  });
 }
 function _lspReviveCanvas(cb){
   return function(){
     LSP.canvas.getObjects().forEach(o=>{if(o.type==='circularText'&&o._recalcSize)o._recalcSize();});
+    const bg=LSP.canvas.backgroundColor;
+    LSP.isBgTransparent=!bg||bg==='transparent';LSP.bgColor=LSP.isBgTransparent?'transparent':(typeof bg==='string'?bg:'#ffffff');
+    document.getElementById('lsp-canvas-wrap').style.background=LSP.isBgTransparent?'repeating-conic-gradient(#aaa 0% 25%,#fff 0% 50%) 0 0/12px 12px':'';
     LSP.canvas.renderAll();lspRefreshLayers();
     if(cb)cb();
   };
 }
-function lspUndo(){if(LSP.histIdx<=0)return;LSP.histIdx--;LSP.canvas.loadFromJSON(LSP.history[LSP.histIdx],_lspReviveCanvas());lspUpdateUndoRedo();}
-function lspRedo(){if(LSP.histIdx>=LSP.history.length-1)return;LSP.histIdx++;LSP.canvas.loadFromJSON(LSP.history[LSP.histIdx],_lspReviveCanvas());lspUpdateUndoRedo();}
+function lspUndo(){if(LSP.histIdx<=0||LSP._restoring)return;LSP.histIdx--;lspRestore(LSP.history[LSP.histIdx]);lspUpdateUndoRedo();lspMarkDirty();}
+function lspRedo(){if(LSP.histIdx>=LSP.history.length-1||LSP._restoring)return;LSP.histIdx++;lspRestore(LSP.history[LSP.histIdx]);lspUpdateUndoRedo();lspMarkDirty();}
 function lspUpdateUndoRedo(){document.getElementById('btnUndo').disabled=LSP.histIdx<=0;document.getElementById('btnRedo').disabled=LSP.histIdx>=LSP.history.length-1;}
 function lspNew(){
   lspConfirm('Clear canvas and start fresh?',()=>{
     LSP.bgColor='#ffffff';LSP.isBgTransparent=false;
+    LSP._restoring=true;
     LSP.canvas.clear();
     LSP.canvas.setBackgroundColor('#ffffff',LSP.canvas.renderAll.bind(LSP.canvas));
+    LSP._restoring=false;
     document.getElementById('lsp-canvas-wrap').style.background='';
     LSP.history=[];LSP.histIdx=-1;LSP.currentGalleryId=0;LSP._galleryName='My Logo Design';
-    lspSaveHistory();lspRefreshLayers();
+    _commitHistory();lspRefreshLayers();lspRenderPanel(LSP.activePanel);
+    lspClearDraft();lspMarkClean();
     lspShowToast('New canvas ready');
   });
 }
 
+/* ── Crash-safe draft: every change is mirrored to this browser so a closed
+   tab / dead battery doesn't lose the design. Offered back on next open. ── */
+const LSP_DRAFT_KEY='lsp_draft_v1';
+let _lspDraftTid=null;
+function lspSaveDraftSoon(){
+  clearTimeout(_lspDraftTid);
+  _lspDraftTid=setTimeout(()=>{
+    if(!LSP.dirty||!LSP.canvas.getObjects().length)return;
+    try{localStorage.setItem(LSP_DRAFT_KEY,JSON.stringify({t:Date.now(),id:LSP.currentGalleryId,name:LSP._galleryName,json:LSP.history[LSP.histIdx]}));}catch(e){/* quota (large photos) — skip */}
+  },1500);
+}
+function lspClearDraft(){try{localStorage.removeItem(LSP_DRAFT_KEY);}catch(e){}}
+function lspOfferDraftRestore(){
+  let d=null;try{d=JSON.parse(localStorage.getItem(LSP_DRAFT_KEY)||'null');}catch(e){}
+  if(!d||!d.json)return;
+  if(Date.now()-d.t>7*864e5){lspClearDraft();return;}
+  const mins=Math.max(1,Math.round((Date.now()-d.t)/60000));
+  const ago=mins<60?mins+' min':Math.round(mins/60)+' hr';
+  setTimeout(()=>lspConfirm('An unsaved logo from '+ago+' ago was found. Restore it?',()=>{
+    LSP.currentGalleryId=d.id||0;LSP._galleryName=d.name||'My Logo Design';
+    lspRestore(d.json,()=>{lspSaveHistory();lspMarkDirty();lspShowToast('Draft restored ✅');});
+  },()=>lspClearDraft()),600);
+}
+
 /* TOOLS */
 function lspSetTool(tool,btn){
-  LSP.activeTool=tool;
-  document.querySelectorAll('.lsp-tool-btn').forEach(b=>b.classList.remove('active'));
-  if(btn)btn.classList.add('active');
-  LSP.canvas.isDrawingMode=(tool==='draw');
-  LSP.canvas.selection=(tool!=='draw');
-  if(tool==='draw'){
-    LSP.canvas.defaultCursor='crosshair';
-  } else if(tool==='move'){
-    LSP.canvas.defaultCursor='grab';
-  } else {
-    LSP.canvas.defaultCursor='default';
+  if(LSP.activeTool==='draw'&&tool!=='draw'){
+    LSP.canvas.isDrawingMode=false;
+    document.getElementById('fly-draw')?.classList.remove('open');
   }
+  LSP.activeTool=tool;
+  document.querySelectorAll('#lsp-left .lsp-tool-btn').forEach(b=>b.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  const cv=LSP.canvas;
+  cv.isDrawingMode=(tool==='draw');
+  const pan=(tool==='move');
+  cv.selection=!pan&&tool!=='draw';
+  cv.skipTargetFind=pan;
+  if(pan)cv.discardActiveObject();
+  cv.defaultCursor=tool==='draw'?'crosshair':pan?'grab':'default';
+  cv.hoverCursor=pan?'grab':'move';
+  cv.requestRenderAll();
+}
+/* Pan tool: the old "Move" tool only changed the cursor. It now drags the view
+   (scrolls a zoomed-in canvas) — also available any time with Space+drag. */
+function lspInitPan(){
+  const area=document.getElementById('lsp-canvas-area');
+  let st=null,space=false;
+  document.addEventListener('keydown',e=>{if(e.code==='Space'&&!e.repeat&&!/INPUT|TEXTAREA|SELECT|BUTTON/.test(e.target.tagName)&&!LSP.canvas.getActiveObject()?.isEditing&&!lspModalOpen()){space=true;LSP.canvas.defaultCursor='grab';LSP.canvas.skipTargetFind=true;e.preventDefault();}});
+  document.addEventListener('keyup',e=>{if(e.code==='Space'&&space){space=false;if(LSP.activeTool!=='move'){LSP.canvas.defaultCursor=LSP.activeTool==='draw'?'crosshair':'default';LSP.canvas.skipTargetFind=false;}}});
+  LSP.canvas.on('mouse:down',o=>{
+    if(LSP.activeTool!=='move'&&!space)return;
+    const ev=o.e.touches?o.e.touches[0]:o.e;
+    st={x:ev.clientX,y:ev.clientY,sl:area.scrollLeft,stp:area.scrollTop};
+    area.classList.add('lsp-panning');
+    if(space){LSP.canvas.selection=false;LSP.canvas.discardActiveObject();}
+  });
+  LSP.canvas.on('mouse:move',o=>{
+    if(!st)return;
+    const ev=o.e.touches?o.e.touches[0]:o.e;
+    area.scrollLeft=st.sl-(ev.clientX-st.x);area.scrollTop=st.stp-(ev.clientY-st.y);
+  });
+  LSP.canvas.on('mouse:up',()=>{
+    if(!st)return;st=null;area.classList.remove('lsp-panning');
+    if(LSP.activeTool==='select')LSP.canvas.selection=true;
+  });
 }
 
 /* ─── DRAW TOOL STATE ─── */
@@ -1560,9 +1808,11 @@ LSP._drawSize    = 4;
 LSP._drawOpacity = 100;
 
 function lspStartDraw(){
+  // Draw button now toggles: pressing it again leaves draw mode.
+  if(LSP.activeTool==='draw'){lspExitDraw();return;}
   lspClosePanel();
-  lspSetTool('draw', document.getElementById('tool-draw'));
   lspCloseAllFlyouts();
+  lspSetTool('draw', document.getElementById('tool-draw'));
   document.getElementById('fly-draw').classList.add('open');
   lspSetBrush(LSP._drawBrush);
 }
@@ -1570,9 +1820,9 @@ function lspStartDraw(){
 function lspSetBrush(type){
   LSP._drawBrush = type;
   // highlight active button
-  document.querySelectorAll('#fly-draw .lsp-micro-btn').forEach(b=>b.style.borderColor='var(--border-hi)');
+  document.querySelectorAll('#fly-draw .lsp-micro-btn[id^="dbtn-"]').forEach(b=>{b.style.borderColor='var(--border-hi)';b.classList.remove('active');});
   const btn = document.getElementById('dbtn-'+type);
-  if(btn) btn.style.borderColor='#fbbf24';
+  if(btn){btn.style.borderColor='#fbbf24';btn.classList.add('active');}
 
   const cv = LSP.canvas;
   cv.isDrawingMode = true;
@@ -1580,7 +1830,9 @@ function lspSetBrush(type){
 
   if(type==='eraser'){
     cv.freeDrawingBrush = new fabric.PencilBrush(cv);
-    cv.freeDrawingBrush.color   = LSP.bgColor || '#ffffff';
+    // On a transparent background the stroke is turned into a real "cut-out"
+    // (destination-out) when it's finished — see the path:created handler.
+    cv.freeDrawingBrush.color   = LSP.isBgTransparent ? 'rgba(160,160,160,0.6)' : (LSP.bgColor || '#ffffff');
     cv.freeDrawingBrush.width   = sz * 4;
     cv.defaultCursor = 'cell';
   } else if(type==='spray'){
@@ -1588,6 +1840,7 @@ function lspSetBrush(type){
     cv.freeDrawingBrush.density  = 25;
     cv.freeDrawingBrush.dotWidth = Math.max(1, sz * 0.6);
     cv.freeDrawingBrush.dotWidthVariance = 1;
+    cv.freeDrawingBrush.width = sz * 4;
     cv.freeDrawingBrush.color = lspDrawRGBA();
     cv.defaultCursor = 'crosshair';
   } else if(type==='circle'){
@@ -1616,8 +1869,10 @@ function lspSetBrush(type){
 }
 
 function lspDrawRGBA(forceOpacity){
-  const col = LSP._drawColor || '#000000';
-  const op  = forceOpacity !== undefined ? forceOpacity : (LSP._drawOpacity||100)/100;
+  const col = lspToHexColor(LSP._drawColor || '#000000');
+  // Marker's fixed 0.7 is now scaled by the opacity slider instead of ignoring it.
+  const base = (LSP._drawOpacity||100)/100;
+  const op  = forceOpacity !== undefined ? forceOpacity*base : base;
   const r=parseInt(col.slice(1,3),16), g=parseInt(col.slice(3,5),16), b=parseInt(col.slice(5,7),16);
   return `rgba(${r},${g},${b},${op.toFixed(2)})`;
 }
@@ -1625,19 +1880,22 @@ function lspDrawRGBA(forceOpacity){
 function lspSetDrawColor(c){
   LSP._drawColor = c;
   const el = document.getElementById('draw-color');
-  if(el) el.value = c;
+  if(el) el.value = lspToHexColor(c);
   if(LSP.canvas.freeDrawingBrush && LSP._drawBrush !== 'eraser')
-    LSP.canvas.freeDrawingBrush.color = lspDrawRGBA();
+    LSP.canvas.freeDrawingBrush.color = lspDrawRGBA(LSP._drawBrush==='marker'?0.7:undefined);
 }
 
 function lspSetDrawSize(v){
   LSP._drawSize = v;
   const lbl = document.getElementById('draw-size-lbl');
   if(lbl) lbl.textContent = v+'px';
-  if(LSP.canvas.freeDrawingBrush){
-    if(LSP._drawBrush==='eraser')       LSP.canvas.freeDrawingBrush.width = v * 4;
-    else if(LSP._drawBrush==='marker')  LSP.canvas.freeDrawingBrush.width = v * 3.5;
-    else                                LSP.canvas.freeDrawingBrush.width = v;
+  const b=LSP.canvas.freeDrawingBrush;
+  if(b){
+    if(LSP._drawBrush==='eraser')       b.width = v * 4;
+    else if(LSP._drawBrush==='marker')  b.width = v * 3.5;
+    else if(LSP._drawBrush==='ink')     b.width = Math.max(1, v * 0.7);
+    else if(LSP._drawBrush==='spray'){  b.width = v * 4; b.dotWidth = Math.max(1, v * 0.6); }
+    else                                b.width = v;
   }
 }
 
@@ -1646,7 +1904,7 @@ function lspSetDrawOpacity(v){
   const lbl = document.getElementById('draw-opacity-lbl');
   if(lbl) lbl.textContent = v+'%';
   if(LSP.canvas.freeDrawingBrush && LSP._drawBrush !== 'eraser')
-    LSP.canvas.freeDrawingBrush.color = lspDrawRGBA();
+    LSP.canvas.freeDrawingBrush.color = lspDrawRGBA(LSP._drawBrush==='marker'?0.7:undefined);
 }
 
 function lspExitDraw(){
@@ -1655,56 +1913,160 @@ function lspExitDraw(){
 }
 
 function lspClearAllStrokes(){
-  const paths = LSP.canvas.getObjects('path');
-  if(!paths.length){ lspShowToast('No strokes to clear.'); return; }
-  lspConfirm('Clear all drawn strokes?',()=>{
-    paths.forEach(p => LSP.canvas.remove(p));
+  const strokes = LSP.canvas.getObjects().filter(o=>o.lspDrawn||(o.type==='path'&&!o.lspName));
+  if(!strokes.length){ lspShowToast('No strokes to clear.'); return; }
+  lspConfirm('Clear all '+strokes.length+' drawn stroke(s)?',()=>{
+    LSP._restoring=true; strokes.forEach(p => LSP.canvas.remove(p)); LSP._restoring=false;
     LSP.canvas.renderAll(); lspSaveHistory(); lspRefreshLayers();
     lspShowToast('All strokes cleared.');
   });
 }
 function lspAddText(){
+  if(LSP.activeTool!=='select')lspSetTool('select',document.getElementById('tool-select'));
   const t=new fabric.IText('School Name',{left:LSP.canvasW/2,top:LSP.canvasH/2,originX:'center',originY:'center',fontFamily:LSP.currentFont,fontSize:LSP.currentFontSize,fill:LSP.currentTextColor,fontWeight:'bold',textAlign:'center'});
-  LSP.canvas.add(t).setActiveObject(t);t.enterEditing();
+  LSP.canvas.add(t).setActiveObject(t);
+  // Select the placeholder so the first keystroke replaces it.
+  t.enterEditing();t.selectAll();
+  lspEnsureFont(t.fontFamily,'bold').then(()=>lspRefreshTextMetrics([t]));
 }
 function lspUploadImage(){document.getElementById('lsp-file-input').click();}
+/* Uploads are validated and very large photos are scaled to ≤4096px — a 12MP
+   phone photo used to bloat the saved logo by many MB and break image filters. */
 function lspHandleImageUpload(e){
-  const file=e.target.files[0];if(!file)return;
+  const file=e.target.files[0];e.target.value='';
+  if(!file)return;
+  if(!/^image\//.test(file.type)){lspShowToast('Please choose an image file (PNG, JPG, WebP, SVG)');return;}
+  if(file.size>25*1024*1024){lspShowToast('Image is too large (max 25 MB)');return;}
   const reader=new FileReader();
+  reader.onerror=()=>lspShowToast('Could not read that file');
   reader.onload=(ev)=>{
-    fabric.Image.fromURL(ev.target.result,(img)=>{
-      const sc=Math.min((LSP.canvasW*.5)/img.width,(LSP.canvasH*.5)/img.height);
-      img.scale(sc).set({left:LSP.canvasW/2,top:LSP.canvasH/2,originX:'center',originY:'center'});
-      LSP.canvas.add(img).setActiveObject(img);
-    });
+    const src=ev.target.result;
+    const el=new Image();
+    el.onerror=()=>lspShowToast('This image could not be opened');
+    el.onload=()=>{
+      let url=src;const MAX=4096;
+      if(file.type!=='image/svg+xml'&&(el.naturalWidth>MAX||el.naturalHeight>MAX)){
+        const k=MAX/Math.max(el.naturalWidth,el.naturalHeight);
+        const c=document.createElement('canvas');c.width=Math.round(el.naturalWidth*k);c.height=Math.round(el.naturalHeight*k);
+        const cx=c.getContext('2d');cx.imageSmoothingQuality='high';cx.drawImage(el,0,0,c.width,c.height);
+        url=c.toDataURL(file.type==='image/jpeg'?'image/jpeg':'image/png',.92);
+      }
+      fabric.Image.fromURL(url,(img)=>{
+        if(!img||!img.width){lspShowToast('This image could not be opened');return;}
+        const sc=Math.min((LSP.canvasW*.5)/img.width,(LSP.canvasH*.5)/img.height,1);
+        img.scale(sc).set({left:LSP.canvasW/2,top:LSP.canvasH/2,originX:'center',originY:'center'});
+        img.lspName=(file.name||'Image').replace(/\.[^.]+$/,'').slice(0,24);
+        LSP.canvas.add(img).setActiveObject(img);LSP.canvas.requestRenderAll();
+        lspShowToast('Image added');
+      });
+    };
+    el.src=src;
   };
-  reader.readAsDataURL(file);e.target.value='';
+  reader.readAsDataURL(file);
 }
 
 /* LAYERS */
 function lspAddLayer(type){if(type==='text')lspAddText();else lspOpenShapes();}
-function lspDuplicateLayer(){const obj=LSP.canvas.getActiveObject();if(!obj)return;obj.clone((clone)=>{clone.set({left:obj.left+20,top:obj.top+20});LSP.canvas.add(clone).setActiveObject(clone);});}
-function lspDeleteLayer(){const obj=LSP.canvas.getActiveObject();if(!obj)return;LSP.canvas.remove(obj);}
-function lspLayerUp(){const obj=LSP.canvas.getActiveObject();if(!obj)return;LSP.canvas.bringForward(obj);lspRefreshLayers();}
-function lspLayerDown(){const obj=LSP.canvas.getActiveObject();if(!obj)return;LSP.canvas.sendBackwards(obj);lspRefreshLayers();}
-function lspGroupLayers(){
-  const sel=LSP.canvas.getActiveObjects();
-  if(sel.length<2){lspShowToast('Select 2+ objects to group');return;}
-  LSP.canvas.discardActiveObject();
-  const grp=new fabric.Group(sel);
-  sel.forEach(o=>LSP.canvas.remove(o));
-  LSP.canvas.add(grp).setActiveObject(grp);
-  lspShowToast('Grouped '+sel.length+' layers');
+/* Run fn() as ONE undo step (adding/removing several objects fires many events). */
+function lspBatch(fn){
+  LSP._restoring=true;
+  try{fn();}finally{LSP._restoring=false;}
+  lspRefreshLayers();lspTouch();lspRenderPanel(LSP.activePanel);
 }
-function lspSelectAll(){LSP.canvas.discardActiveObject();const sel=new fabric.ActiveSelection(LSP.canvas.getObjects(),{canvas:LSP.canvas});LSP.canvas.setActiveObject(sel);LSP.canvas.requestRenderAll();}
-function lspToggleVis(idx,e){e.stopPropagation();const obj=LSP.canvas.getObjects()[idx];if(!obj)return;obj.visible=!obj.visible;LSP.canvas.renderAll();lspRefreshLayers();}
-function lspToggleLock(idx,e){e.stopPropagation();const obj=LSP.canvas.getObjects()[idx];if(!obj)return;const lock=!obj.lockMovementX;obj.set({lockMovementX:lock,lockMovementY:lock,lockRotation:lock,lockScalingX:lock,lockScalingY:lock});lspRefreshLayers();}
+/* Clone that keeps names/locks — and works for multi-selections too
+   (duplicating several objects used to add a broken, empty "selection" object). */
+function lspCloneActive(cb){
+  const obj=LSP.canvas.getActiveObject();if(!obj)return;
+  obj.clone(cl=>cb(cl),LSP_JSON_PROPS);
+}
+function lspPlaceClone(clone,dx,dy){
+  const cv=LSP.canvas;
+  cv.discardActiveObject();
+  clone.set({left:clone.left+dx,top:clone.top+dy,evented:true});
+  if(clone.type==='activeSelection'){
+    clone.canvas=cv;
+    LSP._restoring=true;
+    clone.forEachObject(o=>cv.add(o));
+    LSP._restoring=false;
+    clone.setCoords();
+  } else {
+    LSP._restoring=true;cv.add(clone);LSP._restoring=false;
+  }
+  cv.setActiveObject(clone);
+  lspRefreshLayers();lspTouch();
+}
+function lspDuplicateLayer(){
+  if(!LSP.canvas.getActiveObject()){lspShowToast('Select something to duplicate');return;}
+  lspCloneActive(cl=>lspPlaceClone(cl,20,20));
+}
+function lspCopy(){
+  if(!LSP.canvas.getActiveObject())return;
+  lspCloneActive(cl=>{LSP.clipboard=cl;LSP._pasteCount=0;lspShowToast('Copied');});
+}
+function lspCut(){
+  if(!LSP.canvas.getActiveObject())return;
+  lspCloneActive(cl=>{LSP.clipboard=cl;LSP._pasteCount=0;lspDeleteLayer(true);lspShowToast('Cut');});
+}
+function lspPaste(){
+  if(!LSP.clipboard){lspShowToast('Nothing copied yet');return;}
+  LSP._pasteCount++;
+  LSP.clipboard.clone(cl=>lspPlaceClone(cl,20*LSP._pasteCount,20*LSP._pasteCount),LSP_JSON_PROPS);
+}
+/* Delete now removes every selected object (multi-select delete did nothing). */
+function lspDeleteLayer(silent){
+  const cv=LSP.canvas,objs=cv.getActiveObjects();
+  if(!objs.length)return;
+  if(cv.getActiveObject()?.isEditing)return;
+  lspBatch(()=>{cv.discardActiveObject();objs.forEach(o=>cv.remove(o));});
+  if(!silent)lspShowToast(objs.length>1?objs.length+' layers deleted':'Layer deleted');
+}
+function lspLayerUp(){const o=LSP.canvas.getActiveObject();if(!o)return;LSP.canvas.bringForward(o);lspRefreshLayers();lspTouch();}
+function lspLayerDown(){const o=LSP.canvas.getActiveObject();if(!o)return;LSP.canvas.sendBackwards(o);lspRefreshLayers();lspTouch();}
+function lspLayerFront(){const o=LSP.canvas.getActiveObject();if(!o)return;LSP.canvas.bringToFront(o);lspRefreshLayers();lspTouch();}
+function lspLayerBack(){const o=LSP.canvas.getActiveObject();if(!o)return;LSP.canvas.sendToBack(o);lspRefreshLayers();lspTouch();}
+/* Group/ungroup via Fabric's own toGroup()/toActiveSelection() — keeps every
+   object exactly where it was (manual re-grouping shifted rotated items). */
+function lspGroupLayers(){
+  const a=LSP.canvas.getActiveObject();
+  if(!a||a.type!=='activeSelection'){lspShowToast('Select 2+ objects to group (Shift+click or drag a box)');return;}
+  const n=a.size();
+  lspBatch(()=>{const g=a.toGroup();g.lspName='Group ('+n+')';});
+  lspShowToast('Grouped '+n+' layers');
+}
+function lspUngroupLayers(){
+  const a=LSP.canvas.getActiveObject();
+  if(!a||a.type!=='group'){lspShowToast('Select a group to ungroup');return;}
+  lspBatch(()=>{a.toActiveSelection();});
+  lspShowToast('Ungrouped — every part is editable now');
+}
+function lspSelectAll(){
+  const objs=LSP.canvas.getObjects().filter(o=>o.visible!==false&&o.selectable!==false);
+  if(!objs.length)return;
+  LSP.canvas.discardActiveObject();
+  const sel=new fabric.ActiveSelection(objs,{canvas:LSP.canvas});
+  LSP.canvas.setActiveObject(sel);LSP.canvas.requestRenderAll();
+}
+function lspToggleVis(idx,e){e&&e.stopPropagation();const obj=LSP.canvas.getObjects()[idx];if(!obj)return;obj.visible=!obj.visible;if(!obj.visible&&LSP.canvas.getActiveObject()===obj)LSP.canvas.discardActiveObject();lspRefreshLayers();lspTouch();}
+function lspSetLocked(obj,lock){
+  obj.set({lockMovementX:lock,lockMovementY:lock,lockRotation:lock,lockScalingX:lock,lockScalingY:lock,hasControls:!lock});
+}
+function lspToggleLock(idx,e){e&&e.stopPropagation();const obj=LSP.canvas.getObjects()[idx];if(!obj)return;lspSetLocked(obj,!obj.lockMovementX);lspRefreshLayers();lspRenderPanel(LSP.activePanel);lspTouch();}
+function lspToggleLockActive(){
+  const objs=lspTargets();if(!objs.length){lspShowToast('Select a layer to lock');return;}
+  const lock=!objs[0].lockMovementX;objs.forEach(o=>lspSetLocked(o,lock));
+  lspRefreshLayers();lspTouch();lspShowToast(lock?'Locked 🔒':'Unlocked 🔓');
+}
 function lspOnSelect(){
   const obj=LSP.selectedObj;
   /* Auto-switch to Design panel when circular text is selected */
   if(obj && obj.type==='circularText' && LSP.activePanel!=='design'){
     LSP.activePanel='design';
     document.querySelectorAll('.lsp-ptab').forEach((b,i)=>b.classList.toggle('active',i===0));
+  }
+  /* …and to the Text panel for a single text layer, where its controls live */
+  if(obj && lspIsText(obj) && LSP.canvas.getActiveObjects().length===1 && LSP.activePanel==='layer'){
+    LSP.activePanel='text';
+    document.querySelectorAll('.lsp-ptab').forEach((b,i)=>b.classList.toggle('active',i===1));
   }
   lspRenderPanel(LSP.activePanel);
   lspRefreshLayers();
@@ -1714,26 +2076,58 @@ function lspOnSelect(){
   // selecting a layer only refreshes the panel's data; opening the sheet is
   // a manual "Properties" tap (lspOpenPanel()) from now on.
 }
+function lspLayerLabel(obj){
+  if(obj.lspName)return obj.lspName;
+  if(obj.type==='circularText')return 'Arc: '+(obj.text||'').slice(0,12);
+  if(lspIsText(obj))return (obj.text||'Text').slice(0,14);
+  return obj.type.charAt(0).toUpperCase()+obj.type.slice(1,10);
+}
+function lspLayerIcon(obj){
+  return lspIsText(obj)?'bi-type':obj.type==='circularText'?'bi-circle':obj.type==='image'?'bi-image':obj.type==='group'?'bi-collection':obj.lspDrawn?'bi-pen':'bi-pentagon';
+}
+/* Batched to one refresh per frame — building a template fired this for every
+   object, re-rendering the whole tray (with thumbnails) dozens of times. */
+let _lspLayersRaf=0;
 function lspRefreshLayers(){
+  if(_lspLayersRaf)return;
+  _lspLayersRaf=requestAnimationFrame(()=>{_lspLayersRaf=0;_lspRenderLayers();});
+}
+function _lspRenderLayers(){
   const objs=LSP.canvas.getObjects();
   const list=document.getElementById('lsp-layers-list');
   document.getElementById('lsp-layer-count').textContent=objs.length+' layer'+(objs.length!==1?'s':'');
   list.innerHTML='';
+  const active=LSP.canvas.getActiveObjects();
   [...objs].reverse().forEach((obj,i)=>{
     const real=objs.length-1-i;
-    const isA=obj===LSP.canvas.getActiveObject();
-    const icon=obj.type==='i-text'||obj.type==='text'?'bi-type':obj.type==='circularText'?'bi-circle':obj.type==='image'?'bi-image':obj.type==='group'?'bi-collection':'bi-pentagon';
-    const nm=obj.lspName||(obj.type==='circularText'?'Arc: '+(obj.text||'').slice(0,12):obj.type==='i-text'||obj.type==='text'?obj.text?.slice(0,14)||'Text':obj.type.charAt(0).toUpperCase()+obj.type.slice(1,8));
+    const isA=active.includes(obj);
     const item=document.createElement('div');
     item.className='lsp-layer-item'+(isA?' active':'');
-    item.innerHTML=`<i class="bi ${icon} lsp-layer-type-icon"></i><div class="lsp-layer-thumb"><canvas width="52" height="42" id="lth_${real}"></canvas></div><div class="lsp-layer-name">${nm}</div><i class="bi bi-eye${obj.visible===false?'-slash':''} lsp-layer-vis" onclick="lspToggleVis(${real},event)"></i>`;
-    item.addEventListener('click',()=>{LSP.canvas.setActiveObject(objs[real]);LSP.canvas.renderAll();lspRefreshLayers();});
+    item.title=lspLayerLabel(obj)+(obj.lockMovementX?' (locked)':'');
+    item.innerHTML=`<i class="bi ${lspLayerIcon(obj)} lsp-layer-type-icon"></i><div class="lsp-layer-thumb"><canvas width="104" height="84"></canvas></div><div class="lsp-layer-name">${obj.lockMovementX?'🔒 ':''}${lspEsc(lspLayerLabel(obj))}</div><i class="bi bi-eye${obj.visible===false?'-slash':''} lsp-layer-vis" onclick="lspToggleVis(${real},event)"></i>`;
+    item.addEventListener('click',(ev)=>{
+      const cv=LSP.canvas;
+      if((ev.shiftKey||ev.ctrlKey||ev.metaKey)&&cv.getActiveObject()){
+        const cur=cv.getActiveObjects();
+        const next=cur.includes(obj)?cur.filter(o=>o!==obj):cur.concat(obj);
+        cv.discardActiveObject();
+        if(next.length===1)cv.setActiveObject(next[0]);
+        else if(next.length)cv.setActiveObject(new fabric.ActiveSelection(next,{canvas:cv}));
+      } else cv.setActiveObject(obj);
+      cv.requestRenderAll();lspOnSelect();
+    });
     list.appendChild(item);
-    setTimeout(()=>{
-      const tc=document.getElementById('lth_'+real);if(!tc)return;
-      const tctx=tc.getContext('2d');
-      try{const ob=obj.getBoundingRect();const sc=Math.min(52/Math.max(ob.width,1),42/Math.max(ob.height,1));const tmp=document.createElement('canvas');tmp.width=52;tmp.height=42;const tc2=tmp.getContext('2d');tc2.translate(26-ob.left*sc-ob.width*sc/2,21-ob.top*sc-ob.height*sc/2);tc2.scale(sc,sc);obj.render(tc2);tctx.drawImage(tmp,0,0);}catch(e){}
-    },30);
+    // Thumbnail: render the object alone, unzoomed, fitted into the box.
+    try{
+      const tc=item.querySelector('canvas'),tctx=tc.getContext('2d');
+      const ob=obj.getBoundingRect(true,true);
+      const sc=Math.min(96/Math.max(ob.width,1),76/Math.max(ob.height,1));
+      tctx.save();
+      tctx.translate(52-(ob.left+ob.width/2)*sc,42-(ob.top+ob.height/2)*sc);
+      tctx.scale(sc,sc);
+      const vis=obj.visible;obj.visible=true;obj.render(tctx);obj.visible=vis;
+      tctx.restore();
+    }catch(e){}
   });
 }
 
@@ -1746,9 +2140,22 @@ function lspSwitchPanel(name,btn){
 }
 function lspRenderPanel(name){
   const body=document.getElementById('lsp-right-body');
+  if(!body)return;
+  // Don't rebuild under the user's fingers while they are typing in a panel field.
+  const st=body.scrollTop;
   if(name==='design')body.innerHTML=lspBuildDesignPanel();
   else if(name==='text')body.innerHTML=lspBuildTextPanel();
   else if(name==='layer')body.innerHTML=lspBuildLayerPanel();
+  body.scrollTop=st;
+}
+let _lspPanelTid=null;
+function lspRenderPanelSoon(){
+  clearTimeout(_lspPanelTid);
+  _lspPanelTid=setTimeout(()=>{
+    const ae=document.activeElement;
+    if(ae&&ae.closest&&ae.closest('#lsp-right-body')&&/INPUT|SELECT|TEXTAREA/.test(ae.tagName))return;
+    lspRenderPanel(LSP.activePanel);
+  },60);
 }
 
 /* An <input type="color"> only accepts a strict #rrggbb hex string — Fabric
@@ -1756,11 +2163,13 @@ function lspRenderPanel(name){
    "rgb(r,g,b)" strings, which the browser silently rejects, leaving the input
    stuck black and logging a console warning. Normalize via canvas, which
    parses any valid CSS color and hands back its components reliably. */
+let _lspColorCtx=null;
 function lspToHexColor(v){
   if(!v||typeof v!=='string')return'#000000';
-  if(/^#[0-9a-fA-F]{6}$/.test(v))return v;
+  if(/^#[0-9a-fA-F]{6}$/.test(v))return v.toLowerCase();
+  if(/^#[0-9a-fA-F]{3}$/.test(v))return('#'+v.slice(1).split('').map(x=>x+x).join('')).toLowerCase();
   try{
-    const c=document.createElement('canvas').getContext('2d');
+    const c=_lspColorCtx||(_lspColorCtx=document.createElement('canvas').getContext('2d'));
     c.fillStyle='#000000';
     c.fillStyle=v;
     const norm=c.fillStyle;
@@ -1771,31 +2180,45 @@ function lspToHexColor(v){
   return'#000000';
 }
 
+function lspNumRow(label,id,val,onchange,extra){
+  return `<div style="flex:1;min-width:0;"><div style="font-size:.58rem;color:#8b9ed4;font-weight:700;margin-bottom:2px;">${label}</div><input type="number" class="lsp-inp" id="${id}" value="${val}" ${extra||''} onchange="${onchange}" onkeydown="if(event.key==='Enter')this.blur()"></div>`;
+}
+
 function lspBuildDesignPanel(){
-  const obj=LSP.canvas?.getActiveObject();
+  const cv=LSP.canvas;
+  const obj=cv?.getActiveObject();
   /* Circular text has its own specialized panel */
   if(obj && obj.type==='circularText') return lspBuildCircularTextPanel(obj);
-  const fill=typeof obj?.fill==='string'?obj.fill:(LSP.currentFillColor||'#1e3a8a');
-  const hasGradFill=obj?.fill&&typeof obj.fill!=='string';
-  const stroke=typeof obj?.stroke==='string'?obj.stroke:(LSP.currentStrokeColor||'#fbbf24');
-  const sw=obj?.strokeWidth??LSP.currentStrokeWidth;
-  const op=obj?Math.round(obj.opacity*100):100;
-  const rot=obj?Math.round(obj.angle):0;
-  const hasStroke=obj&&obj.type!=='i-text'&&obj.type!=='text';
-  const isImg=obj?.type==='image';
+  const multi=obj&&obj.type==='activeSelection';
+  const first=multi?obj.getObjects()[0]:obj;
+  const fill=typeof first?.fill==='string'?first.fill:(LSP.currentFillColor||'#1e3a8a');
+  const hasGradFill=first?.fill&&typeof first.fill!=='string';
+  const stroke=typeof first?.stroke==='string'&&first.stroke?first.stroke:(LSP.currentStrokeColor||'#fbbf24');
+  const sw=first?.strokeWidth??LSP.currentStrokeWidth;
+  const op=obj?Math.round((obj.opacity??1)*100):100;
+  const rot=obj?Math.round(((obj.angle||0)+540)%360-180):0;
+  const hasStroke=first&&!lspIsText(first)&&first.type!=='image';
+  const isImg=first?.type==='image'&&!multi;
+  const isGroup=obj?.type==='group';
+  const br=obj?obj.getBoundingRect(true,true):null;
+  const locked=!!obj?.lockMovementX;
   // Read the ACTUAL applied gradient's colours (real fabric.Gradient colorStops)
   // so the Start/Mid/End pickers below always reflect what's really on the
   // object, instead of always showing the same two hardcoded preview colours.
-  const gradStops=hasGradFill&&obj.fill.colorStops?obj.fill.colorStops:null;
-  const savedGrad=obj?.data?._lspGrad;
-  const gC1v=gradStops?lspToHexColor(gradStops[0].color):(savedGrad?.c1||'#1e3a8a');
-  const gCMidv=gradStops&&gradStops.length>2?lspToHexColor(gradStops[1].color):(savedGrad?.cMid||'#7c3aed');
-  const gC2v=gradStops?lspToHexColor(gradStops[gradStops.length-1].color):(savedGrad?.c2||'#fbbf24');
+  const gradStops=hasGradFill&&first.fill.colorStops?first.fill.colorStops:null;
+  const gC1v=gradStops?lspToHexColor(gradStops[0].color):'#1e3a8a';
+  const gCMidv=gradStops&&gradStops.length>2?lspToHexColor(gradStops[1].color):'#7c3aed';
+  const gC2v=gradStops?lspToHexColor(gradStops[gradStops.length-1].color):'#fbbf24';
   const fillPreview=hasGradFill?`linear-gradient(90deg,${gC1v},${gCMidv},${gC2v})`:fill;
-  const fillColorVal=hasGradFill?gC1v:(fill==='transparent'?'#ffffff':lspToHexColor(fill));
-  return`<div class="lsp-section"><div class="lsp-section-title"><i class="bi bi-palette"></i>Fill & Color</div>
-<div class="lsp-row"><span class="lsp-label">Fill</span><div class="lsp-color-btn" style="background:${fillPreview};"><input type="color" value="${fillColorVal}" oninput="lspApplyFill(this.value)"></div>
-<div class="lsp-swatches">${['#1e3a8a','#7c2d12','#14532d','#fbbf24','#fff','#000','#a855f7','#ef4444','#22c55e','#0ea5e9','#f97316'].map(c=>`<div class="lsp-swatch" style="background:${c};" onclick="lspApplyFill('${c}')"></div>`).join('')}</div></div>
+  const fillColorVal=hasGradFill?gC1v:(fill==='transparent'||!fill?'#ffffff':lspToHexColor(fill));
+  const head=!obj
+    ? `<div class="lsp-section" style="font-size:.68rem;color:#8b9ed4;line-height:1.5;"><i class="bi bi-info-circle"></i> Nothing selected — colours you pick below become the defaults for new shapes &amp; text. Click a layer to edit it.</div>`
+    : multi?`<div class="lsp-section" style="font-size:.7rem;color:#c4b5fd;font-weight:700;"><i class="bi bi-ui-checks-grid"></i> ${obj.size()} objects selected — changes apply to all of them
+      <div class="lsp-btn-group" style="margin-top:.4rem;"><button class="lsp-micro-btn" onclick="lspGroupLayers()"><i class="bi bi-collection"></i> Group</button><button class="lsp-micro-btn" onclick="lspDuplicateLayer()"><i class="bi bi-copy"></i> Duplicate</button><button class="lsp-micro-btn" style="color:#f87171;" onclick="lspDeleteLayer()"><i class="bi bi-trash"></i> Delete</button></div></div>`
+    : isGroup?`<div class="lsp-section" style="font-size:.7rem;color:#c4b5fd;font-weight:700;"><i class="bi bi-collection"></i> Group of ${obj.size()} <button class="lsp-micro-btn" style="margin-left:.4rem;" onclick="lspUngroupLayers()">Ungroup to edit parts</button></div>`:'';
+  return head+`<div class="lsp-section"><div class="lsp-section-title"><i class="bi bi-palette"></i>Fill & Color</div>
+<div class="lsp-row"><span class="lsp-label">Fill</span><div class="lsp-color-btn" style="background:${lspEsc(fillPreview)};"><input type="color" value="${fillColorVal}" oninput="lspApplyFill(this.value)"></div>
+<div class="lsp-swatches">${['#1e3a8a','#7c2d12','#14532d','#fbbf24','#ffffff','#000000','#a855f7','#ef4444','#22c55e','#0ea5e9','#f97316','transparent'].map(c=>`<div class="lsp-swatch" title="${c==='transparent'?'No fill':c}" style="background:${c==='transparent'?'repeating-conic-gradient(#aaa 0% 25%,#fff 0% 50%) 0 0/8px 8px':c};" onclick="lspApplyFill('${c}')"></div>`).join('')}</div></div>
 <div class="lsp-row"><span class="lsp-label">Gradient</span><div class="lsp-btn-group">
 <button class="lsp-micro-btn" onclick="lspApplyShapeGradient('linear','h')" title="Horizontal">→ H</button>
 <button class="lsp-micro-btn" onclick="lspApplyShapeGradient('linear','v')" title="Vertical">↓ V</button>
@@ -1805,62 +2228,90 @@ function lspBuildDesignPanel(){
 ${hasGradFill?`<button class="lsp-micro-btn" onclick="lspApplyFill(document.getElementById('lspGC1').value)" title="Remove gradient" style="color:#f87171;">✕ Clear</button>`:''}
 </div></div>
 <div class="lsp-row"><span class="lsp-label">Grad. Colors</span><div style="display:flex;gap:.3rem;flex:1;">
-<div style="flex:1;text-align:center;"><input type="color" id="lspGC1" value="${gC1v}" oninput="lspLiveGradColor()" style="width:100%;height:26px;border:1px solid var(--border-hi);border-radius:5px;cursor:pointer;background:none;padding:1px;"><div style="font-size:.55rem;color:#8b9ed4;margin-top:1px;">Start</div></div>
-<div style="flex:1;text-align:center;"><input type="color" id="lspGCMid" value="${gCMidv}" oninput="lspLiveGradColor()" style="width:100%;height:26px;border:1px solid var(--border-hi);border-radius:5px;cursor:pointer;background:none;padding:1px;"><div style="font-size:.55rem;color:#8b9ed4;margin-top:1px;">Mid</div></div>
-<div style="flex:1;text-align:center;"><input type="color" id="lspGC2" value="${gC2v}" oninput="lspLiveGradColor()" style="width:100%;height:26px;border:1px solid var(--border-hi);border-radius:5px;cursor:pointer;background:none;padding:1px;"><div style="font-size:.55rem;color:#8b9ed4;margin-top:1px;">End</div></div>
+<div style="flex:1;text-align:center;"><input type="color" id="lspGC1" value="${gC1v}" oninput="lspLiveGradColor()" onchange="lspSaveHistory()" style="width:100%;height:26px;border:1px solid var(--border-hi);border-radius:5px;cursor:pointer;background:none;padding:1px;"><div style="font-size:.55rem;color:#8b9ed4;margin-top:1px;">Start</div></div>
+<div style="flex:1;text-align:center;"><input type="color" id="lspGCMid" value="${gCMidv}" oninput="lspLiveGradColor()" onchange="lspSaveHistory()" style="width:100%;height:26px;border:1px solid var(--border-hi);border-radius:5px;cursor:pointer;background:none;padding:1px;"><div style="font-size:.55rem;color:#8b9ed4;margin-top:1px;">Mid</div></div>
+<div style="flex:1;text-align:center;"><input type="color" id="lspGC2" value="${gC2v}" oninput="lspLiveGradColor()" onchange="lspSaveHistory()" style="width:100%;height:26px;border:1px solid var(--border-hi);border-radius:5px;cursor:pointer;background:none;padding:1px;"><div style="font-size:.55rem;color:#8b9ed4;margin-top:1px;">End</div></div>
 </div></div>
-${hasStroke?`<div class="lsp-row"><span class="lsp-label">Stroke</span><div class="lsp-color-btn" style="background:${stroke||'#fbbf24'};"><input type="color" value="${lspToHexColor(stroke||'#fbbf24')}" oninput="lspApplyStroke(this.value)"></div><div class="lsp-swatches">${['#fbbf24','#fff','#1e3a8a','#000','#ef4444','#22c55e'].map(c=>`<div class="lsp-swatch" style="background:${c};" onclick="lspApplyStroke('${c}')"></div>`).join('')}</div></div>
-<div class="lsp-row"><span class="lsp-label">Stroke W</span><input type="range" class="lsp-range" min="0" max="20" value="${sw}" oninput="lspApplyStrokeW(+this.value);this.nextElementSibling.textContent=this.value+'px'"><span style="font-size:.72rem;color:#9ba8d4;font-weight:600;min-width:24px;">${sw}px</span></div>`:''}
+${(hasStroke||!obj)?`<div class="lsp-row"><span class="lsp-label">Stroke</span><div class="lsp-color-btn" style="background:${lspEsc(stroke)};"><input type="color" value="${lspToHexColor(stroke)}" oninput="lspApplyStroke(this.value)"></div><div class="lsp-swatches">${['#fbbf24','#ffffff','#1e3a8a','#000000','#ef4444','#22c55e'].map(c=>`<div class="lsp-swatch" style="background:${c};" onclick="lspApplyStroke('${c}')"></div>`).join('')}</div></div>
+<div class="lsp-row"><span class="lsp-label">Stroke W</span><input type="range" class="lsp-range" min="0" max="30" step="0.5" value="${sw}" oninput="lspApplyStrokeW(+this.value);this.nextElementSibling.textContent=this.value+'px'"><span style="font-size:.72rem;color:#9ba8d4;font-weight:600;min-width:30px;">${sw}px</span></div>
+${first&&first.type==='rect'?`<div class="lsp-row"><span class="lsp-label">Corners</span><input type="range" class="lsp-range" min="0" max="${Math.round(Math.min(first.width,first.height)/2)}" value="${first.rx||0}" oninput="lspApplyCorner(+this.value);this.nextElementSibling.textContent=this.value+'px'"><span style="font-size:.72rem;color:#9ba8d4;font-weight:600;min-width:30px;">${first.rx||0}px</span></div>`:''}`:''}
 </div>
-<div class="lsp-section"><div class="lsp-section-title"><i class="bi bi-sliders"></i>Transform</div>
-<div class="lsp-row"><span class="lsp-label">Opacity</span><input type="range" class="lsp-range" min="0" max="100" value="${op}" oninput="lspApplyOpacity(+this.value/100);this.nextElementSibling.textContent=this.value+'%'"><span style="font-size:.72rem;color:#9ba8d4;font-weight:600;min-width:30px;">${op}%</span></div>
-<div class="lsp-row"><span class="lsp-label">Rotation</span><input type="range" class="lsp-range" min="-180" max="180" value="${rot}" oninput="lspApplyRotation(+this.value);this.nextElementSibling.textContent=this.value+'°'" style="accent-color:var(--gold);"><span style="font-size:.72rem;color:#9ba8d4;font-weight:600;min-width:30px;">${rot}°</span></div>
-<div class="lsp-row"><span class="lsp-label">X/Y</span><span style="font-size:.72rem;color:#9ba8d4;font-weight:600;">${obj?Math.round(obj.left):'-'} / ${obj?Math.round(obj.top):'-'} px</span></div>
+${obj?`<div class="lsp-section"><div class="lsp-section-title"><i class="bi bi-arrows-move"></i>Position & Size <button class="lsp-micro-btn" style="margin-left:auto;padding:.1rem .4rem;${locked?'color:#fbbf24;border-color:#fbbf24;':''}" onclick="lspToggleLockActive()" title="Lock / unlock">${locked?'🔒 Locked':'🔓 Lock'}</button></div>
+<div style="display:flex;gap:.3rem;margin-bottom:.35rem;">
+${lspNumRow('X','lspPX',Math.round(br.left),'lspSetBox(\'x\',+this.value)')}
+${lspNumRow('Y','lspPY',Math.round(br.top),'lspSetBox(\'y\',+this.value)')}
+${lspNumRow('W','lspPW',Math.round(br.width),'lspSetBox(\'w\',+this.value)','min="1"')}
+${lspNumRow('H','lspPH',Math.round(br.height),'lspSetBox(\'h\',+this.value)','min="1"')}
 </div>
+<label style="display:flex;align-items:center;gap:.3rem;font-size:.66rem;color:#9ba8d4;font-weight:600;margin-bottom:.35rem;cursor:pointer;"><input type="checkbox" id="lspKeepRatio" ${LSP.keepRatio!==false?'checked':''} onchange="LSP.keepRatio=this.checked"> Keep proportions</label>
+<div class="lsp-row"><span class="lsp-label">Opacity</span><input type="range" class="lsp-range" min="0" max="100" value="${op}" oninput="lspApplyOpacity(+this.value/100);this.nextElementSibling.textContent=this.value+'%'" onchange="lspSaveHistory()"><span style="font-size:.72rem;color:#9ba8d4;font-weight:600;min-width:30px;">${op}%</span></div>
+<div class="lsp-row"><span class="lsp-label">Rotation</span><input type="range" class="lsp-range" min="-180" max="180" value="${rot}" oninput="lspApplyRotation(+this.value);this.nextElementSibling.textContent=this.value+'°'" onchange="lspSaveHistory()" style="accent-color:var(--gold);"><span style="font-size:.72rem;color:#9ba8d4;font-weight:600;min-width:30px;">${rot}°</span></div>
+<div class="lsp-btn-group">
+<button class="lsp-micro-btn" onclick="lspFlip('x')" title="Flip horizontal">⇋ Flip H</button>
+<button class="lsp-micro-btn" onclick="lspFlip('y')" title="Flip vertical">⥮ Flip V</button>
+<button class="lsp-micro-btn" onclick="lspApplyRotation(0);lspRenderPanel('design')" title="Reset rotation">⟲ 0°</button>
+<button class="lsp-micro-btn" onclick="lspCenterOnCanvas()" title="Centre on canvas">⊕ Centre</button>
+</div>
+</div>`:''}
 <div class="lsp-section"><div class="lsp-section-title"><i class="bi bi-shadow"></i>Shadow</div>
 <div class="lsp-btn-group">${[['None',0],['Soft',5],['Medium',12],['Hard',25],['Glow',40]].map(([l,v])=>`<button class="lsp-micro-btn" onclick="lspApplyShadow(${v})">${l}</button>`).join('')}</div>
-${isImg?`<div class="lsp-row" style="margin-top:.35rem;"><span class="lsp-label">Filter</span><div class="lsp-btn-group">${['None','Grayscale','Sepia','Invert','Blur'].map(f=>`<button class="lsp-micro-btn" onclick="lspApplyImgFilter('${f.toLowerCase()}')">${f}</button>`).join('')}</div></div>`:''}
+${isImg?`<div class="lsp-row" style="margin-top:.35rem;"><span class="lsp-label">Filter</span><div class="lsp-btn-group">${['None','Grayscale','Sepia','Invert','Blur','Brighten','Contrast'].map(f=>`<button class="lsp-micro-btn" onclick="lspApplyImgFilter('${f.toLowerCase()}')">${f}</button>`).join('')}</div></div>
+<div class="lsp-row"><span class="lsp-label">Shape</span><div class="lsp-btn-group">${[['circle','● Circle'],['rounded','▢ Rounded'],['none','✕ None']].map(([s,l])=>`<button class="lsp-micro-btn" onclick="lspImageMask('${s}')">${l}</button>`).join('')}</div></div>`:''}
 </div>
-<div class="lsp-section"><div class="lsp-section-title"><i class="bi bi-align-center"></i>Alignment</div>
-<div class="lsp-btn-group">${[['left','⬅ Left'],['hcenter','↔ H-Ctr'],['right','➡ Right'],['top','⬆ Top'],['vcenter','↕ V-Ctr'],['bottom','⬇ Bottom']].map(([d,l])=>`<button class="lsp-micro-btn" onclick="lspAlign('${d}')">${l}</button>`).join('')}</div>
+<div class="lsp-section"><div class="lsp-section-title"><i class="bi bi-align-center"></i>Align ${multi?'(to each other)':'(to canvas)'}</div>
+<div class="lsp-btn-group">${[['left','⬅ Left'],['hcenter','↔ H-Ctr'],['right','➡ Right'],['top','⬆ Top'],['vcenter','↕ V-Ctr'],['bottom','⬇ Bottom']].map(([d,l])=>`<button class="lsp-micro-btn" onclick="lspAlign('${d}')">${l}</button>`).join('')}
+${multi&&obj.size()>2?`<button class="lsp-micro-btn" onclick="lspDistribute('h')" title="Equal horizontal spacing">⇿ Distribute H</button><button class="lsp-micro-btn" onclick="lspDistribute('v')" title="Equal vertical spacing">⇳ Distribute V</button>`:''}</div>
 </div>
 <div class="lsp-section"><div class="lsp-section-title"><i class="bi bi-stack"></i>Layer Order</div>
 <div class="lsp-btn-group">
-<button class="lsp-micro-btn" onclick="LSP.canvas.bringToFront(LSP.canvas.getActiveObject());LSP.canvas.renderAll()">⬆ Front</button>
-<button class="lsp-micro-btn" onclick="LSP.canvas.sendToBack(LSP.canvas.getActiveObject());LSP.canvas.renderAll()">⬇ Back</button>
-<button class="lsp-micro-btn" onclick="LSP.canvas.bringForward(LSP.canvas.getActiveObject());LSP.canvas.renderAll()">↑ Fwd</button>
-<button class="lsp-micro-btn" onclick="LSP.canvas.sendBackwards(LSP.canvas.getActiveObject());LSP.canvas.renderAll()">↓ Bwd</button>
+<button class="lsp-micro-btn" onclick="lspLayerFront()">⬆ Front</button>
+<button class="lsp-micro-btn" onclick="lspLayerBack()">⬇ Back</button>
+<button class="lsp-micro-btn" onclick="lspLayerUp()">↑ Fwd</button>
+<button class="lsp-micro-btn" onclick="lspLayerDown()">↓ Bwd</button>
 </div></div>
 <div class="lsp-section"><div class="lsp-section-title"><i class="bi bi-palette2"></i>Color Palettes</div>
-${LSP_PALETTES.map(p=>`<div style="display:flex;align-items:center;gap:.3rem;margin-bottom:.24rem;cursor:pointer;border-radius:6px;overflow:hidden;border:1px solid var(--border-hi);" onclick="lspApplyPalette(${JSON.stringify(p.colors)})" title="${p.name}">${p.colors.map(c=>`<div style="flex:1;height:20px;background:${c};"></div>`).join('')}<div style="padding:0 6px;font-size:.62rem;color:#8b9ed4;font-weight:600;white-space:nowrap;">${p.name}</div></div>`).join('')}
+<div style="font-size:.6rem;color:#8b9ed4;margin-bottom:.3rem;">${obj?'Recolours the selected layer(s)':'Recolours the whole design'}</div>
+${LSP_PALETTES.map((p,pi)=>`<div style="display:flex;align-items:center;gap:.3rem;margin-bottom:.24rem;cursor:pointer;border-radius:6px;overflow:hidden;border:1px solid var(--border-hi);" onclick="lspApplyPalette(LSP_PALETTES[${pi}].colors)" title="${lspEsc(p.name)}">${p.colors.map(c=>`<div style="flex:1;height:20px;background:${c};"></div>`).join('')}<div style="padding:0 6px;font-size:.62rem;color:#8b9ed4;font-weight:600;white-space:nowrap;">${lspEsc(p.name)}</div></div>`).join('')}
 </div>`;
 }
 
 function lspBuildTextPanel(){
   const obj=LSP.canvas?.getActiveObject();
-  const isT=obj&&(obj.type==='i-text'||obj.type==='text');
-  const ff=isT?obj.fontFamily:LSP.currentFont;
-  const fs=isT?obj.fontSize:LSP.currentFontSize;
-  const fc=isT?(typeof obj.fill==='string'?obj.fill:'#1e3a8a'):LSP.currentTextColor;
-  const fw=isT&&obj.fontWeight==='bold';
-  const fi=isT&&obj.fontStyle==='italic';
-  const ta=isT?obj.textAlign:'center';
-  const tsk=isT&&obj.stroke?obj.stroke:'';
-  const tskW=isT&&obj.strokeWidth?obj.strokeWidth:0;
+  const texts=lspTargets().filter(lspIsText);
+  const t0=texts[0];
+  const isT=!!t0;
+  const ff=isT?t0.fontFamily:LSP.currentFont;
+  const fs=isT?Math.round(t0.fontSize):LSP.currentFontSize;
+  const fc=isT?(typeof t0.fill==='string'?t0.fill:'#1e3a8a'):LSP.currentTextColor;
+  const fw=isT&&(t0.fontWeight==='bold'||+t0.fontWeight>=600);
+  const fi=isT&&t0.fontStyle==='italic';
+  const fu=isT&&!!t0.underline;
+  const ta=isT?t0.textAlign:'center';
+  const tsk=isT&&t0.stroke?t0.stroke:'';
+  const tskW=isT&&t0.strokeWidth?t0.strokeWidth:0;
   const tskPreview=tsk||'#fbbf24';
-  return`<div class="lsp-section"><div class="lsp-section-title"><i class="bi bi-type"></i>Add Text</div>
+  const lh=isT?(t0.lineHeight||1.16):1.16;
+  const fonts=['Cinzel','Montserrat','Poppins','Playfair Display','Raleway','Oswald','Open Sans','Nunito','Exo 2','Ubuntu','Source Sans Pro','Bebas Neue','Righteous','Pacifico','Lobster','Dancing Script','Georgia','Impact','Times New Roman','Arial','Verdana'];
+  if(ff&&!fonts.includes(ff))fonts.unshift(ff);
+  const note=!isT&&obj?`<div class="lsp-section" style="font-size:.66rem;color:#fbbf24;">Selected layer is not text — settings below apply to new text.</div>`:'';
+  return note+`<div class="lsp-section"><div class="lsp-section-title"><i class="bi bi-type"></i>Add Text</div>
 <button class="lsp-micro-btn" style="width:100%;padding:.35rem;margin-bottom:.3rem;" onclick="lspAddText()"><i class="bi bi-plus-lg"></i> Add Text Layer</button>
-<button class="lsp-micro-btn" style="width:100%;padding:.3rem;" onclick="lspAddTextPreset()"><i class="bi bi-type-h1"></i> School Heading Style</button>
+<button class="lsp-micro-btn" style="width:100%;padding:.3rem;margin-bottom:.3rem;" onclick="lspAddTextPreset()"><i class="bi bi-type-h1"></i> School Heading Style</button>
+<button class="lsp-micro-btn" style="width:100%;padding:.3rem;" onclick="lspAddCircularText('top')"><i class="bi bi-arrow-repeat"></i> Circular Arc Text</button>
 </div>
-<div class="lsp-section"><div class="lsp-section-title"><i class="bi bi-fonts"></i>Font Settings</div>
-<div class="lsp-row"><span class="lsp-label">Font</span><select class="lsp-select" onchange="lspApplyFont(this.value)">${['Cinzel','Montserrat','Poppins','Playfair Display','Raleway','Oswald','Open Sans','Nunito','Exo 2','Ubuntu','Source Sans Pro','Bebas Neue','Righteous','Pacifico','Lobster','Dancing Script','Georgia','Impact','Times New Roman','Arial','Verdana'].map(f=>`<option ${f===ff?'selected':''}>${f}</option>`).join('')}</select></div>
-<div class="lsp-row"><span class="lsp-label">Size</span><input type="range" class="lsp-range" min="8" max="200" value="${fs}" oninput="lspApplyFontSize(+this.value);this.nextElementSibling.textContent=this.value+'px'"><span style="font-size:.72rem;color:#9ba8d4;font-weight:600;min-width:30px;">${fs}px</span></div>
-<div class="lsp-row"><span class="lsp-label">Color</span><div class="lsp-color-btn" style="background:${fc||'#1e3a8a'};"><input type="color" value="${lspToHexColor(fc||'#1e3a8a')}" oninput="lspApplyTextColor(this.value)"></div><div class="lsp-swatches">${['#fff','#fbbf24','#1e3a8a','#000','#c9a84c','#ef4444','#7c3aed','#22c55e'].map(c=>`<div class="lsp-swatch" style="background:${c};" onclick="lspApplyTextColor('${c}')"></div>`).join('')}</div></div>
-<div class="lsp-row" title="Text outline / border around each letter"><span class="lsp-label">Stroke</span><div class="lsp-color-btn" style="background:${tskPreview};box-shadow:0 0 0 2px ${tskW>0?'#fbbf24':'rgba(255,255,255,.15)'};"><input type="color" value="${lspToHexColor(tskPreview)}" oninput="lspApplyTextStroke(this.value)"></div><div class="lsp-swatches">${['#fbbf24','#fff','#000','#c0392b','#1e3a8a','#15803d','#a855f7','#f97316'].map(c=>`<div class="lsp-swatch" style="background:${c};" onclick="lspApplyTextStroke('${c}')"></div>`).join('')}</div><button class="lsp-micro-btn" onclick="lspApplyTextStrokeW(0)" style="margin-left:.18rem;padding:.1rem .28rem;font-size:.6rem;height:auto;min-width:auto;color:#f87171;" title="Remove stroke">✕</button></div>
-<div class="lsp-row"><span class="lsp-label">Stroke W</span><input type="range" class="lsp-range" min="0" max="18" value="${tskW}" oninput="lspApplyTextStrokeW(+this.value);this.nextElementSibling.textContent=this.value+'px'" style="accent-color:#fbbf24;"><span style="font-size:.72rem;color:#9ba8d4;font-weight:600;min-width:28px;">${tskW}px</span></div>
-<div class="lsp-row"><span class="lsp-label">Style</span><div class="lsp-btn-group"><button class="lsp-micro-btn ${fw?'active':''}" onclick="lspToggleBold()"><b>B</b></button><button class="lsp-micro-btn ${fi?'active':''}" onclick="lspToggleItalic()"><i>I</i></button><button class="lsp-micro-btn" onclick="lspToggleUnderline()"><u>U</u></button></div></div>
+${isT&&texts.length===1?`<div class="lsp-section"><div class="lsp-section-title"><i class="bi bi-pencil"></i>Text Content</div>
+<textarea class="lsp-inp" rows="2" style="resize:vertical;font-family:inherit;" oninput="lspSetTextContent(this.value)" onchange="lspSaveHistory()">${lspEsc(t0.text)}</textarea>
+<div class="lsp-btn-group" style="margin-top:.3rem;"><button class="lsp-micro-btn" onclick="lspTextCase('upper')">AA</button><button class="lsp-micro-btn" onclick="lspTextCase('lower')">aa</button><button class="lsp-micro-btn" onclick="lspTextCase('title')">Aa</button></div></div>`:''}
+<div class="lsp-section"><div class="lsp-section-title"><i class="bi bi-fonts"></i>Font Settings${texts.length>1?` <span style="color:#c4b5fd;">(${texts.length} texts)</span>`:''}</div>
+<div class="lsp-row"><span class="lsp-label">Font</span><select class="lsp-select" onchange="lspApplyFont(this.value)">${fonts.map(f=>`<option ${f===ff?'selected':''} style="font-family:'${f}'">${lspEsc(f)}</option>`).join('')}</select></div>
+<div class="lsp-row"><span class="lsp-label">Size</span><input type="range" class="lsp-range" min="8" max="200" value="${fs}" oninput="lspApplyFontSize(+this.value);this.nextElementSibling.value=this.value" onchange="lspSaveHistory()"><input type="number" class="lsp-inp lsp-num" min="4" max="600" value="${fs}" onchange="lspApplyFontSize(+this.value);this.previousElementSibling.value=this.value;lspSaveHistory()"></div>
+<div class="lsp-row"><span class="lsp-label">Color</span><div class="lsp-color-btn" style="background:${lspEsc(fc||'#1e3a8a')};"><input type="color" value="${lspToHexColor(fc||'#1e3a8a')}" oninput="lspApplyTextColor(this.value)" onchange="lspSaveHistory()"></div><div class="lsp-swatches">${['#ffffff','#fbbf24','#1e3a8a','#000000','#c9a84c','#ef4444','#7c3aed','#22c55e'].map(c=>`<div class="lsp-swatch" style="background:${c};" onclick="lspApplyTextColor('${c}');lspSaveHistory()"></div>`).join('')}</div></div>
+<div class="lsp-row" title="Text outline / border around each letter"><span class="lsp-label">Stroke</span><div class="lsp-color-btn" style="background:${lspEsc(tskPreview)};box-shadow:0 0 0 2px ${tskW>0?'#fbbf24':'rgba(255,255,255,.15)'};"><input type="color" value="${lspToHexColor(tskPreview)}" oninput="lspApplyTextStroke(this.value)"></div><div class="lsp-swatches">${['#fbbf24','#ffffff','#000000','#c0392b','#1e3a8a','#15803d','#a855f7','#f97316'].map(c=>`<div class="lsp-swatch" style="background:${c};" onclick="lspApplyTextStroke('${c}')"></div>`).join('')}</div><button class="lsp-micro-btn" onclick="lspApplyTextStrokeW(0);lspRenderPanel('text')" style="margin-left:.18rem;padding:.1rem .28rem;font-size:.6rem;height:auto;min-width:auto;color:#f87171;" title="Remove stroke">✕</button></div>
+<div class="lsp-row"><span class="lsp-label">Stroke W</span><input type="range" class="lsp-range" min="0" max="18" step="0.5" value="${tskW}" oninput="lspApplyTextStrokeW(+this.value);this.nextElementSibling.textContent=this.value+'px'" style="accent-color:#fbbf24;"><span style="font-size:.72rem;color:#9ba8d4;font-weight:600;min-width:28px;">${tskW}px</span></div>
+<div class="lsp-row"><span class="lsp-label">Style</span><div class="lsp-btn-group"><button class="lsp-micro-btn ${fw?'active':''}" onclick="lspToggleBold()"><b>B</b></button><button class="lsp-micro-btn ${fi?'active':''}" onclick="lspToggleItalic()"><i>I</i></button><button class="lsp-micro-btn ${fu?'active':''}" onclick="lspToggleUnderline()"><u>U</u></button></div></div>
 <div class="lsp-row"><span class="lsp-label">Align</span><div class="lsp-btn-group">${['left','center','right'].map(a=>`<button class="lsp-micro-btn ${ta===a?'active':''}" onclick="lspApplyTextAlign('${a}')">${a}</button>`).join('')}</div></div>
-<div class="lsp-row"><span class="lsp-label">Spacing</span><input type="range" class="lsp-range" min="0" max="400" value="${isT?(obj.charSpacing||0):0}" oninput="lspApplyCharSpacing(+this.value);this.nextElementSibling.textContent=this.value" style="accent-color:var(--cyan);"><span style="font-size:.72rem;color:#9ba8d4;font-weight:600;min-width:24px;">${isT?(obj.charSpacing||0):0}</span></div>
+<div class="lsp-row"><span class="lsp-label">Spacing</span><input type="range" class="lsp-range" min="-100" max="800" value="${isT?(t0.charSpacing||0):0}" oninput="lspApplyCharSpacing(+this.value);this.nextElementSibling.textContent=this.value" onchange="lspSaveHistory()" style="accent-color:var(--cyan);"><span style="font-size:.72rem;color:#9ba8d4;font-weight:600;min-width:24px;">${isT?(t0.charSpacing||0):0}</span></div>
+<div class="lsp-row"><span class="lsp-label">Line H</span><input type="range" class="lsp-range" min="0.7" max="3" step="0.05" value="${lh}" oninput="lspApplyLineHeight(+this.value);this.nextElementSibling.textContent=(+this.value).toFixed(2)" onchange="lspSaveHistory()"><span style="font-size:.72rem;color:#9ba8d4;font-weight:600;min-width:28px;">${(+lh).toFixed(2)}</span></div>
 </div>
 <div class="lsp-section"><div class="lsp-section-title"><i class="bi bi-stars"></i>Text Effects</div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:.28rem;">
@@ -1868,54 +2319,120 @@ ${[{id:'none',l:'Normal',s:'color:var(--text-bright)'},{id:'shadow',l:'Shadow',s
 </div></div>
 <div class="lsp-section"><div class="lsp-section-title"><i class="bi bi-translate"></i>Quick School Texts</div>
 <div style="display:grid;grid-template-columns:1fr;gap:.22rem;">
-${['School Name Here','Motto / Tagline','Est. 1985','Knowledge is Power','Satyam Shivam Sundaram','Tamso Ma Jyotirgamaya','Excellence Always','Jai Hind','ॐ श्री गणेशाय नमः','Vidya Vinayam Dadati'].map(t=>`<button class="lsp-micro-btn" style="text-align:left;" onclick="lspInsertQuickText('${t}')">${t}</button>`).join('')}
+${LSP_QUICK_TEXTS.map((t,i)=>`<button class="lsp-micro-btn" style="text-align:left;" onclick="lspInsertQuickText(LSP_QUICK_TEXTS[${i}])">${lspEsc(t)}</button>`).join('')}
 </div></div>`;
 }
+const LSP_QUICK_TEXTS=['School Name Here','Motto / Tagline','Est. 1985','Knowledge is Power','Satyam Shivam Sundaram','Tamso Ma Jyotirgamaya','Excellence Always','Jai Hind','ॐ श्री गणेशाय नमः','विद्या ददाति विनयम्','Vidya Vinayam Dadati','सा विद्या या विमुक्तये'];
 
 function lspBuildLayerPanel(){
   const objs=LSP.canvas?.getObjects()||[];
   if(!objs.length)return`<div class="lsp-section" style="text-align:center;color:var(--text-dim);padding:2rem 1rem;font-size:.72rem;">No layers yet.<br>Use toolbar to add elements.</div>`;
-  return`<div class="lsp-section"><div class="lsp-section-title"><i class="bi bi-stack"></i>Layer Stack (${objs.length})</div>
+  const active=LSP.canvas.getActiveObjects();
+  return`<div class="lsp-section"><div class="lsp-section-title"><i class="bi bi-stack"></i>Layer Stack (${objs.length}) <span style="margin-left:auto;font-size:.56rem;color:#6b7ab8;text-transform:none;letter-spacing:0;">double-click a name to rename</span></div>
 ${[...objs].reverse().map((obj,i)=>{
-  const real=objs.length-1-i;const isA=obj===LSP.canvas.getActiveObject();
-  const icon=obj.type==='i-text'||obj.type==='text'?'bi-type':obj.type==='image'?'bi-image':obj.type==='group'?'bi-collection':'bi-pentagon';
-  const nm=obj.lspName||(obj.type==='i-text'||obj.type==='text'?'"'+(obj.text?.slice(0,16)||'Text')+'"':obj.type.charAt(0).toUpperCase()+obj.type.slice(1));
-  return`<div style="display:flex;align-items:center;gap:.4rem;padding:.3rem .4rem;border-radius:6px;cursor:pointer;background:${isA?'var(--bg-active)':'transparent'};border:1px solid ${isA?'var(--purple)':'transparent'};margin-bottom:.2rem;" onclick="LSP.canvas.setActiveObject(LSP.canvas.getObjects()[${real}]);LSP.canvas.renderAll();lspRenderPanel('layer')"><i class="bi ${icon}" style="color:var(--purple);font-size:.75rem;flex-shrink:0;"></i><span style="flex:1;font-size:.68rem;color:${isA?'var(--text-bright)':'var(--text-mid)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${nm}</span><i class="bi bi-eye${obj.visible===false?'-slash':''}" style="font-size:.7rem;color:var(--text-dim);cursor:pointer;" onclick="lspToggleVis(${real},event)"></i><i class="bi bi-lock${obj.lockMovementX?'':'-open'}" style="font-size:.7rem;color:var(--text-dim);cursor:pointer;" onclick="lspToggleLock(${real},event)"></i></div>`;
-}).join('')}</div>`;
+  const real=objs.length-1-i;const isA=active.includes(obj);
+  return`<div style="display:flex;align-items:center;gap:.4rem;padding:.3rem .4rem;border-radius:6px;cursor:pointer;background:${isA?'var(--bg-active)':'transparent'};border:1px solid ${isA?'var(--purple)':'transparent'};margin-bottom:.2rem;" onclick="LSP.canvas.setActiveObject(LSP.canvas.getObjects()[${real}]);LSP.canvas.requestRenderAll();lspOnSelect()" ondblclick="lspRenameLayer(${real})"><i class="bi ${lspLayerIcon(obj)}" style="color:var(--purple);font-size:.75rem;flex-shrink:0;"></i><span style="flex:1;font-size:.68rem;color:${isA?'var(--text-bright)':'var(--text-mid)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${obj.visible===false?'opacity:.45;':''}">${lspEsc(lspLayerLabel(obj))}</span><i class="bi bi-eye${obj.visible===false?'-slash':''}" style="font-size:.7rem;color:var(--text-mid);cursor:pointer;padding:2px;" title="Show / hide" onclick="lspToggleVis(${real},event);lspRenderPanel('layer')"></i><i class="bi bi-lock${obj.lockMovementX?'-fill':'-open'}" style="font-size:.7rem;color:${obj.lockMovementX?'#fbbf24':'var(--text-mid)'};cursor:pointer;padding:2px;" title="Lock / unlock" onclick="lspToggleLock(${real},event)"></i></div>`;
+}).join('')}</div>
+<div class="lsp-section"><div class="lsp-btn-group">
+<button class="lsp-micro-btn" onclick="lspSelectAll()">Select all</button>
+<button class="lsp-micro-btn" onclick="lspGroupLayers()">Group</button>
+<button class="lsp-micro-btn" onclick="lspUngroupLayers()">Ungroup</button>
+<button class="lsp-micro-btn" onclick="lspDuplicateLayer()">Duplicate</button>
+<button class="lsp-micro-btn" style="color:#f87171;" onclick="lspDeleteLayer()">Delete</button>
+</div></div>`;
+}
+function lspRenameLayer(idx){
+  const o=LSP.canvas.getObjects()[idx];if(!o)return;
+  lspPromptModal('Rename layer',[{id:'n',label:'Layer name',value:lspLayerLabel(o)}],v=>{
+    o.lspName=(v.n||'').trim().slice(0,40)||undefined;lspRefreshLayers();lspRenderPanel(LSP.activePanel);lspSaveHistory();
+  });
 }
 
-/* PROPERTY APPLIERS */
-function lspApplyFill(v){LSP.currentFillColor=v;const o=LSP.canvas.getActiveObject();if(!o)return;if(o.data)o.data._lspGrad=null;o.set('fill',v);LSP.canvas.renderAll();}
-function lspApplyStroke(v){LSP.currentStrokeColor=v;const o=LSP.canvas.getActiveObject();if(!o)return;o.set('stroke',v);LSP.canvas.renderAll();}
-function lspApplyStrokeW(v){const o=LSP.canvas.getActiveObject();if(!o)return;o.set('strokeWidth',v);LSP.canvas.renderAll();}
-function lspApplyOpacity(v){const o=LSP.canvas.getActiveObject();if(!o)return;o.set('opacity',v);LSP.canvas.renderAll();}
-function lspApplyRotation(v){const o=LSP.canvas.getActiveObject();if(!o)return;o.set('angle',v);LSP.canvas.renderAll();}
-function lspApplyFont(v){LSP.currentFont=v;const o=LSP.canvas.getActiveObject();if(o&&(o.type==='i-text'||o.type==='text')){o.set('fontFamily',v);LSP.canvas.renderAll();}}
-function lspApplyFontSize(v){LSP.currentFontSize=v;const o=LSP.canvas.getActiveObject();if(o&&(o.type==='i-text'||o.type==='text')){o.set('fontSize',v);LSP.canvas.renderAll();}}
-function lspApplyTextColor(v){LSP.currentTextColor=v;LSP.currentFillColor=v;const o=LSP.canvas.getActiveObject();if(o&&(o.type==='i-text'||o.type==='text')){if(o.data)o.data._lspGrad=null;o.set('fill',v);LSP.canvas.renderAll();}}
-function lspToggleBold(){const o=LSP.canvas.getActiveObject();if(o&&(o.type==='i-text'||o.type==='text')){o.set('fontWeight',o.fontWeight==='bold'?'normal':'bold');LSP.canvas.renderAll();lspRenderPanel('text');}}
-function lspToggleItalic(){const o=LSP.canvas.getActiveObject();if(o&&(o.type==='i-text'||o.type==='text')){o.set('fontStyle',o.fontStyle==='italic'?'normal':'italic');LSP.canvas.renderAll();lspRenderPanel('text');}}
-function lspToggleUnderline(){const o=LSP.canvas.getActiveObject();if(o&&(o.type==='i-text'||o.type==='text')){o.set('underline',!o.underline);LSP.canvas.renderAll();}}
-function lspApplyTextAlign(v){const o=LSP.canvas.getActiveObject();if(o&&(o.type==='i-text'||o.type==='text')){o.set('textAlign',v);LSP.canvas.renderAll();}}
-function lspApplyCharSpacing(v){const o=LSP.canvas.getActiveObject();if(o&&(o.type==='i-text'||o.type==='text')){o.set('charSpacing',v);LSP.canvas.renderAll();}}
+/* PROPERTY APPLIERS — each applies to every selected object and is undoable */
+function lspEach(fn,filter){
+  const objs=lspTargets().filter(filter||(()=>true));
+  objs.forEach(fn);
+  return objs.length;
+}
+/* For colour changes, step inside groups so e.g. a flag/emblem can be recoloured as a whole. */
+function lspEachDeep(fn,filter){
+  let n=0;
+  const walk=o=>{if(o.type==='group'){o.getObjects().forEach(walk);o.dirty=true;}else if(!filter||filter(o)){fn(o);n++;}};
+  lspTargets().forEach(walk);
+  return n;
+}
+function lspApplyFill(v){
+  LSP.currentFillColor=v;
+  if(lspEachDeep(o=>{o.set('fill',v);},o=>o.type!=='image'&&!(o.type==='line'))){lspTouch();lspRenderPanelSoon();}
+}
+function lspApplyStroke(v){
+  LSP.currentStrokeColor=v;
+  if(lspEachDeep(o=>{o.set('stroke',v);if(!o.strokeWidth)o.set('strokeWidth',LSP.currentStrokeWidth||2);},o=>o.type!=='image'&&!lspIsText(o)))lspTouch();
+}
+function lspApplyStrokeW(v){LSP.currentStrokeWidth=v;if(lspEachDeep(o=>{o.set('strokeWidth',v);if(v>0&&!o.stroke)o.set('stroke',LSP.currentStrokeColor);},o=>o.type!=='image'&&!lspIsText(o))){LSP.canvas.getActiveObject()?.setCoords();lspTouch();}}
+function lspApplyCorner(v){if(lspEach(o=>o.set({rx:v,ry:v}),o=>o.type==='rect'))lspTouch();}
+function lspApplyOpacity(v){if(lspEach(o=>o.set('opacity',v)))LSP.canvas.requestRenderAll();}
+/* rotate() turns around the object's centre; set('angle') spun left/top-origin
+   objects around their corner, throwing them off-canvas. */
+function lspApplyRotation(v){
+  const a=LSP.canvas.getActiveObject();if(!a)return;
+  a.rotate(v);a.setCoords();LSP.canvas.requestRenderAll();
+}
+function lspFlip(axis){
+  if(lspEach(o=>o.set(axis==='x'?'flipX':'flipY',!(axis==='x'?o.flipX:o.flipY))))lspTouch();
+}
+function lspCenterOnCanvas(){const a=LSP.canvas.getActiveObject();if(!a)return;a.setPositionByOrigin(new fabric.Point(LSP.canvasW/2,LSP.canvasH/2),'center','center');a.setCoords();lspTouch();lspRenderPanelSoon();}
+/* Exact X/Y/W/H typed into the panel (measured on the visible bounding box). */
+function lspSetBox(k,v){
+  const a=LSP.canvas.getActiveObject();if(!a||!isFinite(v))return;
+  const br=a.getBoundingRect(true,true);
+  if(k==='x')a.left+=v-br.left;
+  else if(k==='y')a.top+=v-br.top;
+  else if(v>0){
+    const keep=LSP.keepRatio!==false;
+    const f=k==='w'?v/br.width:v/br.height;
+    if(keep){a.scaleX*=f;a.scaleY*=f;}else if(k==='w')a.scaleX*=f;else a.scaleY*=f;
+  }
+  a.setCoords();lspTouch();lspRenderPanelSoon();
+}
+function lspApplyFont(v){
+  LSP.currentFont=v;
+  const texts=lspTargets().filter(o=>lspIsText(o)||o.type==='circularText');
+  texts.forEach(o=>o.set('fontFamily',v));
+  LSP.canvas.requestRenderAll();
+  lspEnsureFont(v,'bold').then(()=>{lspRefreshTextMetrics(texts);if(texts.length)lspSaveHistory();});
+}
+function lspApplyFontSize(v){
+  if(!(v>0))return;
+  LSP.currentFontSize=v;
+  lspEach(o=>{o.set('fontSize',v);if(o._recalcSize)o._recalcSize();o.setCoords();},o=>lspIsText(o)||o.type==='circularText');
+  LSP.canvas.requestRenderAll();
+}
+function lspApplyTextColor(v){LSP.currentTextColor=v;if(lspEach(o=>o.set('fill',v),o=>lspIsText(o)||o.type==='circularText'))LSP.canvas.requestRenderAll();}
+function lspSetTextContent(v){const o=LSP.canvas.getActiveObject();if(!lspIsText(o))return;o.set('text',v);o.initDimensions&&o.initDimensions();o.setCoords();LSP.canvas.requestRenderAll();lspRefreshLayers();}
+function lspTextCase(mode){
+  if(lspEach(o=>{let t=o.text||'';t=mode==='upper'?t.toUpperCase():mode==='lower'?t.toLowerCase():t.toLowerCase().replace(/(^|\s)(\S)/g,(m,a,b)=>a+b.toUpperCase());o.set('text',t);o.initDimensions&&o.initDimensions();o.setCoords();},o=>lspIsText(o)||o.type==='circularText')){lspTouch();lspRefreshLayers();lspRenderPanel('text');}
+}
+function lspToggleBold(){
+  const t=lspTargets().filter(lspIsText);if(!t.length)return;
+  const next=(t[0].fontWeight==='bold'||+t[0].fontWeight>=600)?'normal':'bold';
+  t.forEach(o=>o.set('fontWeight',next));lspEnsureFont(t[0].fontFamily,next).then(()=>lspRefreshTextMetrics(t));
+  lspTouch();lspRenderPanel('text');
+}
+function lspToggleItalic(){const t=lspTargets().filter(lspIsText);if(!t.length)return;const next=t[0].fontStyle==='italic'?'normal':'italic';t.forEach(o=>o.set('fontStyle',next));lspTouch();lspRenderPanel('text');}
+function lspToggleUnderline(){const t=lspTargets().filter(lspIsText);if(!t.length)return;const next=!t[0].underline;t.forEach(o=>o.set('underline',next));lspTouch();lspRenderPanel('text');}
+function lspApplyTextAlign(v){if(lspEach(o=>o.set('textAlign',v),lspIsText)){lspTouch();lspRenderPanel('text');}}
+function lspApplyCharSpacing(v){if(lspEach(o=>{o.set('charSpacing',v);o.setCoords();},lspIsText))LSP.canvas.requestRenderAll();}
+function lspApplyLineHeight(v){if(lspEach(o=>{o.set('lineHeight',v);o.setCoords();},lspIsText))LSP.canvas.requestRenderAll();}
 function lspApplyTextStroke(color){
-  const o=LSP.canvas.getActiveObject();
-  if(!o||(o.type!=='i-text'&&o.type!=='text')) return;
-  o.set('stroke',color);
-  if(!o.strokeWidth||o.strokeWidth===0) o.set('strokeWidth',2);
-  LSP.canvas.renderAll(); lspSaveHistory();
+  if(lspEach(o=>{o.set({stroke:color,paintFirst:'stroke'});if(!o.strokeWidth)o.set('strokeWidth',2);},lspIsText))lspTouch();
 }
 function lspApplyTextStrokeW(w){
-  const o=LSP.canvas.getActiveObject();
-  if(!o||(o.type!=='i-text'&&o.type!=='text')) return;
-  o.set('strokeWidth',w);
-  if(w===0) o.set({stroke:'',strokeWidth:0});
-  LSP.canvas.renderAll(); lspSaveHistory();
+  if(lspEach(o=>{if(w>0)o.set({strokeWidth:w,stroke:o.stroke||'#fbbf24',paintFirst:'stroke'});else o.set({stroke:'',strokeWidth:0});},lspIsText))lspTouch();
 }
 function lspApplyShadow(blur){
-  const o=LSP.canvas.getActiveObject();if(!o)return;
-  o.set('shadow',blur===0?null:new fabric.Shadow({color:'rgba(0,0,0,0.45)',blur,offsetX:2,offsetY:4}));
-  LSP.canvas.renderAll();
+  if(lspEach(o=>o.set('shadow',blur===0?null:new fabric.Shadow({color:blur>=40?'rgba(251,191,36,.85)':'rgba(0,0,0,0.45)',blur,offsetX:blur>=40?0:2,offsetY:blur>=40?0:4}))))lspTouch();
+  else lspShowToast('Select an object first');
 }
 function lspGradCoords(type,dir){
   if(type==='radial')return{x1:0.5,y1:0.5,r1:0,x2:0.5,y2:0.5,r2:0.5};
@@ -1925,113 +2442,157 @@ function lspGradCoords(type,dir){
   if(dir==='a')return{x1:1,y1:0,x2:0,y2:1};
   return{x1:0,y1:0,x2:1,y2:0};
 }
+function lspMakeGrad(type,coords,c1,cMid,c2){
+  return new fabric.Gradient({type,gradientUnits:'percentage',coords,
+    colorStops:[{offset:0,color:c1},{offset:0.5,color:cMid},{offset:1,color:c2}]});
+}
 function lspApplyShapeGradient(type,dir){
-  const o=LSP.canvas.getActiveObject();
-  if(!o){lspShowToast('Select an object first');return;}
-  // Use the real Start/Mid/End pickers (falling back to sensible defaults the
-  // first time, before any object has ever had a gradient) — previously this
-  // borrowed the unrelated Fill/Stroke colours and faked a semi-transparent
-  // Stroke colour as the "mid" stop, so there was no genuine 3-colour control
-  // at all and picking a colour did nothing predictable ("multi colour not
-  // applying").
+  if(!lspTargets().length){lspShowToast('Select an object first');return;}
   const c1=document.getElementById('lspGC1')?.value||LSP.currentFillColor||'#1e3a8a';
   const cMid=document.getElementById('lspGCMid')?.value||'#7c3aed';
   const c2=document.getElementById('lspGC2')?.value||LSP.currentStrokeColor||'#fbbf24';
-  if(!o.data)o.data={};
-  o.data._lspGrad={type,dir,c1,cMid,c2};
-  o.set('fill',new fabric.Gradient({
-    type,gradientUnits:'percentage',coords:lspGradCoords(type,dir),
-    colorStops:[{offset:0,color:c1},{offset:0.5,color:cMid},{offset:1,color:c2}]
-  }));
-  LSP.canvas.renderAll();lspShowToast('Gradient applied!');lspSaveHistory();
+  const n=lspEachDeep(o=>{o.set('fill',lspMakeGrad(type,lspGradCoords(type,dir),c1,cMid,c2));},o=>o.type!=='image'&&o.type!=='line'&&o.type!=='circularText');
+  if(!n){lspShowToast('Gradients work on shapes and text');return;}
+  lspTouch();lspShowToast('Gradient applied!');
   lspRenderPanel('design');
 }
-// Live-reapply as the user drags the Start/Mid/End colour pickers, so the
-// object updates immediately instead of only on the next H/V/D/Rad/A tap.
-// Reads type/coords straight off the object's OWN current fill so this keeps
-// working even for a gradient reloaded from a saved design (where our extra
-// o.data._lspGrad tracking info doesn't survive serialization).
+// Live-reapply as the user drags the Start/Mid/End colour pickers. Reads the
+// type/coords from the object's OWN current gradient, so it also works on a
+// gradient reloaded from a saved design.
 function lspLiveGradColor(){
-  const o=LSP.canvas.getActiveObject();
-  if(!o||!o.fill||typeof o.fill==='string')return;
   const c1=document.getElementById('lspGC1').value;
   const cMid=document.getElementById('lspGCMid').value;
   const c2=document.getElementById('lspGC2').value;
-  const type=o.fill.type||'linear';
-  const coords=o.fill.coords||lspGradCoords(type,(o.data&&o.data._lspGrad&&o.data._lspGrad.dir)||'h');
-  if(!o.data)o.data={};
-  o.data._lspGrad={type,dir:(o.data._lspGrad&&o.data._lspGrad.dir)||'h',c1,cMid,c2};
-  o.set('fill',new fabric.Gradient({
-    type,gradientUnits:'percentage',coords,
-    colorStops:[{offset:0,color:c1},{offset:0.5,color:cMid},{offset:1,color:c2}]
-  }));
-  LSP.canvas.renderAll();
+  let any=false;
+  lspEachDeep(o=>{
+    if(!o.fill||typeof o.fill==='string')return;
+    any=true;
+    o.set('fill',lspMakeGrad(o.fill.type||'linear',o.fill.coords||lspGradCoords('linear','h'),c1,cMid,c2));
+  });
+  if(any)LSP.canvas.requestRenderAll();
 }
 function lspApplyImgFilter(type){
-  const o=LSP.canvas.getActiveObject();if(!o||o.type!=='image')return;
-  o.filters=[];
-  if(type==='grayscale')o.filters.push(new fabric.Image.filters.Grayscale());
-  else if(type==='sepia')o.filters.push(new fabric.Image.filters.Sepia());
-  else if(type==='invert')o.filters.push(new fabric.Image.filters.Invert());
-  else if(type==='blur')o.filters.push(new fabric.Image.filters.Blur({blur:0.1}));
-  o.applyFilters();LSP.canvas.renderAll();
-}
-function lspAlign(dir){
-  const o=LSP.canvas.getActiveObject();if(!o)return;
-  const W=LSP.canvasW,H=LSP.canvasH;
-  const bnd=o.getBoundingRect();
-  const oW=bnd.width,oH=bnd.height;
-  if(dir==='left')o.set({left:0,originX:'left'});
-  else if(dir==='hcenter')o.set({left:(W-oW)/2+oW/2,originX:'center'});
-  else if(dir==='right')o.set({left:W-oW,originX:'left'});
-  else if(dir==='top')o.set({top:0,originY:'top'});
-  else if(dir==='vcenter')o.set({top:(H-oH)/2+oH/2,originY:'center'});
-  else if(dir==='bottom')o.set({top:H-oH,originY:'top'});
-  o.setCoords();LSP.canvas.renderAll();
-}
-function lspApplyPalette(colors){
-  const objs=LSP.canvas.getObjects();
-  if(!objs.length){LSP.currentFillColor=colors[0];LSP.currentTextColor=colors[1];return;}
-  objs.forEach((o,i)=>{
-    if(o.type==='i-text'||o.type==='text')o.set('fill',colors[i%colors.length]);
-    else if(o.fill&&o.fill!=='transparent')o.set('fill',colors[i%colors.length]);
-    if(o.stroke)o.set('stroke',colors[(i+2)%colors.length]);
+  const imgs=lspTargets().filter(o=>o.type==='image');if(!imgs.length)return;
+  imgs.forEach(o=>{
+    o.filters=[];
+    if(type==='grayscale')o.filters.push(new fabric.Image.filters.Grayscale());
+    else if(type==='sepia')o.filters.push(new fabric.Image.filters.Sepia());
+    else if(type==='invert')o.filters.push(new fabric.Image.filters.Invert());
+    else if(type==='blur')o.filters.push(new fabric.Image.filters.Blur({blur:0.15}));
+    else if(type==='brighten')o.filters.push(new fabric.Image.filters.Brightness({brightness:0.12}));
+    else if(type==='contrast')o.filters.push(new fabric.Image.filters.Contrast({contrast:0.2}));
+    try{o.applyFilters();}catch(e){lspShowToast('Filter not supported for this image');}
   });
-  LSP.canvas.renderAll();lspShowToast('Palette applied!');
+  lspTouch();
+}
+/* Round / circular crop for a photo (e.g. founder's photo inside a badge). */
+function lspImageMask(shape){
+  const o=LSP.canvas.getActiveObject();if(!o||o.type!=='image')return;
+  if(shape==='none')o.set('clipPath',null);
+  else if(shape==='circle')o.set('clipPath',new fabric.Circle({radius:Math.min(o.width,o.height)/2,originX:'center',originY:'center'}));
+  else{const r=Math.min(o.width,o.height)*.14;o.set('clipPath',new fabric.Rect({width:o.width,height:o.height,rx:r,ry:r,originX:'center',originY:'center'}));}
+  o.dirty=true;lspTouch();
+}
+/* Align by the visible bounding box (works for rotated objects; the old version
+   changed originX/Y, which made rotated or left-origin objects jump). With a
+   multi-selection, objects are aligned to each other. */
+function lspAlign(dir){
+  const cv=LSP.canvas,a=cv.getActiveObject();if(!a)return;
+  const move=(o,ref)=>{
+    const b=o.getBoundingRect(true,true);
+    let dx=0,dy=0;
+    if(dir==='left')dx=ref.l-b.left;
+    else if(dir==='hcenter')dx=(ref.l+ref.r)/2-(b.left+b.width/2);
+    else if(dir==='right')dx=ref.r-(b.left+b.width);
+    else if(dir==='top')dy=ref.t-b.top;
+    else if(dir==='vcenter')dy=(ref.t+ref.b)/2-(b.top+b.height/2);
+    else if(dir==='bottom')dy=ref.b-(b.top+b.height);
+    o.left+=dx;o.top+=dy;o.setCoords();
+  };
+  if(a.type==='activeSelection'){
+    const objs=a.getObjects();
+    cv.discardActiveObject();
+    const bs=objs.map(o=>o.getBoundingRect(true,true));
+    const ref={l:Math.min(...bs.map(b=>b.left)),t:Math.min(...bs.map(b=>b.top)),r:Math.max(...bs.map(b=>b.left+b.width)),b:Math.max(...bs.map(b=>b.top+b.height))};
+    objs.forEach(o=>move(o,ref));
+    cv.setActiveObject(new fabric.ActiveSelection(objs,{canvas:cv}));
+  } else move(a,{l:0,t:0,r:LSP.canvasW,b:LSP.canvasH});
+  lspTouch();lspRenderPanelSoon();
+}
+function lspDistribute(axis){
+  const cv=LSP.canvas,a=cv.getActiveObject();
+  if(!a||a.type!=='activeSelection'||a.size()<3){lspShowToast('Select 3 or more objects to distribute');return;}
+  const objs=a.getObjects();cv.discardActiveObject();
+  const items=objs.map(o=>({o,b:o.getBoundingRect(true,true)}));
+  const k=axis==='h'?'left':'top',s=axis==='h'?'width':'height';
+  items.sort((p,q)=>p.b[k]-q.b[k]);
+  const start=items[0].b[k],end=items[items.length-1].b[k]+items[items.length-1].b[s];
+  const total=items.reduce((t,i)=>t+i.b[s],0);
+  const gap=(end-start-total)/(items.length-1);
+  let pos=start;
+  items.forEach(i=>{const d=pos-i.b[k];if(axis==='h')i.o.left+=d;else i.o.top+=d;i.o.setCoords();pos+=i.b[s]+gap;});
+  cv.setActiveObject(new fabric.ActiveSelection(objs,{canvas:cv}));
+  lspTouch();lspShowToast('Distributed evenly');
+}
+/* Palette: recolours the selection (or whole design when nothing is selected),
+   stepping into groups. Text gets the darkest/contrasting colours. Undoable. */
+function lspApplyPalette(colors){
+  const cv=LSP.canvas;
+  let objs=lspTargets();
+  const all=!objs.length;
+  if(all)objs=cv.getObjects();
+  if(!objs.length){LSP.currentFillColor=colors[0];LSP.currentTextColor=colors[1];lspShowToast('Palette set as default colours');return;}
+  let i=0;
+  const walk=o=>{
+    if(o.type==='group'){o.getObjects().forEach(walk);o.dirty=true;return;}
+    if(o.type==='image'||o.lspEraser)return;
+    if(lspIsText(o)||o.type==='circularText')o.set('fill',colors[(i+1)%colors.length]);
+    else if(o.fill&&o.fill!=='transparent'&&o.fill!=='')o.set('fill',colors[i%colors.length]);
+    if(o.stroke&&o.stroke!=='transparent')o.set('stroke',colors[(i+2)%colors.length]);
+    i++;
+  };
+  objs.forEach(walk);
+  lspTouch();lspRenderPanelSoon();lspShowToast('Palette applied'+(all?' to whole design':' to selection')+' — Ctrl+Z to undo');
 }
 function lspApplyTextEffect(eff){
-  const o=LSP.canvas.getActiveObject();
-  if(!o||(o.type!=='i-text'&&o.type!=='text'))return;
-  o.set({stroke:'',strokeWidth:0,shadow:null});
-  if(eff==='shadow'){o.set({fill:o.fill||'#fff',shadow:new fabric.Shadow({color:'rgba(0,0,0,.5)',blur:4,offsetX:3,offsetY:3})});}
-  else if(eff==='outline'){o.set({stroke:'#fbbf24',strokeWidth:2,fill:'#1e3a8a'});}
-  else if(eff==='glow'){o.set({fill:'#c4b5fd',shadow:new fabric.Shadow({color:'rgba(168,85,247,.8)',blur:15,offsetX:0,offsetY:0})});}
-  else if(eff==='gradient'){o.set('fill',new fabric.Gradient({type:'linear',gradientUnits:'percentage',coords:{x1:0,y1:0,x2:1,y2:0},colorStops:[{offset:0,color:'#f59e0b'},{offset:.5,color:'#ef4444'},{offset:1,color:'#a855f7'}]}));}
-  else if(eff==='3d'){o.set({fill:'#1e3a8a',shadow:new fabric.Shadow({color:'#fbbf24',blur:0,offsetX:4,offsetY:4})});}
-  else if(eff==='neon'){o.set({fill:'#22c55e',shadow:new fabric.Shadow({color:'rgba(34,197,94,.9)',blur:20,offsetX:0,offsetY:0})});}
-  else if(eff==='gold'){o.set({fill:'#fbbf24',shadow:new fabric.Shadow({color:'rgba(0,0,0,.4)',blur:4,offsetX:2,offsetY:2})});}
-  else if(eff==='fire'){o.set('fill',new fabric.Gradient({type:'linear',gradientUnits:'percentage',coords:{x1:0,y1:1,x2:0,y2:0},colorStops:[{offset:0,color:'#ef4444'},{offset:.5,color:'#f97316'},{offset:1,color:'#fbbf24'}]}));}
-  else if(eff==='retro'){o.set({fill:'#f97316',shadow:new fabric.Shadow({color:'#ef4444',blur:0,offsetX:-2,offsetY:0})});}
-  else if(eff==='emboss'){o.set({fill:'#d4c5a0',shadow:new fabric.Shadow({color:'rgba(255,255,255,.8)',blur:0,offsetX:1,offsetY:1})});}
-  else if(eff==='ink'){o.set({fill:'#1e3a8a',fontStyle:'italic'});}
-  LSP.canvas.renderAll();
+  const texts=lspTargets().filter(lspIsText);
+  if(!texts.length){lspShowToast('Select a text layer first');return;}
+  texts.forEach(o=>{
+    o.set({stroke:'',strokeWidth:0,shadow:null,fontStyle:'normal'});
+    if(typeof o.fill!=='string')o.set('fill','#1e3a8a');
+    if(eff==='shadow'){o.set({shadow:new fabric.Shadow({color:'rgba(0,0,0,.5)',blur:4,offsetX:3,offsetY:3})});}
+    else if(eff==='outline'){o.set({stroke:'#fbbf24',strokeWidth:2,fill:'#1e3a8a',paintFirst:'stroke'});}
+    else if(eff==='glow'){o.set({fill:'#c4b5fd',shadow:new fabric.Shadow({color:'rgba(168,85,247,.8)',blur:15,offsetX:0,offsetY:0})});}
+    else if(eff==='gradient'){o.set('fill',lspMakeGrad('linear',{x1:0,y1:0,x2:1,y2:0},'#f59e0b','#ef4444','#a855f7'));}
+    else if(eff==='3d'){o.set({fill:'#1e3a8a',shadow:new fabric.Shadow({color:'#fbbf24',blur:0,offsetX:4,offsetY:4})});}
+    else if(eff==='neon'){o.set({fill:'#22c55e',shadow:new fabric.Shadow({color:'rgba(34,197,94,.9)',blur:20,offsetX:0,offsetY:0})});}
+    else if(eff==='gold'){o.set({fill:'#fbbf24',shadow:new fabric.Shadow({color:'rgba(0,0,0,.4)',blur:4,offsetX:2,offsetY:2})});}
+    else if(eff==='fire'){o.set('fill',lspMakeGrad('linear',{x1:0,y1:1,x2:0,y2:0},'#ef4444','#f97316','#fbbf24'));}
+    else if(eff==='retro'){o.set({fill:'#f97316',shadow:new fabric.Shadow({color:'#ef4444',blur:0,offsetX:-2,offsetY:0})});}
+    else if(eff==='emboss'){o.set({fill:'#d4c5a0',shadow:new fabric.Shadow({color:'rgba(255,255,255,.8)',blur:0,offsetX:1,offsetY:1})});}
+    else if(eff==='ink'){o.set({fill:'#1e3a8a',fontStyle:'italic'});}
+    o.initDimensions&&o.initDimensions();o.setCoords();
+  });
+  lspTouch();lspRenderPanel('text');
 }
 function lspInsertQuickText(txt){
-  const t=new fabric.IText(txt,{left:LSP.canvasW/2,top:LSP.canvasH/2,originX:'center',originY:'center',fontFamily:LSP.currentFont,fontSize:LSP.currentFontSize,fill:LSP.currentTextColor,fontWeight:'bold',textAlign:'center'});
+  const t=new fabric.IText(txt,{left:LSP.canvasW/2,top:LSP.canvasH/2,originX:'center',originY:'center',fontFamily:LSP.currentFont,fontSize:Math.min(LSP.currentFontSize,Math.round(LSP.canvasW*0.07)),fill:LSP.currentTextColor,fontWeight:'bold',textAlign:'center'});
+  // Keep long phrases inside the canvas.
+  if(t.width*t.scaleX>LSP.canvasW*0.9)t.scaleToWidth(LSP.canvasW*0.9);
   LSP.canvas.add(t).setActiveObject(t);
+  lspEnsureFont(t.fontFamily,'bold').then(()=>lspRefreshTextMetrics([t]));
 }
 function lspAddTextPreset(){
   const t=new fabric.IText('SCHOOL NAME',{left:LSP.canvasW/2,top:LSP.canvasH*0.33,originX:'center',originY:'center',fontFamily:'Cinzel',fontSize:52,fill:'#1e3a8a',fontWeight:'700',textAlign:'center',charSpacing:50,shadow:new fabric.Shadow({color:'rgba(0,0,0,.25)',blur:4,offsetX:2,offsetY:2})});
+  if(t.width>LSP.canvasW*0.9)t.scaleToWidth(LSP.canvasW*0.9);
   t.lspName='School Heading';LSP.canvas.add(t).setActiveObject(t);
+  lspEnsureFont('Cinzel','700').then(()=>lspRefreshTextMetrics([t]));
 }
 
 /* TEMPLATES */
 let _tplCat='School Badges',_tplSearch='';
 function lspOpenTemplates(){
-  lspClosePanel();
-  lspCloseFlyout('fly-icons');lspCloseFlyout('fly-frames');lspCloseFlyout('fly-shapes');
-  const el=document.getElementById('fly-templates');el.classList.toggle('open');
-  if(el.classList.contains('open')){lspBuildTplCats();lspRenderTplGrid(_tplCat);}
+  lspToggleFlyout('fly-templates',()=>{lspBuildTplCats();lspRenderTplGrid(_tplCat);});
 }
 function lspBuildTplCats(){
   document.getElementById('tpl-cats').innerHTML=LSP_TPL_CATS.map(c=>`<button class="lsp-cat-btn${c===_tplCat?' active':''}" onclick="lspSelTplCat('${c.replace(/\//g,'_')}',this)">${c}</button>`).join('');
@@ -2046,7 +2607,11 @@ function lspSelTplCat(cat,btn){
 function lspFilterTemplates(q){_tplSearch=q;lspRenderTplGrid(_tplCat);}
 function lspRenderTplGrid(cat){
   let tpls=_tplSearch?LSP_TEMPLATES.filter(t=>t.label.toLowerCase().includes(_tplSearch.toLowerCase())):LSP_TEMPLATES.filter(t=>t.cat===cat);
-  document.getElementById('tpl-grid').innerHTML=tpls.map(t=>`<div class="lsp-tpl-card" onclick="lspApplyTemplate('${t.id}')" title="${t.label}"><canvas width="130" height="130" id="tcv_${t.id}"></canvas><div class="lsp-tpl-label">${t.label}</div></div>`).join('');
+  const q=(_tplSearch||'').trim().toLowerCase();
+  if(q)tpls=LSP_TEMPLATES.filter(t=>t.label.toLowerCase().includes(q)||t.cat.toLowerCase().includes(q));
+  const grid=document.getElementById('tpl-grid');
+  if(!tpls.length){grid.innerHTML='<div style="grid-column:1/-1;text-align:center;color:var(--text-mid);padding:2rem;font-size:.75rem;">No templates match “'+lspEsc(_tplSearch)+'”</div>';return;}
+  grid.innerHTML=tpls.map(t=>`<div class="lsp-tpl-card" onclick="lspApplyTemplate('${t.id}')" title="${lspEsc(t.label)}"><canvas width="130" height="130" id="tcv_${t.id}"></canvas><div class="lsp-tpl-label">${lspEsc(t.label)}</div></div>`).join('');
   setTimeout(()=>tpls.forEach(t=>lspRenderTplThumb(t)),20);
 }
 function lspThFrame(ctx,cx,cy,r,f,pri,acc,bw){
@@ -2057,6 +2622,12 @@ function lspThFrame(ctx,cx,cy,r,f,pri,acc,bw){
   else if(f==='badge'){const pts=8,ir=r*.84;for(let i=0;i<pts*2;i++){const rd=i%2===0?r:ir,a=i*Math.PI/pts-Math.PI/2;i===0?ctx.moveTo(cx+rd*Math.cos(a),cy+rd*Math.sin(a)):ctx.lineTo(cx+rd*Math.cos(a),cy+rd*Math.sin(a));}ctx.closePath();}
   else if(f==='diamond'){ctx.moveTo(cx,cy-r);ctx.lineTo(cx+r*.75,cy);ctx.lineTo(cx,cy+r);ctx.lineTo(cx-r*.75,cy);ctx.closePath();}
   else if(f==='star'){const pts=5,ir=r*.45;for(let i=0;i<pts*2;i++){const rd=i%2===0?r:ir,a=i*Math.PI/pts-Math.PI/2;i===0?ctx.moveTo(cx+rd*Math.cos(a),cy+rd*Math.sin(a)):ctx.lineTo(cx+rd*Math.cos(a),cy+rd*Math.sin(a));}ctx.closePath();}
+  /* These frames all fell back to a plain circle thumbnail before. */
+  else if(f==='square')ctx.rect(cx-r,cy-r,r*2,r*2);
+  else if(f==='rounded'){const k=r*.3;ctx.moveTo(cx-r+k,cy-r);ctx.arcTo(cx+r,cy-r,cx+r,cy+r,k);ctx.arcTo(cx+r,cy+r,cx-r,cy+r,k);ctx.arcTo(cx-r,cy+r,cx-r,cy-r,k);ctx.arcTo(cx-r,cy-r,cx+r,cy-r,k);ctx.closePath();}
+  else if(f==='oval')ctx.ellipse(cx,cy,r,r*.75,0,0,Math.PI*2);
+  else if(f==='pentagon'){for(let i=0;i<5;i++){const a=i*2*Math.PI/5-Math.PI/2;i===0?ctx.moveTo(cx+r*Math.cos(a),cy+r*Math.sin(a)):ctx.lineTo(cx+r*Math.cos(a),cy+r*Math.sin(a));}ctx.closePath();}
+  else if(f==='ring'||f==='double'){ctx.arc(cx,cy,r,0,Math.PI*2);ctx.restore();ctx.save();ctx.strokeStyle=acc;ctx.lineWidth=bw||3;ctx.stroke();ctx.beginPath();ctx.arc(cx,cy,r*(f==='ring'?.82:.88),0,Math.PI*2);ctx.lineWidth=f==='ring'?2:(bw||3);ctx.stroke();ctx.restore();return;}
   else ctx.arc(cx,cy,r,0,Math.PI*2);
   ctx.shadowColor='rgba(0,0,0,.4)';ctx.shadowBlur=8;ctx.fillStyle=pri;ctx.fill();ctx.shadowBlur=0;ctx.strokeStyle=acc;ctx.lineWidth=bw||3;ctx.stroke();ctx.restore();
 }
@@ -2133,10 +2704,19 @@ function lspRenderTplThumb(t){
 }
 function lspApplyTemplate(id){
   const t=LSP_TEMPLATES.find(x=>x.id===id);if(!t)return;
-  if(t.cfg.type==='badge') lspApplyBadgeTemplate(t);
-  else lspBuildLogoFromTemplate(t);
-  lspCloseFlyout('fly-templates');
-  lspShowToast('Template applied: '+t.label);
+  const go=()=>{
+    // One undo step for the whole template (it adds ~10 objects).
+    LSP._restoring=true;
+    try{ if(t.cfg.type==='badge') lspApplyBadgeTemplate(t); else lspBuildLogoFromTemplate(t); }
+    finally{ LSP._restoring=false; }
+    lspRefreshLayers();lspTouch();lspRenderPanel(LSP.activePanel);
+    lspCloseFlyout('fly-templates');
+    lspShowToast('Template applied: '+t.label+' — Ctrl+Z to undo');
+    lspEnsureFont(t.cfg.font||'Cinzel','bold').then(()=>lspRefreshTextMetrics());
+  };
+  // Applying a template replaces the canvas — ask first so work isn't lost by one tap.
+  if(LSP.canvas.getObjects().length) lspConfirm('Replace your current design with “'+t.label+'”? (You can Undo.)',go);
+  else go();
 }
 
 /* Apply a badge-type template — builds complete circular school badge */
@@ -2147,9 +2727,10 @@ function lspApplyBadgeTemplate(t){
   const maxR = Math.min(LSP.canvasW, LSP.canvasH) * 0.44;
   const textR = maxR * 0.905; // text sits ON the outer colored ring
 
-  // Set BG
-  LSP.canvas.setBackgroundColor(c.outer, ()=>LSP.canvas.renderAll());
-  LSP.bgColor = c.outer;
+  // Background is left as the user set it (white/transparent). It used to be
+  // painted with the ring colour, so the "round" badge exported as a coloured
+  // square and could not be placed cleanly on an ID card.
+  LSP.canvas.setBackgroundColor(LSP.isBgTransparent?'':LSP.bgColor, ()=>LSP.canvas.renderAll());
 
   // ─── Concentric rings (outer-to-inner) ───
   const r1 = new fabric.Circle({ left:cx,top:cy,radius:maxR,      fill:c.outer,  stroke:'#ffffff',strokeWidth:4, originX:'center',originY:'center',lspName:'Outer Ring' });
@@ -2196,13 +2777,12 @@ function lspApplyBadgeTemplate(t){
   LSP.canvas.add(emblem);
 
   LSP.canvas.setActiveObject(emblem);
-  LSP.canvas.renderAll(); lspSaveHistory(); lspRefreshLayers();
-  lspShowToast('🏫 Badge ready! Click arc text to edit school name & address.');
+  LSP.canvas.renderAll();
 }
 function lspBuildLogoFromTemplate(t){
   LSP.canvas.clear();
   const cfg=t.cfg,W=LSP.canvasW,H=LSP.canvasH,cx=W/2,cy=H/2,fr=Math.min(W,H)*.34;
-  LSP.canvas.setBackgroundColor(LSP.bgColor||'#ffffff',LSP.canvas.renderAll.bind(LSP.canvas));
+  LSP.canvas.setBackgroundColor(LSP.isBgTransparent?'':(LSP.bgColor||'#ffffff'),LSP.canvas.renderAll.bind(LSP.canvas));
 
   // Frame
   let frameObj;
@@ -2210,7 +2790,7 @@ function lspBuildLogoFromTemplate(t){
   const f=cfg.frame;
   if(f==='circle')frameObj=new fabric.Circle({...baseF,radius:fr});
   else if(f==='hex'){const pts=[];for(let i=0;i<6;i++){const a=i*Math.PI/3-Math.PI/6;pts.push({x:fr*Math.cos(a),y:fr*Math.sin(a)});}frameObj=new fabric.Polygon(pts,{...baseF});}
-  else if(f==='shield'){frameObj=new fabric.Circle({...baseF,radius:fr});} // fallback to circle for fabric simplicity
+  else if(f==='shield'){const s=fr;frameObj=new fabric.Path(`M 0 ${-s} L ${s*.85} ${-s*.5} L ${s*.85} ${s*.2} Q ${s*.85} ${s*.85} 0 ${s} Q ${-s*.85} ${s*.85} ${-s*.85} ${s*.2} L ${-s*.85} ${-s*.5} Z`,{...baseF});} // real shield (was a plain circle)
   else if(f==='badge'){const pts=[];const pts2=8,ir=fr*.84;for(let i=0;i<pts2*2;i++){const rd=i%2===0?fr:ir,a=i*Math.PI/pts2-Math.PI/2;pts.push({x:rd*Math.cos(a),y:rd*Math.sin(a)});}frameObj=new fabric.Polygon(pts,{...baseF});}
   else if(f==='diamond')frameObj=new fabric.Polygon([{x:0,y:-fr},{x:fr*.75,y:0},{x:0,y:fr},{x:-fr*.75,y:0}],{...baseF});
   else if(f==='star'){const pts=[];for(let i=0;i<10;i++){const r=i%2===0?fr:fr*.45,a=i*Math.PI/5-Math.PI/2;pts.push({x:r*Math.cos(a),y:r*Math.sin(a)});}frameObj=new fabric.Polygon(pts,{...baseF});}
@@ -2218,7 +2798,7 @@ function lspBuildLogoFromTemplate(t){
   frameObj.lspName='Frame';
 
   // Inner ring decoration
-  const ring=new fabric.Circle({radius:fr*.89,fill:'transparent',stroke:cfg.accent+'55',strokeWidth:1.5,originX:'center',originY:'center',left:cx,top:cy,selectable:false,evented:false});
+  const ring=new fabric.Circle({radius:fr*.89,fill:'transparent',stroke:lspAlpha(cfg.accent,.35),strokeWidth:1.5,originX:'center',originY:'center',left:cx,top:cy,selectable:false,evented:false});
   ring.lspName='Inner Ring';
 
   // Symbol
@@ -2237,20 +2817,21 @@ function lspBuildLogoFromTemplate(t){
   const inner=new fabric.IText('SCHOOL OF EXCELLENCE',{left:cx,top:cy+fr*.52,originX:'center',originY:'center',fontFamily:cfg.font||'Montserrat',fontSize:Math.max(7,fr*.115),fill:cfg.secondary,fontWeight:'bold',textAlign:'center',charSpacing:55,opacity:.88});
   inner.lspName='Inner Text';
 
-  const est=new fabric.Text('Est. 1985',{left:cx,top:cy+fr*.32,originX:'center',originY:'center',fontFamily:cfg.font||'Montserrat',fontSize:Math.max(7,fr*.095),fill:cfg.secondary+'88',textAlign:'center'});
+  const est=new fabric.Text('Est. 1985',{left:cx,top:cy+fr*.32,originX:'center',originY:'center',fontFamily:cfg.font||'Montserrat',fontSize:Math.max(7,fr*.095),fill:lspAlpha(cfg.secondary,.55),textAlign:'center'});
   est.lspName='Est. Year';
 
   LSP.canvas.add(frameObj,ring,inner,est,sym,name,motto);
-  LSP.canvas.renderAll();lspSaveHistory();lspRefreshLayers();
+  LSP.canvas.renderAll();
 }
 
 /* ICONS */
 let _iconCat='School';
-function lspOpenIcons(){
-  lspClosePanel();
-  lspCloseFlyout('fly-templates');
-  const el=document.getElementById('fly-icons');el.classList.toggle('open');
-  if(el.classList.contains('open')){lspBuildIconCats();lspRenderIconGrid(_iconCat);}
+/* lspOpenIcons('Deities') always opens on that category (the Badge Builder's
+   shortcut buttons used to TOGGLE the flyout shut if it was already open). */
+function lspOpenIcons(cat){
+  if(cat&&LSP_ICONS[cat])_iconCat=cat;
+  const s=document.getElementById('iconSearch');if(s&&cat)s.value='';
+  lspToggleFlyout('fly-icons',()=>{lspBuildIconCats();lspRenderIconGrid(_iconCat);},!!cat);
 }
 function lspBuildIconCats(){document.getElementById('icon-cats').innerHTML=Object.keys(LSP_ICONS).map(c=>`<button class="lsp-cat-btn${c===_iconCat?' active':''}" onclick="lspSelIconCat('${c.replace(/[^a-zA-Z]/g,'_')}',this)">${c}</button>`).join('');}
 function lspSelIconCat(cat,btn){
@@ -2261,9 +2842,15 @@ function lspSelIconCat(cat,btn){
   lspRenderIconGrid(real);
 }
 function lspFilterIcons(q){
+  q=(q||'').trim();
   if(!q){lspRenderIconGrid(_iconCat);return;}
-  const all=Object.values(LSP_ICONS).flat();
-  document.getElementById('icon-grid').innerHTML=all.filter(i=>i.l.toLowerCase().includes(q.toLowerCase())||i.e.includes(q)).map(i=>`<div class="lsp-icon-item" onclick="lspAddIcon('${i.e}')" title="${i.l}">${i.e}</div>`).join('');
+  const lq=q.toLowerCase(),seen=new Set();
+  const grid=document.getElementById('icon-grid');grid.style.gridTemplateColumns='';
+  const icons=Object.values(LSP_ICONS).flat().filter(i=>(i.l.toLowerCase().includes(lq)||i.e.includes(q))&&!seen.has(i.e+i.l)&&seen.add(i.e+i.l));
+  const flags=Object.entries(LSP_FLAG_DATA).filter(([c,f])=>f.n.toLowerCase().includes(lq)||c.toLowerCase()===lq);
+  grid.innerHTML=icons.map(i=>`<div class="lsp-icon-item" onclick="lspAddIcon('${i.e}','${lspEsc(i.l)}')" title="${lspEsc(i.l)}">${i.e}</div>`).join('')
+    +flags.map(([c,f])=>`<div class="lsp-icon-item" style="font-size:.55rem;font-weight:700;" onclick="lspAddFlagCanvas('${c}')" title="${lspEsc(f.n)} flag">🏳️<br>${lspEsc(f.n)}</div>`).join('')
+    ||'<div style="grid-column:1/-1;text-align:center;color:var(--text-mid);padding:1.5rem;font-size:.72rem;">Nothing found</div>';
 }
 function lspRenderIconGrid(cat){
   const grid = document.getElementById('icon-grid');
@@ -2281,13 +2868,20 @@ function lspRenderIconGrid(cat){
     }).join('');
   } else {
     grid.style.gridTemplateColumns = '';
-    grid.innerHTML=(LSP_ICONS[cat]||[]).map(i=>`<div class="lsp-icon-item" onclick="lspAddIcon('${i.e}')" title="${i.l}">${i.e}</div>`).join('');
+    grid.innerHTML=(LSP_ICONS[cat]||[]).map(i=>`<div class="lsp-icon-item" onclick="lspAddIcon('${i.e}','${lspEsc(i.l)}')" title="${lspEsc(i.l)}">${i.e}</div>`).join('');
   }
 }
 
-function lspAddIcon(emoji){
-  const t=new fabric.Text(emoji,{left:LSP.canvasW/2,top:LSP.canvasH/2,originX:'center',originY:'center',fontSize:80});
-  t.lspName=emoji+' Icon';LSP.canvas.add(t).setActiveObject(t);lspShowToast('Added: '+emoji);
+function lspAddIcon(emoji,label){
+  // Icons are added already selected, so clicking another icon while one is
+  // selected REPLACES it (handy for swapping a badge's centre symbol).
+  const cur=LSP.canvas.getActiveObject();
+  if(cur&&cur.type==='text'&&/Icon$|Symbol|Emblem/.test(cur.lspName||'')&&!cur.isEditing&&Array.from(cur.text||'').length<=3){
+    cur.set('text',emoji);cur.lspName=(label||emoji)+' Icon';cur.initDimensions&&cur.initDimensions();cur.setCoords();
+    lspTouch();lspRefreshLayers();lspShowToast('Replaced with '+emoji+' (Ctrl+Z to undo)');return;
+  }
+  const t=new fabric.Text(emoji,{left:LSP.canvasW/2,top:LSP.canvasH/2,originX:'center',originY:'center',fontSize:Math.round(Math.min(LSP.canvasW,LSP.canvasH)*0.16)});
+  t.lspName=(label||emoji)+' Icon';LSP.canvas.add(t).setActiveObject(t);lspShowToast('Added '+emoji+' — pick another icon now to swap it');
 }
 
 /* Add a national flag as Fabric.js vector shapes */
@@ -2356,7 +2950,7 @@ function lspAddFlagCanvas(code){
 }
 
 /* FRAMES */
-function lspOpenFrames(){lspClosePanel();const el=document.getElementById('fly-frames');el.classList.toggle('open');if(el.classList.contains('open'))lspBuildFrames();}
+function lspOpenFrames(){lspToggleFlyout('fly-frames',lspBuildFrames);}
 function lspBuildFrames(){
   const frames=[{id:'circle',n:'Circle'},{id:'hex',n:'Hexagon'},{id:'badge',n:'Badge Star'},{id:'shield',n:'Shield'},{id:'diamond',n:'Diamond'},{id:'star',n:'5-Star'},{id:'square',n:'Square'},{id:'rounded',n:'Rounded'},{id:'oval',n:'Oval'},{id:'ring',n:'Ring'},{id:'double',n:'Double Ring'},{id:'pentagon',n:'Pentagon'}];
   document.getElementById('frames-grid').innerHTML=frames.map(f=>`<div style="background:var(--bg-card);border:1.5px solid var(--border);border-radius:var(--r-md);cursor:pointer;padding:.5rem;text-align:center;" onclick="lspAddFrame('${f.id}')" onmouseover="this.style.borderColor='var(--purple)'" onmouseout="this.style.borderColor='var(--border)'"><canvas width="80" height="80" id="frcv_${f.id}"></canvas><div style="font-size:.55rem;color:var(--text-mid);margin-top:.2rem;">${f.n}</div></div>`).join('');
@@ -2377,12 +2971,12 @@ function lspAddFrame(type){
   else if(type==='ring'){const o=new fabric.Circle({...bp,radius:r,strokeWidth:6});const inn=new fabric.Circle({...bp,radius:r*.82,strokeWidth:2,stroke:'#fbbf24'});obj=new fabric.Group([o,inn],{originX:'center',originY:'center',left:cx,top:cy});}
   else if(type==='double'){const o=new fabric.Circle({...bp,radius:r});const inn=new fabric.Circle({...bp,radius:r*.88,strokeWidth:3});obj=new fabric.Group([o,inn],{originX:'center',originY:'center',left:cx,top:cy});}
   else obj=new fabric.Circle({...bp,radius:r});
-  if(obj){obj.lspName=type+' Frame';LSP.canvas.add(obj).setActiveObject(obj);}
+  if(obj){obj.lspName=type.charAt(0).toUpperCase()+type.slice(1)+' Frame';LSP.canvas.add(obj).setActiveObject(obj);}
   lspCloseFlyout('fly-frames');
 }
 
 /* SHAPES */
-function lspOpenShapes(){lspClosePanel();const el=document.getElementById('fly-shapes');el.classList.toggle('open');if(el.classList.contains('open'))lspBuildShapes();}
+function lspOpenShapes(){lspToggleFlyout('fly-shapes',lspBuildShapes);}
 function lspBuildShapes(){
   const shapes=[{id:'rect',icon:'▬',n:'Rectangle'},{id:'circle',icon:'●',n:'Circle'},{id:'triangle',icon:'▲',n:'Triangle'},{id:'star5',icon:'★',n:'Star 5pt'},{id:'star6',icon:'✦',n:'Star 6pt'},{id:'hexagon',icon:'⬡',n:'Hexagon'},{id:'pentagon',icon:'⬟',n:'Pentagon'},{id:'diamond',icon:'◆',n:'Diamond'},{id:'cross',icon:'✚',n:'Cross'},{id:'line',icon:'─',n:'Line'},{id:'parallelogram',icon:'▱',n:'Parallelogram'},{id:'arrow',icon:'➤',n:'Arrow'},{id:'ellipse',icon:'⬭',n:'Ellipse'},{id:'rhombus',icon:'⬦',n:'Rhombus'},{id:'octagon',icon:'⯃',n:'Octagon'}];
   document.getElementById('shapes-grid').innerHTML=shapes.map(s=>`<div style="background:var(--bg-card);border:1.5px solid var(--border);border-radius:var(--r-sm);cursor:pointer;padding:.45rem .3rem;text-align:center;font-size:1.35rem;" onclick="lspAddShape('${s.id}')" title="${s.n}" onmouseover="this.style.borderColor='var(--purple)'" onmouseout="this.style.borderColor='var(--border)'">${s.icon}<div style="font-size:.48rem;color:var(--text-dim);margin-top:.15rem;">${s.n}</div></div>`).join('');
@@ -2412,7 +3006,7 @@ function lspAddShape(type){
 }
 
 /* COLOR HARMONY */
-function lspOpenColorHarmony(){lspClosePanel();const el=document.getElementById('fly-harmony');el.classList.toggle('open');if(el.classList.contains('open'))lspBuildHarmony();}
+function lspOpenColorHarmony(){lspToggleFlyout('fly-harmony',lspBuildHarmony);}
 function lspBuildHarmony(){
   document.getElementById('harmony-body').innerHTML=`
 <div style="font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#8b9ed4;margin-bottom:.5rem;">Curated School Palettes</div>
@@ -2434,124 +3028,154 @@ function lspGenHarmony(hex){
 }
 
 /* EXPORT */
-function lspOpenExport(){lspClosePanel();const el=document.getElementById('fly-export');el.classList.toggle('open');if(el.classList.contains('open'))lspBuildExportPanel();}
+function lspOpenExport(){lspToggleFlyout('fly-export',lspBuildExportPanel);}
 function lspBuildExportPanel(){
-  document.getElementById('export-body').innerHTML=`
+  const body=document.getElementById('export-body');if(!body)return;
+  const fmt=LSP.exportFormat||'png',sc=LSP.exportScale||3;
+  const big=LSP.canvasW*sc*LSP.canvasH*sc>60e6;
+  body.innerHTML=`
 <div style="font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#8b9ed4;margin-bottom:.5rem;">Export Format</div>
-${[{fmt:'png',icon:'🖼',l:'PNG',d:'Transparent support'},{fmt:'jpg',icon:'📷',l:'JPG',d:'Compressed'},{fmt:'svg',icon:'📐',l:'SVG',d:'Vector, scalable'},{fmt:'webp',icon:'🌐',l:'WebP',d:'Modern web'}].map(f=>`<div style="display:flex;align-items:center;gap:.5rem;padding:.45rem .55rem;border:1.5px solid ${LSP.exportFormat===f.fmt?'var(--gold)':'var(--border-hi)'};border-radius:var(--r-md);cursor:pointer;background:${LSP.exportFormat===f.fmt?'var(--bg-hover)':'var(--bg-card)'};margin-bottom:.35rem;" onclick="LSP.exportFormat='${f.fmt}';lspBuildExportPanel()"><span style="font-size:1.2rem;">${f.icon}</span><div style="flex:1;"><div style="font-size:.74rem;font-weight:700;color:var(--text-bright);">${f.l} — ${f.d}</div></div>${LSP.exportFormat===f.fmt?'<i class="bi bi-check-circle-fill" style="color:var(--gold);"></i>':''}</div>`).join('')}
-<div style="font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#8b9ed4;margin:.6rem 0 .35rem;">Resolution</div>
-<div class="lsp-btn-group" style="margin-bottom:.4rem;">${[[1,'1× Web'],[2,'2× HD'],[3,'3× Print'],[4,'4× Ultra'],[5,'5× Max']].map(([s,l])=>`<button class="lsp-micro-btn${LSP.exportScale===s?' active':''}" onclick="LSP.exportScale=${s};lspBuildExportPanel()">${l}</button>`).join('')}</div>
-<div style="font-size:.7rem;color:#9ba8d4;font-weight:600;margin-bottom:.5rem;">Output: ${LSP.canvasW*LSP.exportScale}×${LSP.canvasH*LSP.exportScale}px (${LSP.exportFormat==='png'?'Lossless':'Quality 97%'})</div>
+${[{fmt:'png',icon:'🖼',l:'PNG',d:'Best for logos · transparency'},{fmt:'jpg',icon:'📷',l:'JPG',d:'Small file · white background'},{fmt:'svg',icon:'📐',l:'SVG',d:'Vector, scalable'},{fmt:'webp',icon:'🌐',l:'WebP',d:'Modern web'}].map(f=>`<div style="display:flex;align-items:center;gap:.5rem;padding:.45rem .55rem;border:1.5px solid ${fmt===f.fmt?'var(--gold)':'var(--border-hi)'};border-radius:var(--r-md);cursor:pointer;background:${fmt===f.fmt?'var(--bg-hover)':'var(--bg-card)'};margin-bottom:.35rem;" onclick="LSP.exportFormat='${f.fmt}';lspBuildExportPanel()"><span style="font-size:1.2rem;">${f.icon}</span><div style="flex:1;"><div style="font-size:.74rem;font-weight:700;color:var(--text-bright);">${f.l} — ${f.d}</div></div>${fmt===f.fmt?'<i class="bi bi-check-circle-fill" style="color:var(--gold);"></i>':''}</div>`).join('')}
+${fmt!=='svg'?`<div style="font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#8b9ed4;margin:.6rem 0 .35rem;">Resolution</div>
+<div class="lsp-btn-group" style="margin-bottom:.4rem;">${[[1,'1× Web'],[2,'2× HD'],[3,'3× Print'],[4,'4× Ultra'],[5,'5× Max']].map(([s,l])=>`<button class="lsp-micro-btn${sc===s?' active':''}" onclick="LSP.exportScale=${s};lspBuildExportPanel()">${l}</button>`).join('')}</div>
+<div style="font-size:.7rem;color:${big?'#fbbf24':'#9ba8d4'};font-weight:600;margin-bottom:.5rem;">Output: ${LSP.canvasW*sc}×${LSP.canvasH*sc}px (${fmt==='png'?'Lossless':'Quality 95%'})${big?' — very large, may be slow on phones':''}</div>`:'<div style="font-size:.66rem;color:#9ba8d4;margin:.4rem 0 .5rem;">Vector file — opens in Illustrator / Inkscape / CorelDRAW. Photos stay embedded as images.</div>'}
 <div style="display:flex;gap:.6rem;margin-bottom:.6rem;flex-wrap:wrap;">
-<label style="display:flex;align-items:center;gap:.3rem;font-size:.73rem;color:#9ba8d4;font-weight:600;cursor:pointer;"><input type="checkbox" id="expTight" ${LSP.exportTight?'checked':''} onchange="LSP.exportTight=this.checked"> Smart crop</label>
-<label style="display:flex;align-items:center;gap:.3rem;font-size:.73rem;color:#9ba8d4;font-weight:600;cursor:pointer;"><input type="checkbox" id="expTrans"> Transparent BG</label>
+${fmt!=='svg'?`<label style="display:flex;align-items:center;gap:.3rem;font-size:.73rem;color:#9ba8d4;font-weight:600;cursor:pointer;"><input type="checkbox" id="expTight" ${LSP.exportTight?'checked':''} onchange="LSP.exportTight=this.checked"> Smart crop (trim empty space)</label>`:''}
+${fmt!=='jpg'?`<label style="display:flex;align-items:center;gap:.3rem;font-size:.73rem;color:#9ba8d4;font-weight:600;cursor:pointer;"><input type="checkbox" id="expTrans" ${LSP.exportTrans||LSP.isBgTransparent?'checked':''} onchange="LSP.exportTrans=this.checked"> Transparent BG</label>`:''}
 </div>
-<button style="width:100%;padding:.6rem;background:linear-gradient(135deg,var(--purple-lo),var(--purple));border:none;border-radius:10px;color:#fff;font-weight:700;font-size:.85rem;cursor:pointer;margin-bottom:.3rem;" onclick="lspDoExport()"><i class="bi bi-download me-1"></i>Download ${(LSP.exportFormat||'png').toUpperCase()}</button>
+<label style="display:block;font-size:.66rem;color:#8b9ed4;font-weight:700;margin-bottom:.2rem;">File name</label>
+<input type="text" id="expName" class="lsp-inp" value="${lspEsc(LSP._galleryName||'school_logo')}" style="margin-bottom:.5rem;">
+<button style="width:100%;padding:.6rem;background:linear-gradient(135deg,var(--purple-lo),var(--purple));border:none;border-radius:10px;color:#fff;font-weight:700;font-size:.85rem;cursor:pointer;margin-bottom:.3rem;" onclick="lspDoExport()"><i class="bi bi-download me-1"></i>Download ${fmt.toUpperCase()}</button>
 <button style="width:100%;padding:.45rem;background:var(--bg-card);border:1px solid var(--border-hi);border-radius:10px;color:var(--text-mid);font-weight:600;font-size:.75rem;cursor:pointer;margin-bottom:.3rem;" onclick="lspCopyClipboard()"><i class="bi bi-clipboard-fill me-1"></i>Copy to Clipboard</button>
-<button style="width:100%;padding:.5rem;background:linear-gradient(135deg,var(--gold-lo),var(--gold));border:none;border-radius:10px;color:#000;font-weight:700;font-size:.8rem;cursor:pointer;margin-bottom:.3rem;" onclick="lspApplyToEditor()"><i class="bi bi-check-circle-fill me-1"></i>${window.opener?'Apply to Editor Canvas':'Apply to Canvas'}</button>
+<button style="width:100%;padding:.5rem;background:linear-gradient(135deg,var(--gold-lo),var(--gold));border:none;border-radius:10px;color:#000;font-weight:700;font-size:.8rem;cursor:pointer;margin-bottom:.3rem;" onclick="lspApplyToEditor()"><i class="bi bi-check-circle-fill me-1"></i>${(window.parent!==window||window.opener)?'Apply to Editor Canvas':'Apply to Canvas'}</button>
 <button style="width:100%;padding:.45rem;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;color:var(--text-mid);font-weight:600;font-size:.75rem;cursor:pointer;" onclick="lspSaveToGallery()"><i class="bi bi-cloud-arrow-up-fill"></i> ${LSP.currentGalleryId?'Update in My Logos':'Save to My Logos'}</button>`;
+}
+function lspExportFileName(ext){
+  const raw=(document.getElementById('expName')?.value||LSP._galleryName||'school_logo').trim();
+  return (raw.replace(/[\\/:*?"<>|]+/g,'').replace(/\s+/g,'_').slice(0,60)||'school_logo')+'.'+ext;
 }
 function lspDoExport(){
   const fmt=LSP.exportFormat||'png',scale=LSP.exportScale||3;
-  const transBg=document.getElementById('expTrans')?.checked;
-  if(fmt==='svg'){const svg=LSP.canvas.toSVG();const b=new Blob([svg],{type:'image/svg+xml'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='logo_studio.svg';a.click();URL.revokeObjectURL(u);lspShowToast('SVG exported!');return;}
-  const origBg=LSP.canvas.backgroundColor;
-  if(transBg)LSP.canvas.setBackgroundColor('',LSP.canvas.renderAll.bind(LSP.canvas));
-  const q=fmt==='jpg'?0.97:undefined; // PNG is lossless, no quality arg
-  const dataURL=LSP.canvas.toDataURL({format:fmt==='jpg'?'jpeg':fmt,quality:q,multiplier:scale});
-  if(transBg)LSP.canvas.setBackgroundColor(origBg,LSP.canvas.renderAll.bind(LSP.canvas));
-  const tight=document.getElementById('expTight')?.checked;
-  if(tight&&fmt!=='jpg')lspTightCrop(dataURL,fmt);
-  else{lspDL(dataURL,'logo_studio.'+fmt);lspShowToast('Exported '+LSP.canvasW*scale+'×'+LSP.canvasH*scale+'px ✅');}
+  const transBg=fmt!=='jpg'&&!!document.getElementById('expTrans')?.checked;
+  const cv=LSP.canvas;
+  cv.discardActiveObject();cv.requestRenderAll();
+  if(fmt==='svg'){
+    const origBg=cv.backgroundColor;if(transBg)cv.backgroundColor='';
+    let svg;
+    try{svg=cv.toSVG({width:LSP.canvasW,height:LSP.canvasH,viewBox:{x:0,y:0,width:LSP.canvasW,height:LSP.canvasH}});}
+    catch(e){cv.backgroundColor=origBg;lspShowToast('SVG export failed: '+e.message);return;}
+    cv.backgroundColor=origBg;
+    const u=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml'}));
+    lspDL(u,lspExportFileName('svg'));setTimeout(()=>URL.revokeObjectURL(u),4000);
+    lspShowToast('SVG exported ✅');return;
+  }
+  lspShowToast('Preparing '+fmt.toUpperCase()+'…');
+  setTimeout(()=>{
+    let url;
+    try{url=lspDataURL({format:fmt==='jpg'?'jpeg':fmt,quality:fmt==='png'?undefined:0.95,multiplier:scale,transparent:transBg});}
+    catch(e){lspShowToast('Export failed — try a lower resolution');return;}
+    const mime='image/'+(fmt==='jpg'?'jpeg':fmt);
+    if(document.getElementById('expTight')?.checked){
+      lspSmartCrop(url,mime,fmt==='png'?undefined:0.95,(u,w,h)=>{lspDL(u,lspExportFileName(fmt));lspShowToast('Exported '+w+'×'+h+'px ✅');});
+    } else {
+      lspDL(url,lspExportFileName(fmt));lspShowToast('Exported '+LSP.canvasW*scale+'×'+LSP.canvasH*scale+'px ✅');
+    }
+  },30);
 }
+/* Clipboard: the PNG promise is handed to ClipboardItem synchronously, which is
+   what Safari/iOS require; failures now show a message instead of nothing. */
 function lspCopyClipboard(){
-  const dataURL=LSP.canvas.toDataURL({format:'png',multiplier:LSP.exportScale||3});
-  fetch(dataURL).then(r=>r.blob()).then(b=>{
-    navigator.clipboard.write([new ClipboardItem({'image/png':b})]).then(()=>lspShowToast('Copied to clipboard! ✅')).catch(()=>lspShowToast('Copy not supported in this browser'));
-  });
+  if(!navigator.clipboard||typeof ClipboardItem==='undefined'){lspShowToast('Copy to clipboard is not supported in this browser — use Download');return;}
+  try{
+    const url=lspDataURL({format:'png',multiplier:LSP.exportScale||3,transparent:!!document.getElementById('expTrans')?.checked});
+    const blob=fetch(url).then(r=>r.blob());
+    navigator.clipboard.write([new ClipboardItem({'image/png':blob})])
+      .then(()=>lspShowToast('Copied to clipboard! ✅'))
+      .catch(()=>lspShowToast('Browser blocked clipboard access — use Download'));
+  }catch(e){lspShowToast('Copy failed — use Download');}
 }
-function lspTightCrop(url,fmt){
-  const img=new Image();img.onload=()=>{
-    const c=document.createElement('canvas');c.width=img.width;c.height=img.height;
-    const ctx=c.getContext('2d');ctx.drawImage(img,0,0);
-    const d=ctx.getImageData(0,0,c.width,c.height).data;
-    // Sample BG color from 8×8 corner average (top-left)
-    let bgR=0,bgG=0,bgB=0,bgA=0,sp=0;
-    for(let by=0;by<Math.min(8,c.height);by++)for(let bx=0;bx<Math.min(8,c.width);bx++){
-      const bi=(by*c.width+bx)*4;bgR+=d[bi];bgG+=d[bi+1];bgB+=d[bi+2];bgA+=d[bi+3];sp++;
-    }
-    bgR=Math.round(bgR/sp);bgG=Math.round(bgG/sp);bgB=Math.round(bgB/sp);bgA=Math.round(bgA/sp);
-    const isBgTransp=bgA<15,TOL=16;
-    let x0=c.width,y0=c.height,x1=0,y1=0;
-    for(let y=0;y<c.height;y++)for(let x=0;x<c.width;x++){
-      const i=(y*c.width+x)*4;
-      const isEmpty=isBgTransp?d[i+3]<10:(Math.abs(d[i]-bgR)<TOL&&Math.abs(d[i+1]-bgG)<TOL&&Math.abs(d[i+2]-bgB)<TOL&&d[i+3]>180);
-      if(!isEmpty){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;}
-    }
-    const pad=Math.max(24,Math.round(c.width*.025));
-    x0=Math.max(0,x0-pad);y0=Math.max(0,y0-pad);x1=Math.min(c.width,x1+pad);y1=Math.min(c.height,y1+pad);
-    const cw=x1-x0,ch=y1-y0;if(cw<30||ch<30){lspDL(url,'logo_studio.'+fmt);lspShowToast('Exported ✅');return;}
-    const out=document.createElement('canvas');out.width=cw;out.height=ch;
-    out.getContext('2d').drawImage(c,x0,y0,cw,ch,0,0,cw,ch);
-    const q=fmt==='jpg'?0.97:undefined;
-    lspDL(out.toDataURL('image/'+(fmt==='jpg'?'jpeg':fmt),q),'logo_studio.'+fmt);
-    lspShowToast('Smart crop: '+cw+'×'+ch+'px ✅');
-  };img.src=url;
-}
-function lspDL(url,name){const a=document.createElement('a');a.href=url;a.download=name;a.click();}
+function lspTightCrop(url,fmt){lspSmartCrop(url,'image/'+(fmt==='jpg'?'jpeg':fmt),fmt==='png'?undefined:0.95,(u,w,h)=>{lspDL(u,lspExportFileName(fmt));lspShowToast('Smart crop: '+w+'×'+h+'px ✅');});}
+function lspDL(url,name){const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();}
 
-/* ANIMATION */
-function lspOpenAnimation(){lspClosePanel();const el=document.getElementById('fly-animation');el.classList.toggle('open');if(el.classList.contains('open'))lspBuildAnimPanel();}
+/* ANIMATION — previews YOUR logo (it used to always animate a fixed 🎓 demo
+   badge), and can be exported as a short WebM video for WhatsApp/social. */
+function lspOpenAnimation(){
+  lspToggleFlyout('fly-animation',lspBuildAnimPanel);
+}
+let _lspAnimImg=null,_lspAnimType='fade_in',_lspAnimRaf=0;
 function lspBuildAnimPanel(){
   document.getElementById('anim-body').innerHTML=`
-<div id="lsp-anim-preview"><canvas id="animCv" width="280" height="180"></canvas></div>
+<div id="lsp-anim-preview"><canvas id="animCv" width="560" height="360" style="width:100%;height:100%;"></canvas></div>
 <div style="font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#8b9ed4;margin:.4rem 0 .35rem;">Animation Preset</div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:.28rem;margin-bottom:.4rem;">
-${['Fade In','Scale Up','Rotate','Bounce','Slide In','Flash','Pulse','Swing','Shimmer','Zoom Beat'].map(a=>`<button class="lsp-anim-btn" onclick="lspPlayAnim('${a.toLowerCase().replace(/ /g,'_')}',this)">${a}</button>`).join('')}
+${['Fade In','Scale Up','Rotate','Bounce','Slide In','Flash','Pulse','Swing','Shimmer','Zoom Beat'].map(a=>{const id=a.toLowerCase().replace(/ /g,'_');return `<button class="lsp-anim-btn${id===_lspAnimType?' active':''}" onclick="lspPlayAnim('${id}',this)">${a}</button>`;}).join('')}
 </div>
-<div style="display:flex;align-items:center;gap:.4rem;">
+<div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.5rem;">
 <span style="font-size:.7rem;color:#8b9ed4;font-weight:700;">Speed:</span>
 <input type="range" class="lsp-range" min="300" max="5000" value="1500" id="animDur" oninput="document.getElementById('animDurVal').textContent=(this.value/1000).toFixed(1)+'s'">
 <span id="animDurVal" style="font-size:.72rem;color:#9ba8d4;font-weight:600;min-width:30px;">1.5s</span>
-</div>`;
-  lspPlayAnim('fade_in',null);
+</div>
+<button class="lsp-micro-btn" style="width:100%;padding:.45rem;" onclick="lspRecordAnim()" id="animRecBtn"><i class="bi bi-camera-reels"></i> Download as video (WebM)</button>`;
+  _lspAnimImg=new Image();
+  _lspAnimImg.onload=()=>lspPlayAnim(_lspAnimType,null);
+  lspSmartCrop(lspDataURL({format:'png',multiplier:1,transparent:true}),'image/png',undefined,u=>{_lspAnimImg.src=u;});
+}
+function lspStopAnim(){if(_lspAnimRaf)cancelAnimationFrame(_lspAnimRaf);_lspAnimRaf=0;if(LSP.animTimer){clearInterval(LSP.animTimer);LSP.animTimer=null;}}
+function lspDrawAnimFrame(ctx,W,H,type,t){
+  ctx.clearRect(0,0,W,H);ctx.fillStyle='#080612';ctx.fillRect(0,0,W,H);
+  let alpha=1,sc=1,rot=0,tx=0,ty=0;
+  if(type==='fade_in')alpha=t;
+  else if(type==='scale_up'){sc=Math.min(1,t*1.15);alpha=Math.min(1,t*2);}
+  else if(type==='rotate')rot=t*Math.PI*2;
+  else if(type==='bounce'){ty=-Math.abs(Math.sin(t*Math.PI*3))*(H*.12)*(1-t);}
+  else if(type==='slide_in'){tx=(1-Math.min(1,t*1.3))*(-W*.6);alpha=Math.min(1,t*2);}
+  else if(type==='flash')alpha=Math.sin(t*Math.PI*6)>0?1:.15;
+  else if(type==='pulse')sc=.9+Math.sin(t*Math.PI*4)*.1;
+  else if(type==='swing')rot=Math.sin(t*Math.PI*4)*.25;
+  else if(type==='shimmer')alpha=.55+.45*Math.sin(t*Math.PI*8);
+  else if(type==='zoom_beat')sc=.85+Math.abs(Math.sin(t*Math.PI*3))*.25;
+  const img=_lspAnimImg;
+  if(!img||!img.width)return;
+  const k=Math.min(W*.8/img.width,H*.8/img.height);
+  ctx.save();ctx.globalAlpha=Math.max(0,Math.min(1,alpha));
+  ctx.translate(W/2+tx,H/2+ty);ctx.rotate(rot);ctx.scale(sc*k,sc*k);
+  ctx.drawImage(img,-img.width/2,-img.height/2);
+  ctx.restore();
 }
 function lspPlayAnim(type,btn){
+  _lspAnimType=type;
   document.querySelectorAll('.lsp-anim-btn').forEach(b=>b.classList.remove('active'));
   if(btn)btn.classList.add('active');
   const cv=document.getElementById('animCv');if(!cv)return;
-  const ctx=cv.getContext('2d'),W=280,H=180;
-  if(LSP.animTimer)clearInterval(LSP.animTimer);
-  let frame=0,fps=30;
-  const dur=parseInt(document.getElementById('animDur')?.value||1500);
-  const frames=Math.round(dur/1000*fps);
-  LSP.animTimer=setInterval(()=>{
-    frame++;if(frame>frames)frame=0;
-    const t=frame/frames;
-    ctx.clearRect(0,0,W,H);ctx.fillStyle='#080612';ctx.fillRect(0,0,W,H);
-    ctx.save();
-    let alpha=1,sc=1,rot=0,tx=0,ty=0;
-    if(type==='fade_in')alpha=t;
-    else if(type==='scale_up'){sc=t*1.05;alpha=t;}
-    else if(type==='rotate')rot=t*Math.PI*2;
-    else if(type==='bounce'){ty=Math.abs(Math.sin(t*Math.PI*4))*(H*.1);alpha=t<.1?t*10:1;}
-    else if(type==='slide_in'){tx=(1-t)*(-W*.35);alpha=t;}
-    else if(type==='flash')alpha=Math.sin(t*Math.PI*6)>0?1:.15;
-    else if(type==='pulse')sc=.88+Math.sin(t*Math.PI*4)*.12;
-    else if(type==='swing')rot=Math.sin(t*Math.PI*4)*.28;
-    else if(type==='shimmer')alpha=.5+.5*Math.sin(t*Math.PI*8);
-    else if(type==='zoom_beat')sc=.85+Math.abs(Math.sin(t*Math.PI*3))*.3;
-    ctx.globalAlpha=Math.max(0,Math.min(1,alpha));
-    ctx.translate(W/2+tx,H/2-20+ty);ctx.rotate(rot);ctx.scale(sc,sc);
-    ctx.beginPath();ctx.arc(0,0,52,0,Math.PI*2);ctx.fillStyle='#1e3a8a';ctx.fill();
-    ctx.strokeStyle='#fbbf24';ctx.lineWidth=4;ctx.stroke();
-    ctx.font='48px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#fff';ctx.fillText('🎓',0,0);
-    ctx.restore();
-    ctx.globalAlpha=Math.max(0,Math.min(1,alpha));
-    ctx.font='bold 11px Montserrat,sans-serif';ctx.textAlign='center';ctx.fillStyle='#fbbf24';ctx.fillText('SCHOOL NAME',W/2,H-30);
-    ctx.font='8px Montserrat,sans-serif';ctx.fillStyle='rgba(107,92,138,.9)';ctx.fillText(type.replace(/_/g,' ').toUpperCase(),W/2,H-14);
-    ctx.globalAlpha=1;
-  },1000/fps);
+  const ctx=cv.getContext('2d');
+  lspStopAnim();
+  const t0=performance.now();
+  const loop=now=>{
+    if(!document.getElementById('fly-animation').classList.contains('open')){lspStopAnim();return;} // stop when hidden
+    const dur=+(document.getElementById('animDur')?.value||1500); // speed changes apply live
+    lspDrawAnimFrame(ctx,cv.width,cv.height,type,((now-t0)%dur)/dur);
+    _lspAnimRaf=requestAnimationFrame(loop);
+  };
+  _lspAnimRaf=requestAnimationFrame(loop);
+}
+function lspRecordAnim(){
+  const cv=document.getElementById('animCv');
+  if(!cv||!cv.captureStream||typeof MediaRecorder==='undefined'){lspShowToast('Video export is not supported in this browser (try Chrome)');return;}
+  const mime=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'].find(m=>MediaRecorder.isTypeSupported(m));
+  if(!mime){lspShowToast('Video export is not supported in this browser');return;}
+  const dur=+(document.getElementById('animDur')?.value||1500);
+  const total=Math.max(dur*2,2000);
+  const rec=new MediaRecorder(cv.captureStream(30),{mimeType:mime,videoBitsPerSecond:4e6});
+  const chunks=[];rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
+  rec.onstop=()=>{
+    const u=URL.createObjectURL(new Blob(chunks,{type:'video/webm'}));
+    lspDL(u,lspExportFileName('webm'));setTimeout(()=>URL.revokeObjectURL(u),5000);
+    const b=document.getElementById('animRecBtn');if(b){b.disabled=false;b.innerHTML='<i class="bi bi-camera-reels"></i> Download as video (WebM)';}
+    lspShowToast('Video downloaded ✅');
+  };
+  const b=document.getElementById('animRecBtn');if(b){b.disabled=true;b.innerHTML='<i class="bi bi-record-circle"></i> Recording…';}
+  lspPlayAnim(_lspAnimType,document.querySelector('.lsp-anim-btn.active'));
+  rec.start();setTimeout(()=>rec.state!=='inactive'&&rec.stop(),total);
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -2589,8 +3213,9 @@ function lspAddCircularText(side){
     LSP.canvas.add(ct);
     LSP.canvas.setActiveObject(ct);
     LSP.canvas.renderAll();
-    lspSaveHistory(); lspRefreshLayers();
-    lspShowToast('Circular text added! Select it to edit properties in Design panel.');
+    lspOnSelect();
+    lspEnsureFont(ct.fontFamily,'bold').then(()=>{ct._recalcSize();ct.dirty=true;LSP.canvas.requestRenderAll();});
+    lspShowToast('Arc text added — edit it in the Design panel (or double-click it).');
   });
 }
 
@@ -2599,22 +3224,25 @@ function lspUpdateCircText(prop, val){
   const obj = LSP.canvas.getActiveObject();
   if (!obj || obj.type !== 'circularText') return;
   obj.set(prop, val);
-  if (prop === 'radius' || prop === 'fontSize') obj._recalcSize();
-  LSP.canvas.renderAll();
-  if (prop === 'side' || prop === 'fontFamily' || prop === 'fontWeight') lspRenderPanel(LSP.activePanel);
+  obj.dirty = true;
+  obj._recalcSize();
+  LSP.canvas.requestRenderAll();
+  if (prop === 'side' || prop === 'fontWeight') lspRenderPanel(LSP.activePanel);
+  if (prop === 'fontFamily') lspEnsureFont(val, obj.fontWeight).then(()=>{obj._recalcSize();obj.dirty=true;LSP.canvas.requestRenderAll();});
+  if (prop === 'text') lspRefreshLayers();
   lspSaveHistory();
 }
 
 /* Right-panel HTML for circularText objects */
 function lspBuildCircularTextPanel(obj){
   const fonts = ['Cinzel','Montserrat','Poppins','Raleway','Oswald','Open Sans','Nunito','Exo 2','Ubuntu','Bebas Neue','Righteous','Pacifico','Lobster','Dancing Script','Georgia','Impact','Times New Roman','Arial'];
-  const op = Math.round((obj.opacity||1)*100);
+  const op = Math.round((obj.opacity??1)*100);
   const rot = Math.round(obj.angle||0);
   return `
 <div class="lsp-section">
   <div class="lsp-section-title" style="color:#fbbf24;"><i class="bi bi-circle"></i> Circular Text</div>
   <div class="lsp-row"><span class="lsp-label">Text</span>
-    <input type="text" class="lsp-inp" value="${(obj.text||'').replace(/"/g,'&quot;')}" onchange="lspUpdateCircText('text',this.value)" style="flex:1;font-size:.72rem;">
+    <input type="text" class="lsp-inp" value="${lspEsc(obj.text||'')}" oninput="lspUpdateCircText('text',this.value)" style="flex:1;font-size:.72rem;">
   </div>
   <div class="lsp-row"><span class="lsp-label">Arc</span>
     <div class="lsp-btn-group">
@@ -2626,7 +3254,7 @@ function lspBuildCircularTextPanel(obj){
 <div class="lsp-section">
   <div class="lsp-section-title"><i class="bi bi-sliders"></i> Arc Controls</div>
   <div class="lsp-row"><span class="lsp-label">Radius</span>
-    <input type="range" class="lsp-range" min="30" max="320" value="${obj.radius}" oninput="lspUpdateCircText('radius',+this.value);this.nextElementSibling.textContent=this.value+'px'">
+    <input type="range" class="lsp-range" min="30" max="${Math.max(320,Math.round(Math.max(LSP.canvasW,LSP.canvasH)*0.6))}" value="${obj.radius}" oninput="lspUpdateCircText('radius',+this.value);this.nextElementSibling.textContent=this.value+'px'">
     <span style="font-size:.72rem;color:#9ba8d4;font-weight:600;min-width:36px;">${obj.radius}px</span>
   </div>
   <div class="lsp-row"><span class="lsp-label">Font Size</span>
@@ -2646,7 +3274,7 @@ function lspBuildCircularTextPanel(obj){
   <div class="lsp-section-title"><i class="bi bi-fonts"></i> Font & Color</div>
   <div class="lsp-row"><span class="lsp-label">Font</span>
     <select class="lsp-select" onchange="lspUpdateCircText('fontFamily',this.value)">
-      ${fonts.map(f=>`<option ${f===obj.fontFamily?'selected':''}>${f}</option>`).join('')}
+      ${(fonts.includes(obj.fontFamily)?fonts:[obj.fontFamily].concat(fonts)).map(f=>`<option ${f===obj.fontFamily?'selected':''}>${lspEsc(f)}</option>`).join('')}
     </select>
   </div>
   <div class="lsp-row"><span class="lsp-label">Weight</span>
@@ -2656,18 +3284,18 @@ function lspBuildCircularTextPanel(obj){
     </div>
   </div>
   <div class="lsp-row"><span class="lsp-label">Color</span>
-    <div class="lsp-color-btn" style="background:${obj.fill||'#1e3a8a'};"><input type="color" value="${lspToHexColor(obj.fill||'#1e3a8a')}" oninput="lspUpdateCircText('fill',this.value)"></div>
+    <div class="lsp-color-btn" style="background:${lspEsc(typeof obj.fill==='string'?obj.fill:'#1e3a8a')};"><input type="color" value="${lspToHexColor(obj.fill||'#1e3a8a')}" oninput="lspUpdateCircText('fill',this.value)"></div>
     <div class="lsp-swatches">${['#fff','#fbbf24','#1e3a8a','#000','#c9a84c','#ef4444','#7c3aed','#22c55e','#c0392b'].map(c=>`<div class="lsp-swatch" style="background:${c};" onclick="lspUpdateCircText('fill','${c}')"></div>`).join('')}</div>
   </div>
 </div>
 <div class="lsp-section">
   <div class="lsp-section-title"><i class="bi bi-sliders"></i>Object Transform</div>
   <div class="lsp-row"><span class="lsp-label">Opacity</span>
-    <input type="range" class="lsp-range" min="0" max="100" value="${op}" oninput="lspApplyOpacity(+this.value/100);this.nextElementSibling.textContent=this.value+'%'">
+    <input type="range" class="lsp-range" min="0" max="100" value="${op}" oninput="lspApplyOpacity(+this.value/100);this.nextElementSibling.textContent=this.value+'%'" onchange="lspSaveHistory()">
     <span style="font-size:.72rem;color:#9ba8d4;font-weight:600;min-width:30px;">${op}%</span>
   </div>
   <div class="lsp-row"><span class="lsp-label">Rotation</span>
-    <input type="range" class="lsp-range" min="-180" max="180" value="${rot}" oninput="lspApplyRotation(+this.value);this.nextElementSibling.textContent=this.value+'°'" style="accent-color:var(--gold);">
+    <input type="range" class="lsp-range" min="-180" max="180" value="${rot}" oninput="lspApplyRotation(+this.value);this.nextElementSibling.textContent=this.value+'°'" onchange="lspSaveHistory()" style="accent-color:var(--gold);">
     <span style="font-size:.72rem;color:#9ba8d4;font-weight:600;min-width:30px;">${rot}°</span>
   </div>
 </div>
@@ -2694,10 +3322,7 @@ const LSP_BADGE_PRESETS = [
 LSP._badgeColors = LSP_BADGE_PRESETS[0];
 
 function lspOpenBadgeBuilder(){
-  lspClosePanel();
-  const el = document.getElementById('fly-badge');
-  el.classList.toggle('open');
-  if (el.classList.contains('open')) lspBuildBadgePanel();
+  lspToggleFlyout('fly-badge',lspBuildBadgePanel);
 }
 
 function lspBuildBadgePanel(){
@@ -2707,7 +3332,7 @@ function lspBuildBadgePanel(){
 <div style="font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#8b9ed4;margin-bottom:.4rem;">Color Scheme</div>
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.3rem;margin-bottom:.65rem;">
 ${LSP_BADGE_PRESETS.map((c,idx)=>`
-  <div class="lsp-export-opt" style="flex-direction:column;padding:.35rem .4rem;gap:.22rem;cursor:pointer;" onclick="LSP._badgeColors=LSP_BADGE_PRESETS[${idx}];document.querySelectorAll('#badge-body .lsp-export-opt').forEach(x=>x.style.borderColor='var(--border-hi)');this.style.borderColor='var(--gold)';">
+  <div class="lsp-export-opt" style="flex-direction:column;padding:.35rem .4rem;gap:.22rem;cursor:pointer;${LSP._badgeColors===c?'border-color:var(--gold);':''}" onclick="LSP._badgeColors=LSP_BADGE_PRESETS[${idx}];document.querySelectorAll('#badge-body .lsp-export-opt').forEach(x=>x.style.borderColor='var(--border-hi)');this.style.borderColor='var(--gold)';lspShowToast('${c.name} colours selected');">
     <div style="display:flex;gap:3px;width:100%;">
       <div style="flex:1;height:14px;background:${c.o};border-radius:2px;"></div>
       <div style="flex:1;height:14px;background:#fff;border-radius:2px;border:1px solid #ddd;"></div>
@@ -2742,10 +3367,10 @@ ${LSP_BADGE_PRESETS.map((c,idx)=>`
   ${[['lotus','🪷','Lotus'],['chakra','☸','Chakra'],['charkha','🌀','Charkha'],['book','📖','Book'],['torch','🔥','Torch'],['sun','☀️','Sun'],['trishul','🔱','Trishul'],['om','ॐ','OM'],['star','⭐','Star'],['constitution','📜','Law']].map(([t,e,l])=>`<button class="lsp-micro-btn" onclick="lspAddMahapurushEmblem('${t}')" title="${l}" style="height:46px;flex-direction:column;gap:2px;display:flex;align-items:center;justify-content:center;padding:0;"><span style="font-size:1.18rem;line-height:1.1;">${e}</span><span style="font-size:.5rem;color:#9ba8d4;font-weight:700;">${l}</span></button>`).join('')}
 </div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:.25rem;margin-bottom:.6rem;">
-  <button class="lsp-micro-btn" onclick="lspOpenIcons();setTimeout(()=>lspSelIconCat('Mahapurush',document.querySelector('.lsp-cat-btn')),200)" style="height:30px;font-size:.62rem;color:#fbbf24;">🙏 Mahapurush Icons</button>
-  <button class="lsp-micro-btn" onclick="lspOpenIcons();setTimeout(()=>lspSelIconCat('Deities',document.querySelector('.lsp-cat-btn')),200)" style="height:30px;font-size:.62rem;color:#f472b6;">🪷 Deity Icons</button>
+  <button class="lsp-micro-btn" onclick="lspOpenIcons('Mahapurush')" style="height:30px;font-size:.62rem;color:#fbbf24;">🙏 Mahapurush Icons</button>
+  <button class="lsp-micro-btn" onclick="lspOpenIcons('Deities')" style="height:30px;font-size:.62rem;color:#f472b6;">🪷 Deity Icons</button>
   <button class="lsp-micro-btn" onclick="lspUploadImage()" style="height:30px;font-size:.62rem;color:#38bdf8;">📷 Upload Photo</button>
-  <button class="lsp-micro-btn" onclick="lspOpenIcons();setTimeout(()=>lspSelIconCat('Medals___Awards',document.querySelector('.lsp-cat-btn')),200)" style="height:30px;font-size:.62rem;color:#a78bfa;">🏅 Medals</button>
+  <button class="lsp-micro-btn" onclick="lspOpenIcons('Medals & Awards')" style="height:30px;font-size:.62rem;color:#a78bfa;">🏅 Medals</button>
 </div>
 
 <div style="font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#8b9ed4;margin-bottom:.4rem;">Decorations</div>
@@ -3057,14 +3682,26 @@ function lspAddDotRow(){
    ONE-CLICK: Build complete school badge
    ══════════════════════════════════════════════════ */
 function lspBuildCompleteBadge(){
+  const go=()=>{
+    LSP._restoring=true;
+    try{ LSP.canvas.clear(); _lspBuildCompleteBadge(); } finally { LSP._restoring=false; }
+    lspRefreshLayers();lspTouch();lspRenderPanel(LSP.activePanel);
+    lspCloseFlyout('fly-badge');
+    lspShowToast('🏫 School badge built! Double-click the arc text to edit name & address.');
+    lspEnsureFont('Cinzel','bold').then(()=>lspRefreshTextMetrics());
+  };
+  if(LSP.canvas.getObjects().length) lspConfirm('Replace the current design with a new complete badge? (You can Undo.)',go);
+  else go();
+}
+function _lspBuildCompleteBadge(){
   const c = LSP._badgeColors || LSP_BADGE_PRESETS[0];
   const cx = LSP.canvasW/2, cy = LSP.canvasH/2;
   const maxR = Math.min(LSP.canvasW, LSP.canvasH) * 0.44;
   const textR = maxR * 0.905; // text ON the outer colored ring
 
-  // Set background to outer color
-  LSP.canvas.setBackgroundColor(c.o, () => LSP.canvas.renderAll());
-  LSP.bgColor = c.o;
+  // Keep the user's background (painting the whole square with the ring colour
+  // made the round badge export as a coloured square).
+  LSP.canvas.setBackgroundColor(LSP.isBgTransparent?'':LSP.bgColor, () => LSP.canvas.renderAll());
 
   // ─── Rings (outer-to-inner) ───
   const r1 = new fabric.Circle({ left:cx, top:cy, radius:maxR,       fill:c.o,      stroke:'#ffffff', strokeWidth:4, originX:'center', originY:'center', lspName:'Outer Ring' });
@@ -3114,9 +3751,6 @@ function lspBuildCompleteBadge(){
 
   LSP.canvas.setActiveObject(emblem);
   LSP.canvas.renderAll();
-  lspSaveHistory(); lspRefreshLayers();
-  lspCloseFlyout('fly-badge');
-  lspShowToast('🏫 School badge built! Click arc text to edit name & address.');
 }
 
 /* SAVE TO GALLERY */
@@ -3124,29 +3758,42 @@ function lspBuildCompleteBadge(){
 // queued write actually reaches the server — block re-saving until then, so
 // a second save can't create a duplicate design (an update to an already-
 // saved item, LSP.currentGalleryId already set, has no such risk).
-let _lspGalSavePending=false, _lspGalSaveQueueId=null;
+let _lspGalSavePending=false, _lspGalSaveQueueId=null, _lspSaving=false;
 window.addEventListener('sszone-queue-synced',(e)=>{
-  if(e.detail.panel!=='logo_designer'||e.detail.id!==_lspGalSaveQueueId)return;
+  if(!e.detail||e.detail.panel!=='logo_designer'||e.detail.id!==_lspGalSaveQueueId)return;
   _lspGalSavePending=false; _lspGalSaveQueueId=null;
   const result=e.detail.result;
-  if(result&&result.success&&result.gallery_id){LSP.currentGalleryId=result.gallery_id; lspBuildExportPanel();}
+  if(result&&result.success&&result.gallery_id){LSP.currentGalleryId=+result.gallery_id; lspBuildExportPanel(); lspMarkClean(); lspClearDraft();}
 });
+/* Network helper: offline-queue's smartFetch when present, plain fetch otherwise
+   (if that script failed to load, Save used to throw and do nothing). */
+function lspPost(url,fd,opts){
+  if(typeof window.smartFetch==='function')return window.smartFetch(url,fd,opts);
+  return fetch(url,{method:'POST',body:fd,credentials:'same-origin'}).then(r=>r.json());
+}
+function lspGet(url){
+  const p=typeof window.idmFetch==='function'?idmFetch(url,{},20000):fetch(url,{credentials:'same-origin'});
+  return p.then(r=>r.json());
+}
 function lspSaveToGallery(){
+  if(_lspSaving){lspShowToast('Already saving…');return;}
   if(_lspGalSavePending&&!LSP.currentGalleryId){lspShowToast('Still syncing your last save — please wait',3000);return;}
-  lspPromptModal('Save to Gallery',[
+  if(!LSP.canvas.getObjects().length){lspShowToast('Canvas is empty — add something first');return;}
+  lspPromptModal(LSP.currentGalleryId?'Update saved logo':'Save to My Logos',[
     {id:'name',label:'Logo name',value:LSP._galleryName||'My Logo Design'},
   ],vals=>{
-    const displayName=(vals.name||'').trim()||'My Logo Design';
+    const displayName=((vals.name||'').trim()||'My Logo Design').slice(0,100);
     LSP._galleryName=displayName;
     const wasNew=!LSP.currentGalleryId;
-
-    lspShowToast('Saving…');
-    const canvasJson=JSON.stringify(LSP.canvas.toJSON(['lspName']));
-    // Thumbnail at 80% of canvas → quality preview without wasting DB space
-    const thumbnail=LSP.canvas.toDataURL({format:'jpeg',quality:.82,multiplier:.8});
-
     const csrf=document.querySelector('meta[name=csrf]')?.content||'';
     if(!csrf){lspShowToast('Session expired — please refresh page');return;}
+
+    lspShowToast('Saving…');
+    const canvasJson=lspSnapshot();
+    // Thumbnail ≤ 400px on the long side (zoom-independent) — keeps the DB row small.
+    const th=Math.min(1,400/Math.max(LSP.canvasW,LSP.canvasH));
+    let thumbnail='';try{thumbnail=lspDataURL({format:'jpeg',quality:.82,multiplier:th});}catch(e){}
+
     const fd=new FormData();
     fd.append('action','save');
     fd.append('name',displayName);
@@ -3156,167 +3803,214 @@ function lspSaveToGallery(){
     fd.append('canvas_height',LSP.canvasH);
     fd.append('gallery_id',LSP.currentGalleryId||0);
     fd.append('csrf_token',csrf);
+    _lspSaving=true;
+    const btn=document.getElementById('btnSaveGallery');if(btn)btn.disabled=true;
 
-    window.smartFetch('../api/gallery_actions.php',fd,{label:'Save logo: '+displayName,panel:'logo_designer',timeoutMs:30000})
+    lspPost('../api/gallery_actions.php',fd,{label:'Save logo: '+displayName,panel:'logo_designer',timeoutMs:30000})
       .then(d=>{
-        if(d.queued){
+        if(d&&d.queued){
           if(wasNew){ _lspGalSavePending=true; _lspGalSaveQueueId=d.queueId; }
           lspShowToast(d.message||'Saved offline — will sync automatically',3000);
-        } else if(d.success){
-          LSP.currentGalleryId=d.gallery_id;
+        } else if(d&&d.success){
+          if(d.gallery_id)LSP.currentGalleryId=+d.gallery_id;
+          lspMarkClean();lspClearDraft();
           lspShowToast(d.message||'Saved! ✅',3000);
           lspBuildExportPanel(); // refresh button label to "Update"
-        }else{lspShowToast('Save failed: '+(d.message||'error'),3000);}
+        }else{lspShowToast('Save failed: '+((d&&d.message)||'error'),3500);}
       })
-      .catch(e=>{lspShowToast('Save error — check connection',3000);});
+      .catch(()=>{lspShowToast('Save error — check connection',3000);})
+      .finally(()=>{_lspSaving=false;if(btn)btn.disabled=false;});
   });
 }
 
 /* MY GALLERY */
 function lspOpenGallery(){
-  lspClosePanel();
-  const el=document.getElementById('fly-gallery');el.classList.toggle('open');
-  if(el.classList.contains('open'))lspLoadGallery();
+  lspToggleFlyout('fly-gallery',()=>lspLoadGallery());
 }
 function lspLoadGallery(page){
   page=page||0;
   const body=document.getElementById('gallery-body');
   if(!page)body.innerHTML='<div style="text-align:center;color:var(--text-dim);padding:2rem;font-size:.75rem;">Loading…</div>';
-  idmFetch('../api/gallery_actions.php?action=list&page='+page,{},20000)
-    .then(r=>r.json())
+  document.getElementById('gal-more')?.remove();
+  lspGet('../api/gallery_actions.php?action=list&page='+page)
     .then(d=>{
-      if(!d.success){body.innerHTML='<div style="text-align:center;color:var(--red);padding:2rem;font-size:.75rem;">Could not load gallery.</div>';return;}
-      if(!page&&!d.items?.length){body.innerHTML='<div style="text-align:center;color:var(--text-dim);padding:2rem;font-size:.75rem;">No saved logos yet.<br>Create a logo and click Save!</div>';return;}
-      const cards=d.items.map(it=>`<div style="background:var(--bg-card);border:1.5px solid ${it.id===LSP.currentGalleryId?'var(--purple)':'var(--border)'};border-radius:var(--r-md);cursor:pointer;overflow:hidden;transition:all .15s;" onmouseover="this.style.borderColor='var(--purple)'" onmouseout="this.style.borderColor='${it.id===LSP.currentGalleryId?'var(--purple)':'var(--border)'}'" onclick="lspLoadGalleryItem(${it.id})">`
-        +(it.thumbnail?`<img src="${it.thumbnail}" style="width:100%;height:100px;object-fit:contain;background:#0d0a1a;" loading="lazy">`:'<div style="width:100%;height:100px;background:var(--bg-deep);display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-size:1.5rem;">⬡</div>')
-        +`<div style="padding:.35rem .4rem;font-size:.6rem;color:var(--text-mid);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${it.name}</div></div>`).join('');
+      if(!d||!d.success){body.innerHTML='<div style="text-align:center;color:var(--red);padding:2rem;font-size:.75rem;">Could not load gallery.<br><button class="lsp-micro-btn" style="margin-top:.5rem;" onclick="lspLoadGallery()">Retry</button></div>';return;}
+      const items=d.items||[];
+      if(!page&&!items.length){body.innerHTML='<div style="text-align:center;color:var(--text-dim);padding:2rem;font-size:.75rem;">No saved logos yet.<br>Create a logo and click Save!</div>';return;}
+      const cards=items.map(it=>{
+        const cur=+it.id===+LSP.currentGalleryId;
+        const thumb=/^(data:image\/|https?:\/\/|\/)/.test(it.thumbnail||'')?it.thumbnail:'';
+        return `<div style="background:var(--bg-card);border:1.5px solid ${cur?'var(--purple)':'var(--border)'};border-radius:var(--r-md);cursor:pointer;overflow:hidden;transition:all .15s;" onmouseover="this.style.borderColor='var(--purple)'" onmouseout="this.style.borderColor='${cur?'var(--purple)':'var(--border)'}'" onclick="lspLoadGalleryItem(${+it.id})" title="${lspEsc(it.name)}">`
+        +(thumb?`<img src="${lspEsc(thumb)}" alt="" style="width:100%;height:100px;object-fit:contain;background:#0d0a1a;" loading="lazy">`:'<div style="width:100%;height:100px;background:var(--bg-deep);display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-size:1.5rem;">⬡</div>')
+        +`<div style="padding:.35rem .4rem;font-size:.6rem;color:var(--text-mid);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${cur?'✏️ ':''}${lspEsc(it.name)}</div></div>`;
+      }).join('');
       if(!page)body.innerHTML='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;" id="gal-grid">'+cards+'</div>';
       else{const g=document.getElementById('gal-grid');if(g)g.insertAdjacentHTML('beforeend',cards);}
-      if(d.has_more)body.insertAdjacentHTML('beforeend',`<button class="lsp-micro-btn" style="width:100%;margin-top:.5rem;" onclick="lspLoadGallery(${page+1})">Load more…</button>`);
+      if(d.has_more)body.insertAdjacentHTML('beforeend',`<button id="gal-more" class="lsp-micro-btn" style="width:100%;margin-top:.5rem;" onclick="lspLoadGallery(${page+1})">Load more…</button>`);
     })
-    .catch(()=>{body.innerHTML='<div style="text-align:center;color:var(--red);padding:2rem;font-size:.75rem;">Could not load gallery.</div>';});
+    .catch(()=>{if(!page)body.innerHTML='<div style="text-align:center;color:var(--red);padding:2rem;font-size:.75rem;">Could not load gallery.<br><button class="lsp-micro-btn" style="margin-top:.5rem;" onclick="lspLoadGallery()">Retry</button></div>';else lspShowToast('Could not load more');});
 }
 function lspLoadGalleryItem(id){
-  idmFetch('../api/gallery_actions.php?action=get&id='+id,{},20000)
-    .then(r=>r.json())
-    .then(d=>{
-      if(!d.success||!d.item?.canvas_json){lspShowToast('Could not load design');return;}
-      const item=d.item;
-      LSP.currentGalleryId=+item.id||0; // enable update-in-place on next save
-      LSP._galleryName=item.name||'My Design';
-      lspSetCanvasSize(+item.canvas_width||500,+item.canvas_height||500,'Loaded',null);
-      LSP.canvas.loadFromJSON(item.canvas_json,_lspReviveCanvas(()=>{
-        lspSaveHistory();
-      }));
-      lspCloseFlyout('fly-gallery');
-      lspShowToast('Loaded: '+item.name);
-    })
-    .catch(()=>lspShowToast('Load error'));
+  const load=()=>{
+    lspShowToast('Opening…');
+    lspGet('../api/gallery_actions.php?action=get&id='+encodeURIComponent(id))
+      .then(d=>{
+        if(!d||!d.success||!d.item?.canvas_json){lspShowToast('Could not load design');return;}
+        const item=d.item;
+        let json=item.canvas_json;
+        try{const o=typeof json==='string'?JSON.parse(json):json;
+          if(!o._lsp)o._lsp={w:+item.canvas_width||500,h:+item.canvas_height||500,bg:o.background||'#ffffff'};
+          json=JSON.stringify(o);}catch(e){lspShowToast('This design file is damaged');return;}
+        LSP.currentGalleryId=+item.id||0; // enable update-in-place on next save
+        LSP._galleryName=item.name||'My Design';
+        lspRestore(json,()=>{
+          LSP.history=[];LSP.histIdx=-1;_commitHistory();lspUpdateUndoRedo();
+          lspMarkClean();lspClearDraft();
+          if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>lspRefreshTextMetrics());
+        });
+        lspCloseFlyout('fly-gallery');
+        lspShowToast('Loaded: '+item.name);
+      })
+      .catch(()=>lspShowToast('Load error — check connection'));
+  };
+  if(LSP.dirty&&LSP.canvas.getObjects().length)lspConfirm('You have unsaved changes. Open the saved logo anyway?',load);
+  else load();
 }
 
 /* APPLY TO EDITOR */
 function lspApplyToEditor(){
-  const origBg=LSP.canvas.backgroundColor;
-  const transBg=document.getElementById('expTrans')?.checked;
-  if(transBg)LSP.canvas.setBackgroundColor('',LSP.canvas.renderAll.bind(LSP.canvas));
-  const dataURL=LSP.canvas.toDataURL({format:'png',multiplier:3}); // PNG is lossless
-  if(transBg)LSP.canvas.setBackgroundColor(origBg,LSP.canvas.renderAll.bind(LSP.canvas));
-
-  const img=new Image();img.onload=()=>{
-    const c=document.createElement('canvas');c.width=img.width;c.height=img.height;
-    const ctx=c.getContext('2d');ctx.drawImage(img,0,0);
-    const d=ctx.getImageData(0,0,c.width,c.height).data;
-    // BG-aware smart crop (same logic as lspTightCrop)
-    let bgR=0,bgG=0,bgB=0,bgA=0,sp=0;
-    for(let by=0;by<Math.min(8,c.height);by++)for(let bx=0;bx<Math.min(8,c.width);bx++){
-      const bi=(by*c.width+bx)*4;bgR+=d[bi];bgG+=d[bi+1];bgB+=d[bi+2];bgA+=d[bi+3];sp++;
-    }
-    bgR=Math.round(bgR/sp);bgG=Math.round(bgG/sp);bgB=Math.round(bgB/sp);bgA=Math.round(bgA/sp);
-    const isBgTransp=bgA<15,TOL=16;
-    let x0=c.width,y0=c.height,x1=0,y1=0;
-    for(let y=0;y<c.height;y++)for(let x=0;x<c.width;x++){
-      const i=(y*c.width+x)*4;
-      const isEmpty=isBgTransp?d[i+3]<10:(Math.abs(d[i]-bgR)<TOL&&Math.abs(d[i+1]-bgG)<TOL&&Math.abs(d[i+2]-bgB)<TOL&&d[i+3]>180);
-      if(!isEmpty){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;}
-    }
-    const pad=Math.max(24,Math.round(c.width*.025));
-    x0=Math.max(0,x0-pad);y0=Math.max(0,y0-pad);x1=Math.min(c.width,x1+pad);y1=Math.min(c.height,y1+pad);
-    const cw=x1-x0,ch=y1-y0;
-    let cropURL=dataURL;
-    if(cw>30&&ch>30){const out=document.createElement('canvas');out.width=cw;out.height=ch;out.getContext('2d').drawImage(c,x0,y0,cw,ch,0,0,cw,ch);cropURL=out.toDataURL('image/png');}
-
+  if(!LSP.canvas.getObjects().length){lspShowToast('Canvas is empty — design a logo first');return;}
+  LSP.canvas.discardActiveObject();LSP.canvas.requestRenderAll();
+  const transBg=document.getElementById('expTrans')?document.getElementById('expTrans').checked:(LSP.exportTrans||LSP.isBgTransparent);
+  let dataURL;
+  try{dataURL=lspDataURL({format:'png',multiplier:3,transparent:!!transBg});}
+  catch(e){lspShowToast('Could not render the logo');return;}
+  const btn=document.getElementById('btnApplyEditor');if(btn)btn.disabled=true;
+  lspShowToast('Preparing logo…');
+  lspSmartCrop(dataURL,'image/png',undefined,(cropURL)=>{
+    if(btn)btn.disabled=false;
     const inIframe=(window.parent&&window.parent!==window);
-    const inPopup=!!window.opener;
-
+    let opener=null;try{opener=window.opener&&!window.opener.closed?window.opener:null;}catch(e){opener=null;}
+    // Only ever hand the image to our own site (postMessage '*' would give it to any page).
+    const origin=location.origin;
     if(inIframe){
-      // Embedded inside editor.php as iframe modal
-      window.parent.postMessage({type:'lspApply',dataURL:cropURL},'*');
+      window.parent.postMessage({type:'lspApply',dataURL:cropURL},origin);
+      lspMarkClean();
       lspShowToast('Applying to editor canvas… ✅');
-      // editor.php postMessage handler calls closeLspModal() automatically
-    } else if(inPopup&&window.opener.canvas){
-      // Opened as standalone popup
-      const op=window.opener;
-      const fEl=new Image();fEl.onload=()=>{
-        try{
-          const fc=op.canvas,cW=op.canvasW||856,cH=op.canvasH||540;
-          const fImg=new op.fabric.Image(fEl);
-          const sc=Math.min((cW*.42)/fEl.width,(cH*.42)/fEl.height,1);
-          fImg.scale(sc).set({left:cW/2,top:cH/2,originX:'center',originY:'center'});
-          fc.add(fImg).setActiveObject(fImg).renderAll();
-          if(typeof op.histSave==='function')op.histSave();
-          if(typeof op.showToast==='function')op.showToast('Logo applied! 🎉');
-          lspShowToast('Applied! Closing…');
-          setTimeout(()=>window.close(),900);
-        }catch(err){
-          op.postMessage({type:'lspApply',dataURL:cropURL},'*');
-          lspShowToast('Sent via postMessage ✅');
-        }
-      };fEl.src=cropURL;
-    } else if(inPopup){
-      window.opener.postMessage({type:'lspApply',dataURL:cropURL},'*');
-      lspShowToast('Sent to editor ✅');
-      setTimeout(()=>window.close(),1200);
+    } else if(opener){
+      let direct=false;
+      try{ direct=!!(opener.canvas&&opener.fabric); }catch(e){ direct=false; } // cross-origin opener throws
+      if(direct){
+        const fEl=new Image();fEl.onload=()=>{
+          try{
+            const op=opener,fc=op.canvas,cW=op.canvasW||856,cH=op.canvasH||540;
+            const fImg=new op.fabric.Image(fEl);
+            const sc=Math.min((cW*.42)/fEl.width,(cH*.42)/fEl.height,1);
+            fImg.scale(sc).set({left:cW/2,top:cH/2,originX:'center',originY:'center'});
+            fc.add(fImg).setActiveObject(fImg).renderAll();
+            if(typeof op.histSave==='function')op.histSave();
+            if(typeof op.showToast==='function')op.showToast('Logo applied! 🎉');
+            lspMarkClean();lspShowToast('Applied! Closing…');
+            setTimeout(()=>window.close(),900);
+          }catch(err){
+            opener.postMessage({type:'lspApply',dataURL:cropURL},origin);
+            lspShowToast('Sent to editor ✅');
+          }
+        };fEl.src=cropURL;
+      } else {
+        try{opener.postMessage({type:'lspApply',dataURL:cropURL},origin);}catch(e){}
+        lspMarkClean();lspShowToast('Sent to editor ✅');
+        setTimeout(()=>window.close(),1200);
+      }
     } else {
-      lspDL(cropURL,'logo_studio_pro.png');
-      lspShowToast('Downloaded! Import to editor manually.');
+      lspDL(cropURL,lspExportFileName('png'));
+      lspShowToast('Downloaded! Import it in the editor with Upload Image.');
     }
-  };img.src=dataURL;
+  });
 }
 
-/* FLYOUT MANAGEMENT */
-function lspCloseFlyout(id){document.getElementById(id)?.classList.remove('open');}
-function lspCloseAllFlyouts(){document.querySelectorAll('.lsp-flyout').forEach(f=>f.classList.remove('open'));}
+/* FLYOUT MANAGEMENT — one flyout at a time (they all open at the same spot and
+   used to stack on top of each other), toggled by its own button. */
+function lspToggleFlyout(id,build,forceOpen){
+  const el=document.getElementById(id);if(!el)return;
+  const wasOpen=el.classList.contains('open');
+  lspClosePanel();
+  if(wasOpen&&!forceOpen){lspCloseFlyout(id);return;}
+  if(LSP.activeTool==='draw'&&id!=='fly-draw')lspExitDraw();
+  document.querySelectorAll('.lsp-flyout.open').forEach(f=>{if(f.id!==id)f.classList.remove('open');});
+  el.classList.add('open');
+  if(build)build();
+}
+function lspCloseFlyout(id){
+  document.getElementById(id)?.classList.remove('open');
+  if(id==='fly-animation')lspStopAnim();
+}
+function lspCloseAllFlyouts(){document.querySelectorAll('.lsp-flyout.open').forEach(f=>lspCloseFlyout(f.id));}
 
 /* KEYBOARD */
+function lspModalOpen(){
+  return ['lspConfirmOv','lspPromptOv'].some(id=>document.getElementById(id)?.style.display==='flex');
+}
+function lspNudge(dx,dy){
+  const o=LSP.canvas.getActiveObject();if(!o||o.lockMovementX)return;
+  o.left+=dx;o.top+=dy;o.setCoords();LSP.canvas.requestRenderAll();
+  clearTimeout(lspNudge._t);lspNudge._t=setTimeout(()=>{lspSaveHistory();lspRenderPanelSoon();},350);
+}
 function lspInitKeyboard(){
   document.addEventListener('keydown',(e)=>{
-    if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.isContentEditable)return;
-    if(e.ctrlKey||e.metaKey){
-      if(e.key==='z'){e.preventDefault();lspUndo();}
-      else if(e.key==='y'||e.key==='Z'){e.preventDefault();lspRedo();}
-      else if(e.key==='d'){e.preventDefault();lspDuplicateLayer();}
-      else if(e.key==='a'){e.preventDefault();lspSelectAll();}
-      else if(e.key==='='||e.key==='+'){e.preventDefault();lspZoomIn();}
-      else if(e.key==='-'){e.preventDefault();lspZoomOut();}
-      else if(e.key==='0'){e.preventDefault();lspZoomFit();}
-    } else {
-      if(e.key==='Delete'||e.key==='Backspace')lspDeleteLayer();
-      else if(e.key==='v')lspSetTool('select',document.getElementById('tool-select'));
-      else if(e.key==='t'){lspSetTool('text',document.getElementById('tool-text'));lspAddText();}
-      else if(e.key==='c')lspAddCurvedText();
-      else if(e.key==='s')lspOpenShapes();
-      else if(e.key==='i')lspOpenIcons();
-      else if(e.key==='f')lspOpenFrames();
-      else if(e.key==='d'){lspStartDraw();}
-      else if(e.key==='Escape'){if(LSP.activeTool==='draw')lspExitDraw();else lspCloseAllFlyouts();}
-      const o=LSP.canvas.getActiveObject();if(!o)return;
-      if(e.key==='ArrowUp')o.set('top',o.top-1);
-      else if(e.key==='ArrowDown')o.set('top',o.top+1);
-      else if(e.key==='ArrowLeft')o.set('left',o.left-1);
-      else if(e.key==='ArrowRight')o.set('left',o.left+1);
-      else return;
-      LSP.canvas.renderAll();
+    // Dialogs: Enter = OK, Escape = Cancel; nothing else reaches the canvas.
+    if(document.getElementById('lspPromptOv')?.style.display==='flex'){if(e.key==='Escape'){e.preventDefault();_lspPromptAnswer(false);}return;}
+    if(document.getElementById('lspConfirmOv')?.style.display==='flex'){
+      if(e.key==='Escape'){e.preventDefault();_lspConfirmAnswer(false);}
+      else if(e.key==='Enter'){e.preventDefault();_lspConfirmAnswer(true);}
+      return;
     }
+    const tag=e.target.tagName;
+    if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||e.target.isContentEditable)return;
+    if(LSP.canvas.getActiveObject()?.isEditing)return;
+    const k=(e.key||'').toLowerCase();
+    if(e.ctrlKey||e.metaKey){
+      if(k==='z'&&!e.shiftKey){e.preventDefault();lspUndo();}
+      else if(k==='y'||(k==='z'&&e.shiftKey)){e.preventDefault();lspRedo();}
+      else if(k==='d'){e.preventDefault();lspDuplicateLayer();}
+      else if(k==='c'){if(LSP.canvas.getActiveObject()){e.preventDefault();lspCopy();}}
+      else if(k==='x'){if(LSP.canvas.getActiveObject()){e.preventDefault();lspCut();}}
+      else if(k==='v'){if(LSP.clipboard){e.preventDefault();lspPaste();}}
+      else if(k==='a'){e.preventDefault();lspSelectAll();}
+      else if(k==='g'){e.preventDefault();e.shiftKey?lspUngroupLayers():lspGroupLayers();}
+      else if(k==='s'){e.preventDefault();lspSaveToGallery();}
+      else if(k==='e'){e.preventDefault();lspOpenExport();}
+      else if(k==='='||k==='+'){e.preventDefault();lspZoomIn();}
+      else if(k==='-'){e.preventDefault();lspZoomOut();}
+      else if(k==='0'){e.preventDefault();lspZoomFit();}
+      else if(k===']'){e.preventDefault();e.shiftKey?lspLayerFront():lspLayerUp();}
+      else if(k==='['){e.preventDefault();e.shiftKey?lspLayerBack():lspLayerDown();}
+      return;
+    }
+    if(e.altKey)return;
+    if(e.key==='Delete'||e.key==='Backspace'){if(LSP.canvas.getActiveObject()){e.preventDefault();lspDeleteLayer();}return;}
+    if(e.key==='Escape'){
+      if(LSP.activeTool==='draw')lspExitDraw();
+      else if(document.querySelector('.lsp-flyout.open'))lspCloseAllFlyouts();
+      else{LSP.canvas.discardActiveObject();LSP.canvas.requestRenderAll();}
+      return;
+    }
+    const step=e.shiftKey?10:1;
+    if(e.key==='ArrowUp'){e.preventDefault();lspNudge(0,-step);return;}
+    if(e.key==='ArrowDown'){e.preventDefault();lspNudge(0,step);return;}
+    if(e.key==='ArrowLeft'){e.preventDefault();lspNudge(-step,0);return;}
+    if(e.key==='ArrowRight'){e.preventDefault();lspNudge(step,0);return;}
+    if(e.shiftKey)return;
+    if(k==='v')lspSetTool('select',document.getElementById('tool-select'));
+    else if(k==='h')lspSetTool('move',document.getElementById('tool-move'));
+    else if(k==='t')lspAddText();
+    else if(k==='c')lspAddCircularText('top');
+    else if(k==='s')lspOpenShapes();
+    else if(k==='i')lspOpenIcons();
+    else if(k==='f')lspOpenFrames();
+    else if(k==='b')lspOpenBadgeBuilder();
+    else if(k==='p')lspUploadImage();
+    else if(k==='d')lspStartDraw();
   });
 }
 
@@ -3328,38 +4022,42 @@ function lspShowToast(msg,dur){
 }
 
 /* ── In-app confirm/prompt dialogs (replace native confirm()/prompt() — better on mobile) ── */
-let _lspConfirmYes=null;
-function lspConfirm(message,onYes){
+let _lspConfirmYes=null,_lspConfirmNo=null;
+function lspConfirm(message,onYes,onNo){
   document.getElementById('lspConfirmMsg').textContent=message;
   document.getElementById('lspConfirmOv').style.display='flex';
-  _lspConfirmYes=onYes||null;
+  _lspConfirmYes=onYes||null;_lspConfirmNo=onNo||null;
 }
 function _lspConfirmAnswer(yes){
   document.getElementById('lspConfirmOv').style.display='none';
-  if(yes&&_lspConfirmYes)_lspConfirmYes();
-  _lspConfirmYes=null;
+  const y=_lspConfirmYes,n=_lspConfirmNo;
+  _lspConfirmYes=null;_lspConfirmNo=null;
+  if(yes&&y)y();
+  if(!yes&&n)n();
 }
 
 let _lspPromptCb=null, _lspPromptFields=null;
 function lspPromptModal(title,fields,onOk){
   document.getElementById('lspPromptTitle').textContent=title;
   _lspPromptFields=fields;
+  // Values are escaped — a saved name containing a quote used to break the field.
   document.getElementById('lspPromptBody').innerHTML=fields.map(f=>
-    `<label style="font-size:.72rem;color:#9ba8d4;display:block;margin:.5rem 0 .25rem;font-weight:600;">${f.label}</label>
-     <input type="${f.type||'text'}" id="_lspPf_${f.id}" class="lsp-inp" value="${(f.value!==undefined&&f.value!==null)?f.value:''}" style="width:100%;" onkeydown="if(event.key==='Enter')_lspPromptAnswer(true)">`
+    `<label style="font-size:.72rem;color:#9ba8d4;display:block;margin:.5rem 0 .25rem;font-weight:600;" for="_lspPf_${f.id}">${lspEsc(f.label)}</label>
+     <input type="${f.type==='number'?'number':'text'}" id="_lspPf_${f.id}" class="lsp-inp" value="${lspEsc(f.value!==undefined&&f.value!==null?f.value:'')}" style="width:100%;" onkeydown="if(event.key==='Enter'){event.preventDefault();_lspPromptAnswer(true);}">`
   ).join('');
   document.getElementById('lspPromptOv').style.display='flex';
-  setTimeout(()=>{ const first=document.getElementById('_lspPf_'+fields[0].id); if(first) first.focus(); },50);
+  setTimeout(()=>{ const first=document.getElementById('_lspPf_'+fields[0].id); if(first){first.focus();first.select&&first.select();} },50);
   _lspPromptCb=onOk;
 }
 function _lspPromptAnswer(ok){
   document.getElementById('lspPromptOv').style.display='none';
-  if(ok&&_lspPromptCb&&_lspPromptFields){
-    const vals={};
-    _lspPromptFields.forEach(f=>{ const el=document.getElementById('_lspPf_'+f.id); vals[f.id]=el?el.value:''; });
-    _lspPromptCb(vals);
-  }
+  const cb=_lspPromptCb,fields=_lspPromptFields;
   _lspPromptCb=null; _lspPromptFields=null;
+  if(ok&&cb&&fields){
+    const vals={};
+    fields.forEach(f=>{ const el=document.getElementById('_lspPf_'+f.id); vals[f.id]=el?el.value:''; });
+    cb(vals);
+  }
 }
 
 // ── Static-asset cache (Phase 1 of the offline/WebView caching plan) ──────
@@ -3371,3 +4069,5 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
+</body>
+</html>

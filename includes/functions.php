@@ -4,9 +4,13 @@
 
 require_once __DIR__ . '/../config/constants.php';
 
-// Sanitize output (XSS safe)
-function e(string $str): string {
-    return htmlspecialchars($str, ENT_QUOTES, 'UTF-8');
+// Sanitize output (XSS safe). Accepts null/int/float too — DB columns such as
+// a category's icon or name can come back NULL, and a strict `string` type here
+// turned that into a fatal TypeError that blanked the whole page (e.g. the
+// editor) instead of just printing an empty value.
+function e(mixed $str): string {
+    if ($str === null || is_array($str) || is_object($str)) return '';
+    return htmlspecialchars((string)$str, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
 /**
@@ -50,7 +54,18 @@ function jsonResponse(bool $success, string $message = '', array $extra = [], in
     // "not take effect" because a stale cached response keeps being served afterward.
     header('Cache-Control: no-store, no-cache, must-revalidate, private, max-age=0');
     header('Pragma: no-cache');
-    echo json_encode(array_merge(['success' => $success, 'message' => $message], $extra));
+    // INVALID_UTF8_SUBSTITUTE: one bad byte in any string (e.g. a pasted name)
+    // used to make json_encode() return false, so the client got an empty body
+    // and showed a generic "Network error" instead of the real result.
+    $json = json_encode(
+        array_merge(['success' => $success, 'message' => $message], $extra),
+        JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE
+    );
+    if ($json === false) {
+        error_log('jsonResponse encode failed: ' . json_last_error_msg());
+        $json = json_encode(['success' => false, 'message' => 'Server could not encode the response.']);
+    }
+    echo $json;
     exit;
 }
 

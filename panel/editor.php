@@ -258,13 +258,24 @@ body.eraser-mode .eraser-cursor { display:block; }
 
 /* ── Canvas Area ─────────────────────────────────── */
 .ed-canvas-area {
+  /* justify-content:flex-start + margin:auto on the wrap: centring with
+     justify-content:center made the left part of a canvas wider than the
+     screen unreachable (it overflowed to the left, where you can't scroll). */
   flex:1; overflow:auto; background:#374151;
-  display:flex; align-items:flex-start; justify-content:center;
+  display:flex; align-items:flex-start; justify-content:flex-start;
   padding:2rem;
   background-image: radial-gradient(circle, #475569 1px, transparent 1px);
   background-size: 24px 24px;
 }
-.canvas-shadow { box-shadow:0 8px 48px rgba(0,0,0,.6), 0 2px 8px rgba(0,0,0,.4); display:inline-block; }
+.canvas-shadow { box-shadow:0 8px 48px rgba(0,0,0,.6), 0 2px 8px rgba(0,0,0,.4); display:inline-block; margin:0 auto; flex-shrink:0; }
+.canvas-shadow.cmyk-sim { filter:saturate(.82) contrast(.96) brightness(.98); }
+.ed-canvas-area.panning, .ed-canvas-area.panning * { cursor:grabbing !important; }
+.layer-item.drag-over { box-shadow:inset 0 2px 0 #6366f1; }
+.layer-item[draggable="true"] { cursor:grab; }
+#edDirtyDot { width:8px; height:8px; border-radius:50%; background:#f59e0b; display:none; box-shadow:0 0 8px #f59e0b; flex-shrink:0; }
+#edDirtyDot.show { display:inline-block; }
+.align-row { display:flex; flex-wrap:wrap; gap:.3rem; margin-top:.4rem; }
+.align-row .align-btn { width:30px; height:28px; }
 
 /* ── Properties Panel ────────────────────────────── */
 .ed-props {
@@ -686,8 +697,9 @@ body.crop-mode .canvas-shadow { outline:2px dashed #f59e0b; outline-offset:2px; 
         <i class="bi bi-plus-lg"></i> New
       </button>
       <div class="ed-divider"></div>
-      <input type="text" id="tplNameInput" class="tpl-name-input"
+      <input type="text" id="tplNameInput" class="tpl-name-input" maxlength="100"
              value="<?= e($tpl['name']) ?>" title="Template name (click to rename)">
+      <span id="edDirtyDot" title="Unsaved changes"></span>
       <span class="ed-cat-tag"><i class="bi <?= e($tpl['cat_icon']) ?> me-1"></i><?= e($tpl['cat_name']) ?></span>
       <span class="ed-size-tag" id="sizeTag"><?= (int)$tpl['canvas_width'] ?> × <?= (int)$tpl['canvas_height'] ?> px</span>
     </div>
@@ -707,7 +719,9 @@ body.crop-mode .canvas-shadow { outline:2px dashed #f59e0b; outline-offset:2px; 
       <div class="ed-divider"></div>
 
       <!-- Zoom -->
-      <select class="zoom-select" id="zoomSel" onchange="setZoom(this.value)" title="Zoom">
+      <select class="zoom-select" id="zoomSel" onchange="setZoom(this.value)" title="Zoom (Ctrl + mouse wheel)">
+        <option value="fit">Fit</option>
+        <option value="0.25">25%</option>
         <option value="0.4">40%</option>
         <option value="0.6">60%</option>
         <option value="0.75">75%</option>
@@ -715,6 +729,7 @@ body.crop-mode .canvas-shadow { outline:2px dashed #f59e0b; outline-offset:2px; 
         <option value="1.25">125%</option>
         <option value="1.5">150%</option>
         <option value="2">200%</option>
+        <option value="3">300%</option>
       </select>
       <div class="ed-divider"></div>
 
@@ -1055,7 +1070,11 @@ body.crop-mode .canvas-shadow { outline:2px dashed #f59e0b; outline-offset:2px; 
             <p>• Arrow keys = Nudge (Shift+Arrow = 10px)</p>
             <p>• Ctrl+Z/Y = Undo/Redo</p>
             <p>• Del = Delete selected</p>
-            <p>• Ctrl+D = Duplicate</p>
+            <p>• Ctrl+D = Duplicate · Ctrl+C / Ctrl+V = Copy / Paste</p>
+            <p>• Ctrl+G = Group · Ctrl+Shift+G = Ungroup</p>
+            <p>• Ctrl + mouse wheel = Zoom · Space + drag = Pan</p>
+            <p>• Paste an image (Ctrl+V) straight from clipboard</p>
+            <p>• Drag layers in the list to reorder · double-click to rename</p>
           </div>
         </div>
       </div>
@@ -1093,6 +1112,20 @@ body.crop-mode .canvas-shadow { outline:2px dashed #f59e0b; outline-offset:2px; 
             <label>Opacity</label>
             <input type="range" id="pOpacity" min="0" max="100" value="100" oninput="applyProp('opacity', this.value/100); document.getElementById('pOpacityVal').textContent = this.value + '%'">
             <span id="pOpacityVal" style="min-width:36px;text-align:right;font-size:.78rem;color:#94a3b8;">100%</span>
+          </div>
+          <div style="font-size:.68rem;color:#64748b;margin:.2rem 0 .1rem;" id="pAlignLbl">Align to canvas</div>
+          <div class="align-row">
+            <button class="align-btn" onclick="alignObj('left')"    title="Align left"><i class="bi bi-align-start"></i></button>
+            <button class="align-btn" onclick="alignObj('hcenter')" title="Align horizontal centre"><i class="bi bi-align-center"></i></button>
+            <button class="align-btn" onclick="alignObj('right')"   title="Align right"><i class="bi bi-align-end"></i></button>
+            <button class="align-btn" onclick="alignObj('top')"     title="Align top"><i class="bi bi-align-top"></i></button>
+            <button class="align-btn" onclick="alignObj('vcenter')" title="Align vertical centre"><i class="bi bi-align-middle"></i></button>
+            <button class="align-btn" onclick="alignObj('bottom')"  title="Align bottom"><i class="bi bi-align-bottom"></i></button>
+            <button class="align-btn" onclick="distributeObjs('h')" title="Distribute horizontally (3+ selected)"><i class="bi bi-distribute-horizontal"></i></button>
+            <button class="align-btn" onclick="distributeObjs('v')" title="Distribute vertically (3+ selected)"><i class="bi bi-distribute-vertical"></i></button>
+            <button class="align-btn" onclick="flipImg('x')" title="Flip horizontal">⇋</button>
+            <button class="align-btn" onclick="flipImg('y')" title="Flip vertical">⥮</button>
+            <button class="align-btn" id="btnLockObj" onclick="toggleLockActive()" title="Lock / unlock (locked objects can't be moved or selected on canvas — unlock from Layers)"><i class="bi bi-lock"></i></button>
           </div>
           <div class="props-row">
             <label>Blend</label>
@@ -1370,17 +1403,6 @@ body.crop-mode .canvas-shadow { outline:2px dashed #f59e0b; outline-offset:2px; 
             <input type="number" class="props-input" id="pTStrokeW" min="0" max="20" value="0" style="width:60px;"
                    oninput="applyTextProp('strokeWidth', +this.value)">
           </div>
-          <div style="margin-top:.5rem;border-top:1px solid #334155;padding-top:.5rem;">
-            <div style="font-size:.68rem;color:#64748b;margin-bottom:.4rem;">Align to Canvas</div>
-            <div class="align-grid">
-              <button class="align-btn" onclick="alignObj('left')"   title="Align Left"><i class="bi bi-align-start"></i></button>
-              <button class="align-btn" onclick="alignObj('hcenter')" title="Align H Center"><i class="bi bi-align-center"></i></button>
-              <button class="align-btn" onclick="alignObj('right')"  title="Align Right"><i class="bi bi-align-end"></i></button>
-              <button class="align-btn" onclick="alignObj('top')"    title="Align Top"><i class="bi bi-align-top"></i></button>
-              <button class="align-btn" onclick="alignObj('vcenter')" title="Align V Center"><i class="bi bi-align-middle"></i></button>
-              <button class="align-btn" onclick="alignObj('bottom')" title="Align Bottom"><i class="bi bi-align-bottom"></i></button>
-            </div>
-          </div>
         </div>
 
         <!-- Image filters (shown only for images) -->
@@ -1513,7 +1535,7 @@ body.crop-mode .canvas-shadow { outline:2px dashed #f59e0b; outline-offset:2px; 
 </div>
 
 <!-- Hidden image upload -->
-<input type="file" id="imgUpload" accept="image/*" style="display:none" onchange="handleImgUpload(event)">
+<input type="file" id="imgUpload" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/bmp" style="display:none" onchange="handleImgUpload(event)">
 
 <!-- Professional Text Warp Modal -->
 <div id="warpModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:2000;align-items:center;justify-content:center;">
@@ -1751,7 +1773,7 @@ body.crop-mode .canvas-shadow { outline:2px dashed #f59e0b; outline-offset:2px; 
         <div class="s3d-ctrl-block">
           <div class="s3d-ctrl-label">Main Text Color</div>
           <div style="display:flex;gap:.4rem;align-items:center;">
-            <input type="color" id="fx3DMainColor" value="#ffffff" oninput="update3DPreview()" style="width:36px;height:30px;border:1px solid #334155;border-radius:6px;cursor:pointer;background:none;padding:1px 2px;">
+            <input type="color" id="fx3DMainColor" value="#ffffff" oninput="setFx3DMainSolid();update3DPreview()" style="width:36px;height:30px;border:1px solid #334155;border-radius:6px;cursor:pointer;background:none;padding:1px 2px;">
             <div id="fx3DColorSwatches" style="display:flex;gap:.25rem;flex-wrap:wrap;">
               <div class="s3d-swatch" style="background:#ffffff;" onclick="setFx3DColor('main','#ffffff')"></div>
               <div class="s3d-swatch" style="background:#fbbf24;" onclick="setFx3DColor('main','#fbbf24')"></div>
@@ -1765,12 +1787,12 @@ body.crop-mode .canvas-shadow { outline:2px dashed #f59e0b; outline-offset:2px; 
             </div>
           </div>
           <!-- Gradient Main -->
-          <div id="fx3DMainGradRow" style="display:none;margin-top:.4rem;display:flex;gap:.3rem;align-items:center;">
+          <div id="fx3DMainGradRow" style="display:none;margin-top:.4rem;gap:.3rem;align-items:center;">
             <input type="color" id="fx3DMainG1" value="#f43f5e" oninput="update3DPreview()" style="width:28px;height:24px;border:1px solid #334155;border-radius:5px;cursor:pointer;background:none;padding:1px 2px;">
             <span style="font-size:.7rem;color:#475569;">→</span>
             <input type="color" id="fx3DMainG2" value="#a855f7" oninput="update3DPreview()" style="width:28px;height:24px;border:1px solid #334155;border-radius:5px;cursor:pointer;background:none;padding:1px 2px;">
             <label style="display:flex;align-items:center;gap:.2rem;font-size:.7rem;color:#94a3b8;cursor:pointer;margin-left:.2rem;">
-              <input type="checkbox" id="fx3DMainGradOn" checked oninput="update3DPreview()"> On
+              <input type="checkbox" id="fx3DMainGradOn" onchange="update3DPreview()"> On
             </label>
           </div>
         </div>
@@ -2084,13 +2106,13 @@ body.crop-mode .canvas-shadow { outline:2px dashed #f59e0b; outline-offset:2px; 
       <div style="margin-bottom:1rem;">
         <label style="font-size:.75rem;color:#64748b;display:block;margin-bottom:.45rem;font-weight:600;">Background Color</label>
         <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;">
-          <input type="color" id="ncBg" value="#ffffff" style="width:40px;height:32px;border:none;border-radius:6px;cursor:pointer;padding:2px;">
+          <input type="color" id="ncBg" value="#ffffff" oninput="ncSetBg(this.value)" style="width:40px;height:32px;border:none;border-radius:6px;cursor:pointer;padding:2px;">
           <div style="display:flex;gap:.3rem;flex-wrap:wrap;">
-            <button onclick="document.getElementById('ncBg').value='#ffffff'" style="width:24px;height:24px;border-radius:5px;background:#ffffff;border:1px solid #475569;cursor:pointer;" title="White"></button>
-            <button onclick="document.getElementById('ncBg').value='#000000'" style="width:24px;height:24px;border-radius:5px;background:#000000;border:1px solid #475569;cursor:pointer;" title="Black"></button>
-            <button onclick="document.getElementById('ncBg').value='#f8fafc'" style="width:24px;height:24px;border-radius:5px;background:#f8fafc;border:1px solid #475569;cursor:pointer;" title="Light Gray"></button>
-            <button onclick="document.getElementById('ncBg').value='#1e293b'" style="width:24px;height:24px;border-radius:5px;background:#1e293b;border:1px solid #475569;cursor:pointer;" title="Dark Blue"></button>
-            <button onclick="document.getElementById('ncBg').value='#fef9c3'" style="width:24px;height:24px;border-radius:5px;background:#fef9c3;border:1px solid #475569;cursor:pointer;" title="Light Yellow"></button>
+            <button onclick="ncSetBg('#ffffff')" style="width:24px;height:24px;border-radius:5px;background:#ffffff;border:1px solid #475569;cursor:pointer;" title="White"></button>
+            <button onclick="ncSetBg('#000000')" style="width:24px;height:24px;border-radius:5px;background:#000000;border:1px solid #475569;cursor:pointer;" title="Black"></button>
+            <button onclick="ncSetBg('#f8fafc')" style="width:24px;height:24px;border-radius:5px;background:#f8fafc;border:1px solid #475569;cursor:pointer;" title="Light Gray"></button>
+            <button onclick="ncSetBg('#1e293b')" style="width:24px;height:24px;border-radius:5px;background:#1e293b;border:1px solid #475569;cursor:pointer;" title="Dark Blue"></button>
+            <button onclick="ncSetBg('#fef9c3')" style="width:24px;height:24px;border-radius:5px;background:#fef9c3;border:1px solid #475569;cursor:pointer;" title="Light Yellow"></button>
             <button onclick="ncSetTransparent()" style="width:24px;height:24px;border-radius:5px;background:repeating-conic-gradient(#ccc 0% 25%,#fff 0% 50%) 0/8px 8px;border:1px solid #475569;cursor:pointer;" title="Transparent"></button>
           </div>
         </div>
@@ -2117,11 +2139,11 @@ body.crop-mode .canvas-shadow { outline:2px dashed #f59e0b; outline-offset:2px; 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:.75rem;">
       <div>
         <label style="font-size:.72rem;color:#64748b;display:block;margin-bottom:.3rem;">Width (px)</label>
-        <input type="number" id="resizeW" class="props-input" min="100" max="5000">
+        <input type="number" id="resizeW" class="props-input" min="100" max="16000">
       </div>
       <div>
         <label style="font-size:.72rem;color:#64748b;display:block;margin-bottom:.3rem;">Height (px)</label>
-        <input type="number" id="resizeH" class="props-input" min="100" max="5000">
+        <input type="number" id="resizeH" class="props-input" min="100" max="16000">
       </div>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.9rem;">
@@ -2243,7 +2265,14 @@ body.crop-mode .canvas-shadow { outline:2px dashed #f59e0b; outline-offset:2px; 
 <script src="<?= BASE_URL ?>/assets/js/idm-poll.js"></script>
 <script src="<?= BASE_URL ?>/assets/js/offline-queue.js?v=4"></script>
 <script>
-const ED = <?= json_encode($editorData) ?>;
+<?php
+// HEX_* flags: a design containing "</script>" or quotes in a text layer can
+// never break out of this <script>; INVALID_UTF8_SUBSTITUTE: one bad byte in
+// a saved design used to make json_encode() return false → "const ED = ;" →
+// a syntax error that left the whole editor blank.
+$edJson = json_encode($editorData, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE);
+?>
+const ED = <?= $edJson ?: '{}' ?>;
 
 // Guard: if Fabric.js failed to load, show error
 if (typeof fabric === 'undefined') {
@@ -2259,6 +2288,10 @@ if (typeof fabric === 'undefined') {
 // ── Canvas init ────────────────────────────────────────────────────
 let canvasW = ED.width  || 856;
 let canvasH = ED.height || 540;
+
+// Image filters on photos larger than 2048px were silently cropped by the
+// default WebGL tile size.
+fabric.textureSize = 4096;
 
 const canvas = new fabric.Canvas('fabricCanvas', {
   width:  canvasW,
@@ -2277,36 +2310,118 @@ document.getElementById('pCanvasW').textContent = canvasW;
 document.getElementById('pCanvasH').textContent = canvasH;
 document.getElementById('sizeTag').textContent  = canvasW + ' × ' + canvasH + ' px';
 
+// ── Small shared helpers ───────────────────────────────────────────
+const TEXT_TYPES = ['i-text','text','textbox'];
+function isTextObj(o) { return !!o && TEXT_TYPES.includes(o.type); }
+function escHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// Custom properties that must survive undo/redo, save, copy & duplicate
+// (placeholder slots used to lose their data.placeholder on duplicate/paste).
+const JSON_PROPS = ['data','selectable','evented','hoverCursor','lockMovementX','lockMovementY','lockRotation','lockScalingX','lockScalingY','hasControls'];
+// Design metadata (DPI, physical size) chosen in "New Canvas". It used to be
+// dropped on the first save, so Print/PDF fell back to 96 DPI afterwards and
+// printed at the wrong physical size.
+let _designMeta = null;
+try { const _j = ED.canvas_json ? JSON.parse(ED.canvas_json) : null; if (_j && _j._meta) _designMeta = _j._meta; } catch (_) {}
+
+/** Full design JSON (objects + size + metadata) — used by save, history, autosave, export. */
+function canvasJSON() {
+  const j = canvas.toJSON(JSON_PROPS);
+  j._size = { w: canvasW, h: canvasH };
+  if (_designMeta) j._meta = Object.assign({}, _designMeta, { dpi: _ncCurrentDpi });
+  else if (_ncCurrentDpi && _ncCurrentDpi !== 96) j._meta = { dpi: _ncCurrentDpi };
+  return j;
+}
+/** Zoom-independent PNG/JPEG export. Fabric scales the on-screen (zoomed)
+ *  size, so exports/thumbnails/PDFs came out smaller whenever you were zoomed
+ *  out (always on phones). Dividing the multiplier by the zoom fixes it. */
+function exportDataURL(opts) {
+  opts = opts || {};
+  const z = canvas.getZoom() || 1;
+  const fmt = opts.format || 'png';
+  const origBg = canvas.backgroundColor;
+  if (fmt === 'jpeg' && (!origBg || origBg === 'transparent')) canvas.backgroundColor = '#ffffff';
+  const hadActive = canvas.getActiveObject();
+  try {
+    return canvas.toDataURL(Object.assign({}, opts, { format: fmt, multiplier: (opts.multiplier || 1) / z }));
+  } finally {
+    canvas.backgroundColor = origBg;
+    if (hadActive) canvas.requestRenderAll();
+  }
+}
+/** Resize the artboard (keeps the current zoom). */
+function resizeCanvasTo(w, h) {
+  canvasW = w; canvasH = h;
+  const z = canvas.getZoom() || 1;
+  canvas.setDimensions({ width: Math.round(w * z), height: Math.round(h * z) });
+  document.getElementById('pCanvasW').textContent = w;
+  document.getElementById('pCanvasH').textContent = h;
+  document.getElementById('sizeTag').textContent  = w + ' × ' + h + ' px';
+}
+/** Load web fonts used by the design, then re-measure text. Fabric caches
+ *  glyph widths, so text first drawn in a fallback font kept a wrong/clipped
+ *  box (and wrong wrapping) even after the real font arrived. */
+function ensureFontsFor(objs) {
+  if (!document.fonts || !document.fonts.load) return Promise.resolve();
+  const fams = new Set();
+  const walk = o => { if (o.type === 'group') o.getObjects().forEach(walk); else if (o.fontFamily) fams.add(o.fontFamily + '|' + (o.fontWeight || 'normal')); };
+  (objs || canvas.getObjects()).forEach(walk);
+  if (!fams.size) return Promise.resolve();
+  return Promise.all([...fams].map(f => { const [fam, w] = f.split('|'); return document.fonts.load(`${w} 32px "${fam}"`).catch(() => {}); }))
+    .then(() => {
+      try { fabric.util.clearFabricFontCache(); } catch (_) {}
+      const fix = o => { if (o.type === 'group') { o.getObjects().forEach(fix); o.dirty = true; } else if (isTextObj(o) && o.initDimensions) { o.initDimensions(); o.setCoords(); o.dirty = true; } };
+      (objs || canvas.getObjects()).forEach(fix);
+      canvas.requestRenderAll();
+    });
+}
+
+// ── Dirty state (unsaved changes) ──────────────────────────────────
+let _dirty = false;
+function markDirty() { _dirty = true; document.getElementById('edDirtyDot')?.classList.add('show'); }
+function markClean() { _dirty = false; document.getElementById('edDirtyDot')?.classList.remove('show'); clearAutoSave(); }
+window.addEventListener('beforeunload', e => { if (_dirty) { e.preventDefault(); e.returnValue = ''; } });
+
 // ── History ────────────────────────────────────────────────────────
 const hist = { states: [], idx: -1, locked: false };
 
 function histSave() {
   if (hist.locked) return;
-  const json = JSON.stringify(canvas.toJSON(['data','selectable','evented','hoverCursor']));
+  clearTimeout(_histSoonT);
+  const json = JSON.stringify(canvasJSON());
+  if (hist.idx >= 0 && hist.states[hist.idx] === json) return;   // nothing actually changed
   hist.states.splice(hist.idx + 1);
   hist.states.push(json);
   if (hist.states.length > 60) hist.states.shift(); else hist.idx++;
+  if (hist.states.length > 1) markDirty();
   syncHistBtns();
 }
+// Coalesce rapid slider/typing changes into one undo step (property edits
+// were never recorded before, so Undo skipped straight past them).
+let _histSoonT = null;
+function histSaveSoon() { if (hist.locked) return; clearTimeout(_histSoonT); _histSoonT = setTimeout(histSave, 350); }
 
-function histUndo() {
-  if (hist.idx <= 0) return;
-  hist.idx--;
+function _histRestore(json) {
   hist.locked = true;
-  canvas.loadFromJSON(hist.states[hist.idx], () => {
+  let size = null;
+  try { size = JSON.parse(json)._size || null; } catch (_) {}
+  // Canvas size is part of each step now — undoing a Crop/Resize used to leave
+  // the old objects on the new, wrong-sized canvas.
+  if (size && (size.w !== canvasW || size.h !== canvasH)) resizeCanvasTo(size.w, size.h);
+  canvas.loadFromJSON(json, () => {
     canvas.renderAll(); hist.locked = false;
-    refreshProps(); refreshLayers(); syncHistBtns();
+    refreshProps(); refreshLayers(); syncHistBtns(); markDirty();
   });
 }
-
+function histUndo() {
+  if (hist.idx <= 0 || hist.locked) return;
+  clearTimeout(_histSoonT);
+  hist.idx--;
+  _histRestore(hist.states[hist.idx]);
+}
 function histRedo() {
-  if (hist.idx >= hist.states.length - 1) return;
+  if (hist.idx >= hist.states.length - 1 || hist.locked) return;
   hist.idx++;
-  hist.locked = true;
-  canvas.loadFromJSON(hist.states[hist.idx], () => {
-    canvas.renderAll(); hist.locked = false;
-    refreshProps(); refreshLayers(); syncHistBtns();
-  });
+  _histRestore(hist.states[hist.idx]);
 }
 
 function syncHistBtns() {
@@ -2315,24 +2430,30 @@ function syncHistBtns() {
 }
 
 // ── Auto-save & Session Recovery ──────────────────────────────────
+// Keyed by template AND gallery item — every gallery design has ED.id = 0, so
+// they all shared one slot and one design's recovery was offered on another.
+const AUTOSAVE_KEY  = 'editor_autosave_' + ED.id + '_' + (ED.gallery_id || 0);
+const AUTOSAVE_TKEY = AUTOSAVE_KEY + '_time';
+function clearAutoSave() { try { localStorage.removeItem(AUTOSAVE_KEY); localStorage.removeItem(AUTOSAVE_TKEY); } catch (_) {} }
 function checkAutoSave(onDone) {
-  const key  = 'editor_autosave_' + ED.id;
-  const tkey = 'editor_autosave_time_' + ED.id;
-  const saved = localStorage.getItem(key);
-  const time  = localStorage.getItem(tkey);
+  let saved = null, time = null;
+  try { saved = localStorage.getItem(AUTOSAVE_KEY); time = localStorage.getItem(AUTOSAVE_TKEY); } catch (_) {}
   if (!saved || !time) { onDone(false); return; }
-  if (Date.now() - +time > 24 * 60 * 60 * 1000) { localStorage.removeItem(key); localStorage.removeItem(tkey); onDone(false); return; }
-  const ago = Math.round((Date.now() - +time) / 60000);
-  edConfirm('Auto-save found (' + ago + ' min ago). Recover session?', () => {
+  if (Date.now() - +time > 24 * 60 * 60 * 1000) { clearAutoSave(); onDone(false); return; }
+  const mins = Math.max(1, Math.round((Date.now() - +time) / 60000));
+  edConfirm('Unsaved work from ' + mins + ' min ago was found for this design. Recover it?', () => {
     hist.locked = true;
+    let size = null; try { size = JSON.parse(saved)._size; } catch (_) {}
+    if (size && size.w && size.h) resizeCanvasTo(size.w, size.h);
     canvas.loadFromJSON(saved, () => {
       canvas.renderAll(); hist.locked = false;
-      histSave(); refreshLayers();
+      histSave(); refreshLayers(); markDirty(); fitZoomIfNeeded();
+      ensureFontsFor();
       showToast('Session recovered!');
     });
     onDone(true);
   }, () => {
-    localStorage.removeItem(key); localStorage.removeItem(tkey);
+    clearAutoSave();
     onDone(false);
   });
 }
@@ -2344,11 +2465,13 @@ function initEditor() {
 function _loadNormalContent() {
   if (ED.canvas_json) {
     hist.locked = true;
+    let size = null; try { size = JSON.parse(ED.canvas_json)._size; } catch (_) {}
+    if (size && size.w && size.h && (size.w !== canvasW || size.h !== canvasH)) resizeCanvasTo(size.w, size.h);
     canvas.loadFromJSON(ED.canvas_json, () => {
       canvas.renderAll(); hist.locked = false;
-      histSave(); refreshLayers();
-      if (ED.auto_download) setTimeout(exportPng, 600);
-    });
+      histSave(); refreshLayers(); markClean();
+      ensureFontsFor().then(() => { if (ED.auto_download) setTimeout(exportPng, 300); });
+    }, (o, obj) => { /* reviver: nothing */ });
   } else if (ED.bg_image) {
     const imgEl = new Image();
     imgEl.crossOrigin = 'anonymous';
@@ -2358,21 +2481,20 @@ function _loadNormalContent() {
       const scale = Math.min(canvasW / fImg.width, canvasH / fImg.height);
       fImg.scale(scale);
       fImg.set({ left: canvasW / 2, top: canvasH / 2, originX: 'center', originY: 'center' });
-      canvas.add(fImg);
-      canvas.sendToBack(fImg);
+      hist.locked = true; canvas.add(fImg); canvas.sendToBack(fImg); hist.locked = false;
       canvas.renderAll();
-      histSave(); refreshLayers();
+      histSave(); refreshLayers(); markClean();
     };
-    imgEl.onerror = () => { canvas.renderAll(); histSave(); };
+    imgEl.onerror = () => { canvas.renderAll(); histSave(); markClean(); showToast('Template background image could not be loaded', 'err'); };
     imgEl.src = ED.bg_image;
   } else {
     canvas.renderAll();
-    histSave();
+    histSave(); markClean();
   }
 }
 
 // ── Canvas events ──────────────────────────────────────────────────
-let snapGuides  = [];
+let snapGuides  = [];   // [{t:'v'|'h', p:number}] — drawn as an overlay, never added as objects
 let cropRect    = null;
 let isCropping  = false;
 
@@ -2387,16 +2509,69 @@ let snapEnabled = true;
 canvas.on('object:added',    () => { histSave(); refreshLayers(); });
 canvas.on('object:modified', () => { histSave(); refreshLayers(); refreshProps(); });
 canvas.on('object:removed',  () => { histSave(); refreshLayers(); });
-canvas.on('selection:created', e  => refreshProps(e.selected?.[0]));
-canvas.on('selection:updated', e  => refreshProps(e.selected?.[0]));
-canvas.on('selection:cleared', () => refreshProps(null));
+canvas.on('selection:created', e  => { refreshProps(e.selected?.[0]); refreshLayers(); });
+canvas.on('selection:updated', e  => { refreshProps(e.selected?.[0]); refreshLayers(); });
+canvas.on('selection:cleared', () => { refreshProps(null); refreshLayers(); });
+// Typing in a text box was never an undo step.
+canvas.on('text:editing:exited', () => { histSave(); refreshLayers(); });
+canvas.on('text:changed', () => markDirty());
+
+// Grid, smart-snap guides, print guides and the accessibility/resolution
+// highlights are painted on top of the canvas instead of being added as real
+// objects. As objects they flooded the undo history, showed up in Select-All,
+// and an Undo could resurrect them as permanent lines saved into the design.
+let _flagBoxes = [];   // [{obj, color}] temporary highlight boxes
+canvas.on('after:render', opt => {
+  if (opt.ctx !== canvas.contextContainer) return;   // skip exports (toDataURL also fires after:render)
+  if (!gridOn && !snapGuides.length && !printGuidesOn && !_flagBoxes.length) return;
+  const ctx = opt.ctx, v = canvas.viewportTransform, z = v[0] || 1;
+  ctx.save();
+  ctx.transform(v[0], v[1], v[2], v[3], v[4], v[5]);
+  if (gridOn) {
+    let step = 20; while (canvasW / step > 300 || canvasH / step > 300) step *= 2;
+    ctx.strokeStyle = 'rgba(99,102,241,.28)'; ctx.lineWidth = 1 / z;
+    ctx.beginPath();
+    for (let x = step; x < canvasW; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, canvasH); }
+    for (let y = step; y < canvasH; y += step) { ctx.moveTo(0, y); ctx.lineTo(canvasW, y); }
+    ctx.stroke();
+  }
+  if (printGuidesOn) {
+    const bp = mmToPx(BLEED_MM), sp = mmToPx(SAFE_MM);
+    ctx.lineWidth = 1.5 / z; ctx.setLineDash([6 / z, 4 / z]);
+    ctx.strokeStyle = '#ef4444'; ctx.strokeRect(bp, bp, canvasW - bp * 2, canvasH - bp * 2);   // trim line (bleed zone outside)
+    ctx.strokeStyle = '#22c55e'; ctx.strokeRect(sp, sp, canvasW - sp * 2, canvasH - sp * 2);                 // safe area for text
+    ctx.setLineDash([]);
+  }
+  if (snapGuides.length) {
+    ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 1 / z; ctx.setLineDash([5 / z, 4 / z]);
+    snapGuides.forEach(g => { ctx.beginPath(); if (g.t === 'v') { ctx.moveTo(g.p, 0); ctx.lineTo(g.p, canvasH); } else { ctx.moveTo(0, g.p); ctx.lineTo(canvasW, g.p); } ctx.stroke(); });
+    ctx.setLineDash([]);
+  }
+  _flagBoxes.forEach(f => {
+    if (!canvas.contains(f.obj)) return;
+    const b = f.obj.getBoundingRect(true, true);
+    ctx.strokeStyle = f.color; ctx.lineWidth = 3 / z; ctx.setLineDash([]);
+    ctx.strokeRect(b.left - 3 / z, b.top - 3 / z, b.width + 6 / z, b.height + 6 / z);
+  });
+  ctx.restore();
+});
+/** Temporarily outline objects (accessibility / resolution checks) without modifying them. */
+function flagObjects(objs, color, ms) {
+  _flagBoxes = objs.map(obj => ({ obj, color: color || '#ef4444' }));
+  canvas.requestRenderAll();
+  clearTimeout(flagObjects._t);
+  flagObjects._t = setTimeout(() => { _flagBoxes = []; canvas.requestRenderAll(); }, ms || 8000);
+}
 
 // ── Tools ──────────────────────────────────────────────────────────
 function addText() {
+  if (canvas.isDrawingMode || activeTool !== 'select') setActiveTool('select');
+  // canvasW/H (design units) — canvas.width is the ZOOMED size, so new text
+  // used to land off-centre whenever the view was zoomed.
   const t = new fabric.IText('Enter text here', {
-    left: canvas.width / 2, top: canvas.height / 2,
+    left: canvasW / 2, top: canvasH / 2,
     originX: 'center', originY: 'center',
-    fontSize: 28, fontFamily: 'Noto Sans', fill: '#1f2937',
+    fontSize: Math.max(12, Math.round(Math.min(canvasW, canvasH) * 0.05)), fontFamily: 'Noto Sans', fill: '#1f2937',
     editable: true,
   });
   canvas.add(t).setActiveObject(t).renderAll();
@@ -2404,12 +2579,16 @@ function addText() {
 }
 
 function addShape(type) {
+  if (canvas.isDrawingMode || activeTool !== 'select') setActiveTool('select');
   const cx = canvasW / 2, cy = canvasH / 2;
-  const base = { left:cx, top:cy, originX:'center', originY:'center', fill:'#4f46e5' };
+  // Shapes scale with the canvas — on a 300-DPI A4 a 180px rectangle was a speck.
+  const k = Math.max(1, Math.min(canvasW, canvasH) / 540);
+  const base = { left:cx, top:cy, originX:'center', originY:'center', fill:'#4f46e5', scaleX:k, scaleY:k };
   const polyN = (n, r) => { const pp=[]; for(let i=0;i<n;i++){const a=(i*2*Math.PI/n)-Math.PI/2;pp.push({x:r*Math.cos(a),y:r*Math.sin(a)});} return pp; };
   const addPoly = (pts, extra={}) => { const o=new fabric.Polygon(pts,{...base,...extra}); canvas.add(o).setActiveObject(o).renderAll(); };
   const addSVGShape = (svgStr, extra={}) => fabric.loadSVGFromString(svgStr, svg => {
-    const o = svg[0]; o.set({...base,...extra}); canvas.add(o).setActiveObject(o).renderAll();
+    if (!svg || !svg[0]) { showToast('Shape failed to load', 'err'); return; }
+    const o = svg[0]; o.set({...base,...extra, scaleX:(extra.scaleX||1)*k, scaleY:(extra.scaleY||1)*k}); canvas.add(o).setActiveObject(o).renderAll();
   });
 
   let obj;
@@ -2418,7 +2597,7 @@ function addShape(type) {
     case 'circle':  obj = new fabric.Circle({...base, radius:70}); break;
     case 'ellipse': obj = new fabric.Ellipse({...base, rx:90, ry:50}); break;
     case 'tri':     obj = new fabric.Triangle({...base, width:130, height:110}); break;
-    case 'line':    obj = new fabric.Line([cx-80,cy,cx+80,cy], {stroke:'#1f2937',strokeWidth:3}); break;
+    case 'line':    obj = new fabric.Line([-80,0,80,0], {left:cx, top:cy, originX:'center', originY:'center', stroke:'#1f2937', strokeWidth:3*k, scaleX:k, scaleY:1}); break;
     case 'star':    addPoly(starPoints(0,0,70,30,5)); return;
     case 'heart':   addSVGShape('<svg><path d="M 0,-30 C -5,-60 -50,-60 -50,-20 C -50,20 0,50 0,70 C 0,50 50,20 50,-20 C 50,-60 5,-60 0,-30 Z"/></svg>', {fill:'#ef4444',scaleX:.8,scaleY:.8}); return;
     case 'arrow':   addPoly([{x:-80,y:-15},{x:20,y:-15},{x:20,y:-35},{x:80,y:0},{x:20,y:35},{x:20,y:15},{x:-80,y:15}]); return;
@@ -2464,7 +2643,7 @@ function addShape(type) {
 }
 
 function addPlaceholder(kind) {
-  const cx = canvas.width / 2, cy = canvas.height / 2;
+  const cx = canvasW / 2, cy = canvasH / 2;
   const configs = {
     photo:   { w:110, h:140, label:'PHOTO',     dash:[6,4] },
     qr:      { w:100, h:100, label:'QR CODE',   dash:[4,3] },
@@ -2472,29 +2651,56 @@ function addPlaceholder(kind) {
     sign:    { w:160, h:50,  label:'SIGNATURE', dash:[4,3] },
   };
   const cfg = configs[kind];
+  if (!cfg) return;
   const grp = new fabric.Group([
-    new fabric.Rect({ width:cfg.w, height:cfg.h, fill:'#1e293b', stroke:'#64748b', strokeWidth:1.5, strokeDashArray:cfg.dash, rx:4, ry:4 }),
+    new fabric.Rect({ width:cfg.w, height:cfg.h, fill:'#1e293b', stroke:'#64748b', strokeWidth:1.5, strokeDashArray:cfg.dash, rx:4, ry:4, originX:'center', originY:'center' }),
     new fabric.Text(cfg.label, { fontSize:11, fontFamily:'Arial', fill:'#64748b', originX:'center', originY:'center', selectable:false, evented:false }),
   ], { left:cx, top:cy, originX:'center', originY:'center', data:{ placeholder: kind } });
   canvas.add(grp).setActiveObject(grp).renderAll();
 }
 
-function handleImgUpload(e) {
-  const file = e.target.files[0];
+/* Read an image File, validate it, and downscale anything above 6000px
+   (a 48 MP phone photo used to freeze the tab and bloat the saved design). */
+function _readImageFile(file, cb) {
   if (!file) return;
+  if (!/^image\//.test(file.type)) { showToast('Please choose an image file (PNG, JPG, WebP, SVG)', 'err'); return; }
+  if (file.size > 30 * 1024 * 1024) { showToast('Image is too large (max 30 MB)', 'err'); return; }
   const reader = new FileReader();
+  reader.onerror = () => showToast('Could not read that file', 'err');
   reader.onload = ev => {
     const imgEl = new Image();
     imgEl.onload = () => {
-      const fImg = new fabric.Image(imgEl);
-      _placeImage(fImg);
+      const MAX = 6000;
+      if (file.type !== 'image/svg+xml' && (imgEl.naturalWidth > MAX || imgEl.naturalHeight > MAX)) {
+        const k = MAX / Math.max(imgEl.naturalWidth, imgEl.naturalHeight);
+        const c = document.createElement('canvas');
+        c.width = Math.round(imgEl.naturalWidth * k); c.height = Math.round(imgEl.naturalHeight * k);
+        const cx = c.getContext('2d'); cx.imageSmoothingQuality = 'high'; cx.drawImage(imgEl, 0, 0, c.width, c.height);
+        const small = new Image(); small.onload = () => cb(small); small.src = c.toDataURL(file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png', 0.92);
+        showToast('Large photo scaled to ' + c.width + '×' + c.height + ' px', 'info');
+      } else cb(imgEl);
     };
     imgEl.onerror = () => showToast('Image failed to load', 'err');
     imgEl.src = ev.target.result;
   };
   reader.readAsDataURL(file);
-  e.target.value = '';
 }
+function handleImgUpload(e) {
+  const file = e.target.files[0];
+  e.target.value = '';
+  _readImageFile(file, imgEl => _placeImage(new fabric.Image(imgEl), file.name));
+}
+
+// Paste an image straight from the clipboard (screenshot, copied photo…).
+document.addEventListener('paste', e => {
+  const tag = (document.activeElement || {}).tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || canvas.getActiveObject()?.isEditing) return;
+  const items = [...(e.clipboardData?.items || [])];
+  const img = items.find(i => i.kind === 'file' && /^image\//.test(i.type));
+  if (!img) return;
+  e.preventDefault();
+  _readImageFile(img.getAsFile(), el => _placeImage(new fabric.Image(el), 'Pasted image'));
+});
 
 function openUrlModal() {
   closeEdPanel();
@@ -2506,33 +2712,38 @@ function openUrlModal() {
 function addImageFromURL() {
   const url = document.getElementById('urlInput').value.trim();
   if (!url) return;
+  if (!/^(https?:)?\/\//i.test(url) && !/^data:image\//i.test(url)) { showToast('Enter a full image link starting with https://', 'err'); return; }
   document.getElementById('urlModal').style.display = 'none';
   document.getElementById('urlInput').value = '';
   showToast('Loading image…');
 
-  // Use a PHP proxy to avoid CORS for external URLs
+  // Use a PHP proxy to avoid CORS for external URLs (and so exports don't get
+  // blocked by a "tainted" canvas).
   const proxyUrl = '<?= BASE_URL ?>/api/img_proxy.php?url=' + encodeURIComponent(url);
   const imgEl = new Image();
+  imgEl.crossOrigin = 'anonymous';
   imgEl.onload = () => {
     const fImg = new fabric.Image(imgEl);
-    _placeImage(fImg);
+    _placeImage(fImg, 'Web image');
   };
   imgEl.onerror = () => {
     // Try direct load as fallback (for same-origin or CORS-enabled images)
     const imgEl2 = new Image();
     imgEl2.crossOrigin = 'anonymous';
-    imgEl2.onload = () => { const fImg = new fabric.Image(imgEl2); _placeImage(fImg); };
-    imgEl2.onerror = () => showToast('Image failed to load. Check the URL.', 'err');
+    imgEl2.onload = () => { const fImg = new fabric.Image(imgEl2); _placeImage(fImg, 'Web image'); };
+    imgEl2.onerror = () => showToast('Image failed to load. Check the link (it must point directly to an image).', 'err');
     imgEl2.src = url;
   };
   imgEl.src = proxyUrl;
 }
 
-function _placeImage(fImg) {
+function _placeImage(fImg, name) {
+  if (activeTool !== 'select') setActiveTool('select');
   const maxW = canvasW * 0.6, maxH = canvasH * 0.6;
   if (fImg.width > maxW)              fImg.scaleToWidth(maxW);
   if (fImg.getScaledHeight() > maxH)  fImg.scaleToHeight(maxH);
   fImg.set({ left: canvasW / 2, top: canvasH / 2, originX: 'center', originY: 'center' });
+  if (name) fImg.data = Object.assign({}, fImg.data, { name: String(name).replace(/\.[^.]+$/, '').slice(0, 30) });
   canvas.add(fImg).setActiveObject(fImg).renderAll();
   showToast('Image added!');
 }
@@ -2553,14 +2764,7 @@ function applyImgFilter() {
   const vv  = +(document.getElementById('fVibrance')?.value  || 0);
   const gv  = +(document.getElementById('fGamma')?.value     || 1);
 
-  document.getElementById('fBrightVal').textContent   = bv.toFixed(2);
-  document.getElementById('fContrastVal').textContent  = cv.toFixed(2);
-  document.getElementById('fSatVal').textContent       = sv.toFixed(2);
-  document.getElementById('fBlurVal').textContent      = blv.toFixed(2);
-  document.getElementById('fNoiseVal').textContent     = Math.round(nv);
-  const hEl = document.getElementById('fHueVal');      if (hEl) hEl.textContent = hv;
-  const vEl = document.getElementById('fVibranceVal'); if (vEl) vEl.textContent = vv.toFixed(2);
-  const gEl = document.getElementById('fGammaVal');    if (gEl) gEl.textContent = gv.toFixed(1);
+  _syncImgFilterLabels();
 
   const filters = [];
   if (bv  !== 0) filters.push(new fabric.Image.filters.Brightness({ brightness: bv }));
@@ -2568,7 +2772,7 @@ function applyImgFilter() {
   if (sv  !== 0) filters.push(new fabric.Image.filters.Saturation({ saturation: sv }));
   if (blv > 0)   filters.push(new fabric.Image.filters.Blur({ blur: blv }));
   if (nv  > 0)   filters.push(new fabric.Image.filters.Noise({ noise: nv }));
-  if (hv  !== 0) filters.push(new fabric.Image.filters.HueRotation({ rotation: hv * Math.PI / 180 }));
+  if (hv  !== 0) filters.push(new fabric.Image.filters.HueRotation({ rotation: hv / 180 }));
   if (vv  !== 0) filters.push(new fabric.Image.filters.Vibrance({ vibrance: vv }));
   if (gv  !== 1) filters.push(new fabric.Image.filters.Gamma({ gamma: [gv, gv, gv] }));
   if (imgPresets.gray)    filters.push(new fabric.Image.filters.Grayscale());
@@ -2578,8 +2782,50 @@ function applyImgFilter() {
   if (imgPresets.polaroid) { try { filters.push(new fabric.Image.filters.Polaroid()); } catch(e) {} }
 
   obj.filters = filters;
-  obj.applyFilters();
+  try { obj.applyFilters(); } catch (e) { showToast('This image cannot be filtered (it is from another website)', 'err'); return; }
   canvas.renderAll();
+  histSaveSoon();
+}
+function _syncImgFilterLabels() {
+  const g = id => document.getElementById(id);
+  g('fBrightVal').textContent   = (+g('fBright').value).toFixed(2);
+  g('fContrastVal').textContent = (+g('fContrast').value).toFixed(2);
+  g('fSatVal').textContent      = (+g('fSat').value).toFixed(2);
+  g('fBlurVal').textContent     = (+g('fBlur').value).toFixed(2);
+  g('fNoiseVal').textContent    = Math.round(+g('fNoise').value);
+  if (g('fHueVal'))      g('fHueVal').textContent      = g('fHue').value;
+  if (g('fVibranceVal')) g('fVibranceVal').textContent = (+g('fVibrance').value).toFixed(2);
+  if (g('fGammaVal'))    g('fGammaVal').textContent    = (+g('fGamma').value).toFixed(1);
+}
+/* Show the SELECTED image's own filter values. The sliders used to keep the
+   previous image's values, and touching one slider then stamped all of them
+   (brightness, blur, sepia…) onto the newly selected image. */
+function syncImgFilterUI(obj) {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  const vals = { fBright:0, fContrast:0, fSat:0, fBlur:0, fNoise:0, fHue:0, fVibrance:0, fGamma:1 };
+  imgPresets = { gray:false, sepia:false, invert:false, vintage:false, polaroid:false };
+  (obj.filters || []).forEach(f => {
+    if (!f) return;
+    switch (f.type) {
+      case 'Brightness':  vals.fBright = f.brightness; break;
+      case 'Contrast':    vals.fContrast = f.contrast; break;
+      case 'Saturation':  vals.fSat = f.saturation; break;
+      case 'Blur':        vals.fBlur = f.blur; break;
+      case 'Noise':       vals.fNoise = f.noise; break;
+      case 'HueRotation': vals.fHue = Math.round(f.rotation * 180); break;
+      case 'Vibrance':    vals.fVibrance = f.vibrance; break;
+      case 'Gamma':       vals.fGamma = (f.gamma && f.gamma[0]) || 1; break;
+      case 'Grayscale':   imgPresets.gray = true; break;
+      case 'Sepia':       imgPresets.sepia = true; break;
+      case 'Invert':      imgPresets.invert = true; break;
+      case 'Vintage':     imgPresets.vintage = true; break;
+      case 'Polaroid':    imgPresets.polaroid = true; break;
+    }
+  });
+  Object.entries(vals).forEach(([k, v]) => set(k, v));
+  ['gray','sepia','invert','vintage','polaroid'].forEach(n =>
+    document.getElementById('btn' + n.charAt(0).toUpperCase() + n.slice(1))?.classList.toggle('active', imgPresets[n]));
+  _syncImgFilterLabels();
 }
 
 function toggleImgPreset(name) {
@@ -2593,106 +2839,110 @@ function resetImgFilters() {
   imgPresets = { gray: false, sepia: false, invert: false, vintage: false, polaroid: false };
   ['btnGray','btnSepia','btnInvert','btnVintage','btnPolaroid']
     .forEach(id => document.getElementById(id)?.classList.remove('active'));
-  document.getElementById('fBright').value   = 0;
-  document.getElementById('fContrast').value = 0;
-  document.getElementById('fSat').value      = 0;
-  document.getElementById('fBlur').value     = 0;
-  document.getElementById('fNoise').value    = 0;
-  const fH = document.getElementById('fHue');      if (fH) { fH.value = 0;    document.getElementById('fHueVal').textContent      = '0'; }
-  const fV = document.getElementById('fVibrance'); if (fV) { fV.value = 0;    document.getElementById('fVibranceVal').textContent = '0'; }
-  const fG = document.getElementById('fGamma');    if (fG) { fG.value = 1;    document.getElementById('fGammaVal').textContent    = '1'; }
+  ['fBright','fContrast','fSat','fBlur','fNoise','fHue','fVibrance'].forEach(id => { const el = document.getElementById(id); if (el) el.value = 0; });
+  const fG = document.getElementById('fGamma'); if (fG) fG.value = 1;
   applyImgFilter();
 }
 
 function flipImg(axis) {
-  const obj = canvas.getActiveObject();
-  if (!obj) return;
-  if (axis === 'x') obj.set('flipX', !obj.flipX);
-  else              obj.set('flipY', !obj.flipY);
+  const objs = canvas.getActiveObjects();
+  if (!objs.length) { showToast('Select an object first', 'info'); return; }
+  objs.forEach(obj => { if (axis === 'x') obj.set('flipX', !obj.flipX); else obj.set('flipY', !obj.flipY); });
   canvas.renderAll(); histSave();
 }
 
 function deleteSelected() {
   const objs = canvas.getActiveObjects();
   if (!objs.length) return;
+  if (canvas.getActiveObject()?.isEditing) return;
+  hist.locked = true;
   canvas.discardActiveObject();
   objs.forEach(o => canvas.remove(o));
-  canvas.renderAll();
+  hist.locked = false;
+  canvas.renderAll(); histSave(); refreshLayers();
+  showToast(objs.length > 1 ? objs.length + ' items deleted (Ctrl+Z to undo)' : 'Deleted (Ctrl+Z to undo)');
 }
 
+/* Clone + place. Works for multi-selections too: before, duplicating or
+   pasting several objects added a broken, empty "selection" object. */
+function _placeClone(clone, dx, dy) {
+  canvas.discardActiveObject();
+  clone.set({ left: clone.left + dx, top: clone.top + dy, evented: true });
+  hist.locked = true;
+  if (clone.type === 'activeSelection') {
+    clone.canvas = canvas;
+    clone.forEachObject(o => canvas.add(o));
+    clone.setCoords();
+  } else {
+    canvas.add(clone);
+  }
+  hist.locked = false;
+  canvas.setActiveObject(clone).requestRenderAll();
+  histSave(); refreshLayers();
+}
 function dupSelected() {
   const obj = canvas.getActiveObject();
-  if (!obj) return;
-  obj.clone(clone => {
-    clone.set({ left: obj.left + 22, top: obj.top + 22 });
-    canvas.add(clone).setActiveObject(clone).renderAll();
-  });
+  if (!obj) { showToast('Select something to duplicate', 'info'); return; }
+  obj.clone(clone => _placeClone(clone, 22, 22), JSON_PROPS);
 }
 
 // ── Clipboard ──────────────────────────────────────────────────────
-let clipboard = null;
+let clipboard = null, _pasteN = 0;
 
 function copySelected() {
   const obj = canvas.getActiveObject();
   if (!obj) return;
-  obj.clone(cl => { clipboard = cl; showToast('Copied!'); });
+  obj.clone(cl => { clipboard = cl; _pasteN = 0; showToast('Copied!'); }, JSON_PROPS);
 }
 
 function cutSelected() {
   const obj = canvas.getActiveObject();
   if (!obj) return;
   obj.clone(cl => {
-    clipboard = cl;
+    clipboard = cl; _pasteN = 0;
     deleteSelected();
     showToast('Cut!');
-  });
+  }, JSON_PROPS);
 }
 
 function pasteSelected() {
   if (!clipboard) { showToast('Clipboard empty', 'info'); return; }
-  clipboard.clone(cl => {
-    cl.set({ left: (cl.left || canvasW/2) + 30, top: (cl.top || canvasH/2) + 30, selectable: true, evented: true });
-    canvas.add(cl).setActiveObject(cl).renderAll();
-    histSave();
-    showToast('Pasted!');
-  });
+  _pasteN++;
+  // Each paste lands a little further away, instead of stacking on the same spot.
+  clipboard.clone(cl => { _placeClone(cl, 25 * _pasteN, 25 * _pasteN); showToast('Pasted!'); }, JSON_PROPS);
 }
 
 // ── Group / Ungroup ────────────────────────────────────────────────
+// Fabric's own toGroup()/toActiveSelection() keep every object exactly where
+// it was; the manual matrix math before shifted rotated/flipped children.
 function groupSelected() {
-  const objs = canvas.getActiveObjects();
-  if (objs.length < 2) { showToast('Select 2+ objects to group', 'info'); return; }
-  canvas.discardActiveObject();
-  const grp = new fabric.Group(objs, { originX:'center', originY:'center' });
-  objs.forEach(o => canvas.remove(o));
-  canvas.add(grp).setActiveObject(grp).renderAll();
-  histSave(); showToast('Grouped!');
+  const a = canvas.getActiveObject();
+  if (!a || a.type !== 'activeSelection') { showToast('Select 2+ objects to group (Shift+click)', 'info'); return; }
+  hist.locked = true;
+  a.toGroup();
+  hist.locked = false;
+  canvas.requestRenderAll();
+  histSave(); refreshLayers(); refreshProps();
+  showToast('Grouped!');
 }
 
 function ungroupSelected() {
   const obj = canvas.getActiveObject();
   if (!obj || obj.type !== 'group') { showToast('Select a group to ungroup', 'info'); return; }
-  const matrix = obj.calcTransformMatrix();
-  const items  = obj.getObjects();
-  obj.destroy();
-  canvas.remove(obj);
-  items.forEach(item => {
-    const pt = fabric.util.transformPoint({ x: item.left, y: item.top }, matrix);
-    item.left = pt.x; item.top = pt.y;
-    item.scaleX *= obj.scaleX; item.scaleY *= obj.scaleY;
-    item.angle  += obj.angle;
-    canvas.add(item); item.setCoords();
-  });
-  canvas.discardActiveObject().renderAll();
-  histSave(); showToast('Ungrouped!');
+  hist.locked = true;
+  obj.toActiveSelection();
+  hist.locked = false;
+  canvas.requestRenderAll();
+  histSave(); refreshLayers(); refreshProps();
+  showToast('Ungrouped!');
 }
 
 // ── Text Background ────────────────────────────────────────────────
 function applyTextBg(color) {
-  const obj = canvas.getActiveObject();
-  if (!obj || !['i-text','text','textbox'].includes(obj.type)) return;
-  obj.set('textBackgroundColor', color);
-  canvas.renderAll(); histSave();
+  const objs = canvas.getActiveObjects().filter(isTextObj);
+  if (!objs.length) return;
+  objs.forEach(o => o.set('textBackgroundColor', color === 'transparent' ? '' : color));
+  canvas.renderAll(); histSaveSoon();
 }
 
 // ── Canvas Resize ──────────────────────────────────────────────────
@@ -2709,44 +2959,38 @@ function applyResize() {
   const w = parseInt(document.getElementById('resizeW').value, 10);
   const h = parseInt(document.getElementById('resizeH').value, 10);
   if (!w || !h || w < 100 || h < 100) { showToast('Min 100px required', 'err'); return; }
-  canvasW = w; canvasH = h;
-  canvas.setWidth(w); canvas.setHeight(h);
-  document.getElementById('pCanvasW').textContent = w;
-  document.getElementById('pCanvasH').textContent = h;
-  document.getElementById('sizeTag').textContent  = w + ' × ' + h + ' px';
+  if (w > NC_MAX_PX || h > NC_MAX_PX) { showToast('Max ' + NC_MAX_PX + 'px per side', 'err'); return; }
+  resizeCanvasTo(w, h);
   canvas.renderAll(); histSave();
   document.getElementById('resizeModal').style.display = 'none';
   showToast('Canvas resized to ' + w + '×' + h + 'px');
-  mobileFitZoom();
+  fitZoomIfNeeded(true);
 }
 
 // ── Export SVG / JSON ──────────────────────────────────────────────
+function _fileBase() {
+  return ((document.getElementById('tplNameInput').value || '').trim() || 'template').replace(/[\\/:*?"<>|]+/g, '').slice(0, 80) || 'template';
+}
+function _downloadBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);   // revoking immediately could cancel the download
+}
 function exportSVG() {
-  const hadGrid = gridOn; if (hadGrid) toggleGrid();
-  const hadPG   = printGuidesOn; if (hadPG) { hidePrintGuides(); printGuidesOn = false; }
-  const svg  = canvas.toSVG();
-  if (hadGrid) toggleGrid();
-  if (hadPG)   { showPrintGuides(); printGuidesOn = true; document.getElementById('btnPrintGuides').classList.add('active'); }
-  const blob = new Blob([svg], { type:'image/svg+xml' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url;
-  a.download = (document.getElementById('tplNameInput').value.trim() || 'template') + '.svg';
-  a.click();
-  URL.revokeObjectURL(url);
+  let svg;
+  try {
+    svg = canvas.toSVG({ width: canvasW, height: canvasH, viewBox: { x: 0, y: 0, width: canvasW, height: canvasH } });
+  } catch (e) { showToast('SVG export failed: ' + e.message, 'err'); return; }
+  _downloadBlob(new Blob([svg], { type:'image/svg+xml' }), _fileBase() + '.svg');
+  showToast('SVG exported');
 }
 
 function exportJSON() {
-  const hadPG = printGuidesOn; if (hadPG) { hidePrintGuides(); printGuidesOn = false; }
-  const json = JSON.stringify(canvas.toJSON(['data','selectable','evented','hoverCursor']), null, 2);
-  if (hadPG)   { showPrintGuides(); printGuidesOn = true; document.getElementById('btnPrintGuides').classList.add('active'); }
-  const blob = new Blob([json], { type:'application/json' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url;
-  a.download = (document.getElementById('tplNameInput').value.trim() || 'template') + '.json';
-  a.click();
-  URL.revokeObjectURL(url);
+  const json = JSON.stringify(canvasJSON(), null, 2);
+  _downloadBlob(new Blob([json], { type:'application/json' }), _fileBase() + '.json');
+  showToast('JSON exported');
 }
 
 function bringFwd() {
@@ -2762,11 +3006,18 @@ function sendBwd() {
 // ── Properties panel ───────────────────────────────────────────────
 function refreshProps(obj) {
   obj = obj !== undefined ? obj : canvas.getActiveObject();
+  // With a multi-selection Fabric hands us its first member — show the
+  // selection's own box/angle/opacity instead so typed values affect all.
+  const active = canvas.getActiveObject();
+  if (obj && active && active.type === 'activeSelection') obj = active;
   const pCanvas = document.getElementById('pCanvas');
   const pObj    = document.getElementById('pObj');
 
   if (!obj) {
     pCanvas.style.display = ''; pObj.style.display = 'none';
+    const bg = canvas.backgroundColor;
+    const bgEl = document.getElementById('pCanvasBg');
+    if (bgEl && typeof bg === 'string' && bg && bg !== 'transparent') bgEl.value = colorToHex(bg);
     return;
   }
   pCanvas.style.display = 'none'; pObj.style.display = '';
@@ -2776,23 +3027,35 @@ function refreshProps(obj) {
   // Cards page: selecting an object only updates the panel's data; opening
   // the sheet is a manual "Properties" tap (openEdPanel()) from now on.
 
-  document.getElementById('pX').value = Math.round(obj.left ?? 0);
-  document.getElementById('pY').value = Math.round(obj.top  ?? 0);
-  document.getElementById('pW').value = Math.round(obj.getScaledWidth());
-  document.getElementById('pH').value = Math.round(obj.getScaledHeight());
-  const ang = Math.round(obj.angle ?? 0);
-  document.getElementById('pAngle').value = ang;
+  const multi = obj.type === 'activeSelection';
+  const ae = document.activeElement;
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el && el !== ae) el.value = v; };
+  // X/Y/W/H are the visible bounding box, so they mean the same thing for
+  // every object regardless of its internal origin or rotation.
+  const br = obj.getBoundingRect(true, true);
+  setVal('pX', Math.round(br.left));
+  setVal('pY', Math.round(br.top));
+  setVal('pW', Math.round(br.width));
+  setVal('pH', Math.round(br.height));
+  const ang = Math.round((((obj.angle ?? 0) + 540) % 360) - 180);
+  setVal('pAngle', ang);
   document.getElementById('pAngleVal').textContent = ang + '°';
   const opa = Math.round((obj.opacity ?? 1) * 100);
-  document.getElementById('pOpacity').value = opa;
+  setVal('pOpacity', opa);
   document.getElementById('pOpacityVal').textContent = opa + '%';
+  const lbl = document.getElementById('pAlignLbl');
+  if (lbl) lbl.textContent = multi ? 'Align selected objects to each other' : 'Align to canvas';
+  const lockBtn = document.getElementById('btnLockObj');
+  if (lockBtn) lockBtn.innerHTML = '<i class="bi ' + (obj.lockMovementX ? 'bi-lock-fill' : 'bi-lock') + '"></i>';
 
   const blendSel = document.getElementById('pBlend');
   if (blendSel) blendSel.value = obj.globalCompositeOperation || 'source-over';
 
-  const isText  = ['i-text','text','textbox'].includes(obj.type);
-  const isShape = ['rect','circle','triangle','line','polygon','path'].includes(obj.type);
-  const isImage = obj.type === 'image';
+  const kids = multi ? obj.getObjects() : [obj];
+  const isText  = kids.every(isTextObj);
+  const isShape = !isText && kids.every(o => ['rect','circle','triangle','line','polygon','path','ellipse','polyline'].includes(o.type));
+  const isImage = !multi && obj.type === 'image';
+  const ref = kids[0];
 
   document.getElementById('pTextSec').style.display        = isText  ? '' : 'none';
   document.getElementById('pTextOutlineSec').style.display  = isText  ? '' : 'none';
@@ -2800,19 +3063,12 @@ function refreshProps(obj) {
   document.getElementById('pImgSec').style.display          = isImage ? '' : 'none';
   document.getElementById('pGradSec').style.display         = (isShape || isText) ? '' : 'none';
   document.getElementById('pPatternSec').style.display      = isShape ? '' : 'none';
-  document.getElementById('pFadeSec').style.display         = (isShape || isImage) ? '' : 'none';
+  document.getElementById('pFadeSec').style.display         = (!multi && (isShape || isImage)) ? '' : 'none';
 
   // Sync gradient pickers if object already has a gradient fill.
-  // This editor stores gradients as a raster fabric.Pattern (obj.data._grad
-  // holds the actual c1/cMid/c2/type params) — NOT a native fabric.Gradient —
-  // so obj.fill.colorStops (checked below only as a legacy fallback) is never
-  // populated for gradients this tool applies. Reading from _grad first was
-  // the fix: without it the pickers kept showing stale colours from whatever
-  // object was selected before, and touching just one colour would silently
-  // overwrite the other two with those stale values (the "multi colour not
-  // applying" bug).
-  if ((isShape || isText) && obj.data && obj.data._grad) {
-    const g = obj.data._grad;
+  // obj.data._grad holds the c1/cMid/c2/type params this tool applied.
+  if ((isShape || isText) && ref.data && ref.data._grad) {
+    const g = ref.data._grad;
     document.getElementById('gC1').value   = g.c1   || '#4f46e5';
     document.getElementById('gCMid').value = g.cMid || '#7c3aed';
     document.getElementById('gC2').value   = g.c2   || '#ec4899';
@@ -2822,20 +3078,14 @@ function refreshProps(obj) {
       const el = document.getElementById(id);
       if (el) el.classList.toggle('active', id === ({linear:'gBtnLinear',radial:'gBtnRadial',diamond:'gBtnDiamond',conical:'gBtnConical'})[g.type]);
     });
-    previewGrad();
-  } else if ((isShape || isText) && obj.fill && typeof obj.fill === 'object' && obj.fill.colorStops) {
-    const stops = obj.fill.colorStops;
+    _previewGradSwatch();
+  } else if ((isShape || isText) && ref.fill && typeof ref.fill === 'object' && ref.fill.colorStops) {
+    const stops = ref.fill.colorStops;
     if (stops.length >= 2) {
-      const toHex = c => {
-        if (!c) return '#4f46e5';
-        if (c.startsWith('#')) return c;
-        const m = c.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-        return m ? '#' + [m[1],m[2],m[3]].map(x => (+x).toString(16).padStart(2,'0')).join('') : c;
-      };
-      document.getElementById('gC1').value   = toHex(stops[0].color);
-      document.getElementById('gC2').value   = toHex(stops[stops.length - 1].color);
-      document.getElementById('gCMid').value = stops.length > 2 ? toHex(stops[Math.floor(stops.length/2)].color) : toHex(stops[0].color);
-      previewGrad();
+      document.getElementById('gC1').value   = colorToHex(stops[0].color);
+      document.getElementById('gC2').value   = colorToHex(stops[stops.length - 1].color);
+      document.getElementById('gCMid').value = colorToHex(stops[Math.floor(stops.length/2)].color);
+      _previewGradSwatch();
     }
   } else if (isShape || isText) {
     // No gradient on this object — clear stale active-state from whichever
@@ -2846,235 +3096,346 @@ function refreshProps(obj) {
     });
   }
 
-  // Populate text stroke values
   if (isText) {
-    document.getElementById('pTStroke').value  = colorToHex(obj.stroke) || '#000000';
-    document.getElementById('pTStrokeW').value = obj.strokeWidth || 0;
+    setVal('pTStroke', colorToHex(ref.stroke) || '#000000');
+    setVal('pTStrokeW', ref.strokeWidth || 0);
+    const sel = document.getElementById('pFont');
+    const fam = ref.fontFamily || 'Noto Sans';
+    if (sel && ![...sel.options].some(o => o.value === fam)) { const o = document.createElement('option'); o.value = o.textContent = fam; sel.appendChild(o); }
+    setVal('pFont', fam);
+    setVal('pFontSize', Math.round(ref.fontSize || 24));
+    setVal('pTextColor', colorToHex(ref.fill) || '#1f2937');
+    document.getElementById('btnB').classList.toggle('active',  ref.fontWeight === 'bold' || +ref.fontWeight >= 600);
+    document.getElementById('btnI').classList.toggle('active',  ref.fontStyle  === 'italic');
+    document.getElementById('btnU').classList.toggle('active',  !!ref.underline);
+    document.getElementById('btnLT').classList.toggle('active', !!ref.linethrough);
+    setVal('pLH', ref.lineHeight || 1.16);
+    document.getElementById('pLHVal').textContent = (ref.lineHeight || 1.16).toFixed(2);
+    setVal('pCharSp', ref.charSpacing || 0);
+    const tbg = ref.textBackgroundColor;
+    setVal('pTextBg', (tbg && tbg !== 'transparent') ? colorToHex(tbg) : '#ffffff');
   }
 
-  if (isText) {
-    document.getElementById('pFont').value      = obj.fontFamily || 'Noto Sans';
-    document.getElementById('pFontSize').value  = obj.fontSize   || 24;
-    document.getElementById('pTextColor').value = colorToHex(obj.fill) || '#1f2937';
-    document.getElementById('btnB').classList.toggle('active',  obj.fontWeight === 'bold');
-    document.getElementById('btnI').classList.toggle('active',  obj.fontStyle  === 'italic');
-    document.getElementById('btnU').classList.toggle('active',  !!obj.underline);
-    document.getElementById('btnLT').classList.toggle('active', !!obj.linethrough);
-    document.getElementById('pLH').value = obj.lineHeight || 1.16;
-    document.getElementById('pLHVal').textContent = (obj.lineHeight || 1.16).toFixed(2);
-    document.getElementById('pCharSp').value = obj.charSpacing || 0;
-    const tbg = obj.textBackgroundColor;
-    const tbgEl = document.getElementById('pTextBg');
-    if (tbgEl) tbgEl.value = (tbg && tbg !== 'transparent') ? colorToHex(tbg) : '#ffffff';
+  if (isShape || isImage) {
+    const noFill = !ref.fill || ref.fill === 'transparent';
+    setVal('pFill', noFill ? '#4f46e5' : colorToHex(ref.fill));
+    document.getElementById('pNoFill').checked = noFill;
+    setVal('pStroke', colorToHex(ref.stroke) || '#000000');
+    setVal('pStrokeW', ref.strokeWidth || 0);
+    setVal('pRx', ref.rx || 0);
   }
-
-  if (isShape) {
-    const fill = obj.fill && obj.fill !== 'transparent' ? colorToHex(obj.fill) : '#4f46e5';
-    document.getElementById('pFill').value   = fill;
-    document.getElementById('pNoFill').checked = !obj.fill || obj.fill === 'transparent';
-    document.getElementById('pStroke').value  = colorToHex(obj.stroke) || '#000000';
-    document.getElementById('pStrokeW').value = obj.strokeWidth || 0;
-    document.getElementById('pRx').value      = obj.rx || 0;
-  }
+  if (isImage) syncImgFilterUI(obj);
 
   // Shadow
-  const hasShadow = !!obj.shadow;
+  const hasShadow = !!ref.shadow;
   document.getElementById('pShadow').checked = hasShadow;
   document.getElementById('pShadowOpts').style.display = hasShadow ? '' : 'none';
   if (hasShadow) {
-    document.getElementById('pShadowColor').value = colorToHex(obj.shadow.color) || '#000000';
-    document.getElementById('pShadowBlur').value  = obj.shadow.blur ?? 10;
-    document.getElementById('pShadowX').value     = obj.shadow.offsetX ?? 3;
-    document.getElementById('pShadowY').value     = obj.shadow.offsetY ?? 3;
+    setVal('pShadowColor', colorToHex(ref.shadow.color) || '#000000');
+    setVal('pShadowBlur', ref.shadow.blur ?? 10);
+    setVal('pShadowX', ref.shadow.offsetX ?? 3);
+    setVal('pShadowY', ref.shadow.offsetY ?? 3);
   }
 }
 
 // ── Apply property helpers ─────────────────────────────────────────
+// Every setter applies to all selected objects and records an undo step.
+function _targets(filter) { return canvas.getActiveObjects().filter(filter || (() => true)); }
 function applyProp(prop, val) {
-  const obj = canvas.getActiveObject();
-  if (!obj) return;
-  obj.set(prop, val); obj.setCoords(); canvas.renderAll();
+  const a = canvas.getActiveObject();
+  if (!a) return;
+  if ((prop === 'left' || prop === 'top') && !isFinite(val)) return;
+  if (prop === 'left' || prop === 'top') {
+    // X/Y fields show the visible box — move by the difference.
+    const br = a.getBoundingRect(true, true);
+    if (prop === 'left') a.left += val - br.left; else a.top += val - br.top;
+  } else if (prop === 'angle') {
+    if (!isFinite(val)) return;
+    a.rotate(val);                       // rotate around the centre (set('angle') swung left/top-origin objects around their corner)
+  } else if (prop === 'opacity') {
+    a.set('opacity', Math.max(0, Math.min(1, val)));
+  } else {
+    const objs = _targets();
+    objs.forEach(o => {
+      o.set(prop, val);
+      // Picking a solid fill must also forget a stored gradient, otherwise the
+      // gradient silently came back the next time the object was moved.
+      if (prop === 'fill' && o.data && o.data._grad) o.data._grad = null;
+    });
+  }
+  a.setCoords(); canvas.requestRenderAll();
+  histSaveSoon();
 }
 
 function applyScale(dim, val) {
   const obj = canvas.getActiveObject();
-  if (!obj) return;
-  if (dim === 'w') obj.scaleX = val / (obj.width  || 1);
-  else             obj.scaleY = val / (obj.height || 1);
-  obj.setCoords(); canvas.renderAll();
+  if (!obj || !(val > 0)) return;          // empty field → 0 used to make the object vanish
+  const br = obj.getBoundingRect(true, true);
+  const f = dim === 'w' ? val / (br.width || 1) : val / (br.height || 1);
+  if (dim === 'w') obj.scaleX *= f; else obj.scaleY *= f;
+  obj.setCoords(); canvas.requestRenderAll();
+  histSaveSoon();
 }
 
 function applyTextProp(prop, val) {
-  const obj = canvas.getActiveObject();
-  if (!obj || !['i-text','text','textbox'].includes(obj.type)) return;
-  obj.set(prop, val); canvas.renderAll();
+  const objs = _targets(isTextObj);
+  if (!objs.length) return;
+  if (prop === 'fontSize' && !(val > 0)) return;
+  objs.forEach(o => {
+    o.set(prop, val);
+    if (prop === 'fill' && o.data && o.data._grad) o.data._grad = null;
+    if (prop === 'stroke' && !o.strokeWidth) o.set({ strokeWidth: 1, paintFirst: 'stroke' });
+    if (o.initDimensions) o.initDimensions();
+    o.setCoords();
+  });
+  canvas.requestRenderAll();
+  if (prop === 'fontFamily' || prop === 'fontWeight') ensureFontsFor(objs).then(histSave);
+  else histSaveSoon();
 }
 
 function toggleStyle(style) {
-  const obj = canvas.getActiveObject();
-  if (!obj || !['i-text','text','textbox'].includes(obj.type)) return;
+  const objs = _targets(isTextObj);
+  if (!objs.length) return;
+  const o0 = objs[0];
   if (style === 'bold') {
-    const next = obj.fontWeight === 'bold' ? 'normal' : 'bold';
-    obj.set('fontWeight', next);
+    const next = (o0.fontWeight === 'bold' || +o0.fontWeight >= 600) ? 'normal' : 'bold';
+    objs.forEach(o => o.set('fontWeight', next));
     document.getElementById('btnB').classList.toggle('active', next === 'bold');
+    ensureFontsFor(objs);
   } else if (style === 'italic') {
-    const next = obj.fontStyle === 'italic' ? 'normal' : 'italic';
-    obj.set('fontStyle', next);
+    const next = o0.fontStyle === 'italic' ? 'normal' : 'italic';
+    objs.forEach(o => o.set('fontStyle', next));
     document.getElementById('btnI').classList.toggle('active', next === 'italic');
   } else if (style === 'underline') {
-    obj.set('underline', !obj.underline);
-    document.getElementById('btnU').classList.toggle('active', !!obj.underline);
+    const next = !o0.underline;
+    objs.forEach(o => o.set('underline', next));
+    document.getElementById('btnU').classList.toggle('active', next);
   } else if (style === 'linethrough') {
-    obj.set('linethrough', !obj.linethrough);
-    document.getElementById('btnLT').classList.toggle('active', !!obj.linethrough);
+    const next = !o0.linethrough;
+    objs.forEach(o => o.set('linethrough', next));
+    document.getElementById('btnLT').classList.toggle('active', next);
   }
-  canvas.renderAll();
+  objs.forEach(o => { if (o.initDimensions) o.initDimensions(); o.setCoords(); });
+  canvas.renderAll(); histSave();
 }
 
 function applyRoundCorner(val) {
-  const obj = canvas.getActiveObject();
-  if (obj && obj.type === 'rect') { obj.set({ rx: val, ry: val }); canvas.renderAll(); }
+  const objs = _targets(o => o.type === 'rect');
+  if (!objs.length) { showToast('Corner radius works on rectangles', 'info'); return; }
+  objs.forEach(o => o.set({ rx: val, ry: val }));
+  canvas.renderAll(); histSaveSoon();
 }
 
 function applyBlendMode(mode) {
-  const obj = canvas.getActiveObject();
-  if (!obj) return;
-  obj.set('globalCompositeOperation', mode);
+  const objs = _targets();
+  if (!objs.length) return;
+  objs.forEach(o => o.set('globalCompositeOperation', mode));
   canvas.renderAll(); histSave();
 }
 
 function setCanvasBg(color) {
   canvas.setBackgroundColor(color, canvas.renderAll.bind(canvas));
-  histSave();
+  // "BG colour" eraser strokes follow the new background (they showed up as
+  // coloured scribbles after changing it).
+  canvas.getObjects().forEach(o => { if (o.data?.eraserPath && o.globalCompositeOperation !== 'destination-out') o.set('stroke', color); });
+  const btn = document.getElementById('btnTransBg');
+  if (btn) { btn.style.background = '#334155'; btn.style.color = '#e2e8f0'; }
+  canvas.requestRenderAll();
+  histSaveSoon();      // the colour picker fires on every drag step — one undo step, not 60
 }
 
 function toggleShadow(on) {
-  const obj = canvas.getActiveObject();
-  if (!obj) return;
-  if (on) {
-    obj.set('shadow', new fabric.Shadow({
-      color: document.getElementById('pShadowColor').value,
-      blur:  +document.getElementById('pShadowBlur').value,
-      offsetX: +document.getElementById('pShadowX').value,
-      offsetY: +document.getElementById('pShadowY').value,
-    }));
-  } else {
-    obj.set('shadow', null);
-  }
+  const objs = _targets();
+  if (!objs.length) return;
+  objs.forEach(o => o.set('shadow', on ? new fabric.Shadow({
+    color: document.getElementById('pShadowColor').value,
+    blur:  +document.getElementById('pShadowBlur').value,
+    offsetX: +document.getElementById('pShadowX').value,
+    offsetY: +document.getElementById('pShadowY').value,
+  }) : null));
   document.getElementById('pShadowOpts').style.display = on ? '' : 'none';
-  canvas.renderAll();
+  canvas.renderAll(); histSave();
 }
 
 function updateShadow() {
-  const obj = canvas.getActiveObject();
-  if (!obj || !obj.shadow) return;
-  obj.shadow.color   = document.getElementById('pShadowColor').value;
-  obj.shadow.blur    = +document.getElementById('pShadowBlur').value;
-  obj.shadow.offsetX = +document.getElementById('pShadowX').value;
-  obj.shadow.offsetY = +document.getElementById('pShadowY').value;
-  canvas.renderAll();
+  const objs = _targets(o => !!o.shadow);
+  if (!objs.length) return;
+  objs.forEach(o => {
+    o.shadow.color   = document.getElementById('pShadowColor').value;
+    o.shadow.blur    = +document.getElementById('pShadowBlur').value || 0;
+    o.shadow.offsetX = +document.getElementById('pShadowX').value || 0;
+    o.shadow.offsetY = +document.getElementById('pShadowY').value || 0;
+    o.dirty = true;
+  });
+  canvas.renderAll(); histSaveSoon();
 }
 
 // ── Layers ─────────────────────────────────────────────────────────
+function _layerLabel(obj) {
+  if (obj.data?.name) return obj.data.name;
+  if (isTextObj(obj)) return '"' + ((obj.text || 'Text').slice(0,18)) + ((obj.text || '').length > 18 ? '…' : '') + '"';
+  if (obj.data?.isCropOverlay) return 'Crop Area';
+  if (obj.data?.placeholder)   return obj.data.placeholder.toUpperCase() + ' SLOT';
+  if (obj.data?.isBg)          return 'Background';
+  if (obj.data?.fx3d)          return '3D: ' + (obj.data.origText || '').slice(0, 14);
+  if (obj.data?.warpedFrom)    return 'Warp: ' + obj.data.warpedFrom.slice(0, 14);
+  if (obj.data?.eraserPath)    return 'Eraser stroke';
+  return obj.type.charAt(0).toUpperCase() + obj.type.slice(1);
+}
+/* Rebuilt once per frame at most (it was rebuilt for every single object a
+   template/undo added), with escaped names, drag-to-reorder and rename. */
+let _layersRaf = 0;
 function refreshLayers() {
+  if (_layersRaf) return;
+  _layersRaf = requestAnimationFrame(() => { _layersRaf = 0; _renderLayers(); });
+}
+function _renderLayers() {
   const list = document.getElementById('layersList');
   const allObjs = canvas.getObjects();
-  const objs = allObjs.filter(o => !o.data?.grid && !o.data?.isSnapGuide && !o.data?.printGuide && !o.data?.eraserPath);
-  const activeObj = canvas.getActiveObject();
+  const objs = allObjs.filter(o => !o.data?.grid && !o.data?.isSnapGuide && !o.data?.printGuide);
+  const active = canvas.getActiveObjects();
   list.innerHTML = '';
+  if (!objs.length) { list.innerHTML = '<div style="font-size:.72rem;color:#64748b;padding:.4rem;">No layers yet — add text, a shape or an image.</div>'; return; }
   [...objs].reverse().forEach(obj => {
     const realIdx = allObjs.indexOf(obj);
     const el = document.createElement('div');
     const isLocked = obj.selectable === false && obj.evented === false;
-    el.className = 'layer-item' + (obj === activeObj ? ' sel' : '') + (isLocked ? ' locked' : '');
-    const label = obj.type === 'i-text' || obj.type === 'textbox'
-      ? '"' + (obj.text?.slice(0,18) || 'Text') + (obj.text?.length > 18 ? '…' : '') + '"'
-      : (obj.data?.isCropOverlay ? 'Crop Area'
-         : obj.data?.placeholder  ? obj.data.placeholder.toUpperCase() + ' SLOT'
-         : obj.data?.isBg         ? 'Background'
-         : obj.type.charAt(0).toUpperCase() + obj.type.slice(1));
+    el.className = 'layer-item' + (active.includes(obj) ? ' sel' : '') + (isLocked ? ' locked' : '');
+    el.draggable = true;
+    el.dataset.idx = realIdx;
     const icon = {
       'i-text':'bi-type','text':'bi-type','textbox':'bi-type',
       rect:'bi-square',circle:'bi-circle',triangle:'bi-triangle',
       line:'bi-slash-lg',image:'bi-image',group:'bi-collection',
-      path:'bi-bezier2', polygon:'bi-pentagon'
+      path:'bi-bezier2', polygon:'bi-pentagon', ellipse:'bi-circle'
     }[obj.type] || 'bi-circle';
     el.innerHTML = `<i class="bi ${icon}"></i>
-      <span class="lname" style="${isLocked ? 'opacity:.5;' : ''}">${label}</span>
+      <span class="lname" style="${isLocked ? 'opacity:.5;' : ''}${obj.visible === false ? 'text-decoration:line-through;opacity:.5;' : ''}" title="Double-click to rename">${escHtml(_layerLabel(obj))}</span>
       <i class="bi ${obj.visible === false ? 'bi-eye-slash' : 'bi-eye'} layer-vis"
          onclick="event.stopPropagation(); toggleVis(${realIdx})" title="Toggle visibility"></i>
       <i class="bi ${isLocked ? 'bi-lock-fill' : 'bi-unlock'} layer-vis"
          style="${isLocked ? 'color:#f59e0b;' : ''}"
          onclick="event.stopPropagation(); toggleLock(${realIdx})" title="${isLocked ? 'Unlock' : 'Lock'}"></i>`;
-    el.onclick = () => {
-      if (!isLocked) { canvas.setActiveObject(obj); canvas.renderAll(); refreshProps(obj); refreshLayers(); }
+    el.onclick = (ev) => {
+      if (isLocked) { showToast('Layer is locked — click the lock icon to unlock', 'info'); return; }
+      if ((ev.shiftKey || ev.ctrlKey || ev.metaKey) && canvas.getActiveObject()) {
+        const cur = canvas.getActiveObjects();
+        const next = cur.includes(obj) ? cur.filter(o => o !== obj) : cur.concat(obj);
+        canvas.discardActiveObject();
+        if (next.length === 1) canvas.setActiveObject(next[0]);
+        else if (next.length) canvas.setActiveObject(new fabric.ActiveSelection(next, { canvas }));
+      } else canvas.setActiveObject(obj);
+      canvas.requestRenderAll(); refreshProps(); refreshLayers();
     };
+    el.ondblclick = () => {
+      edPromptModal('Rename layer', [{ id:'n', label:'Layer name', value:_layerLabel(obj).replace(/^"|"$/g,'') }], v => {
+        obj.data = Object.assign({}, obj.data, { name: (v.n || '').trim().slice(0, 40) || undefined });
+        histSave(); refreshLayers();
+      });
+    };
+    // Drag & drop to change stacking order.
+    el.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', String(realIdx)); e.dataTransfer.effectAllowed = 'move'; });
+    el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drag-over'); });
+    el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+    el.addEventListener('drop', e => {
+      e.preventDefault(); el.classList.remove('drag-over');
+      const from = +e.dataTransfer.getData('text/plain');
+      const moving = allObjs[from];
+      if (!moving || moving === obj) return;
+      canvas.moveTo(moving, canvas.getObjects().indexOf(obj));
+      canvas.requestRenderAll(); histSave(); refreshLayers();
+    });
     list.appendChild(el);
   });
 }
 
 function toggleVis(idx) {
   const obj = canvas.item(idx);
-  if (obj) { obj.visible = !obj.visible; canvas.renderAll(); refreshLayers(); }
+  if (!obj) return;
+  obj.visible = !obj.visible;
+  if (!obj.visible && canvas.getActiveObjects().includes(obj)) canvas.discardActiveObject();
+  canvas.renderAll(); refreshLayers(); histSave();
 }
 
 function toggleLock(idx) {
   const obj = canvas.item(idx);
   if (!obj) return;
   const wasLocked = obj.selectable === false && obj.evented === false;
-  obj.set({ selectable: wasLocked, evented: wasLocked });
-  if (!wasLocked && canvas.getActiveObject() === obj) canvas.discardActiveObject();
-  canvas.renderAll(); refreshLayers();
+  _setLocked(obj, !wasLocked);
+  if (!wasLocked && canvas.getActiveObjects().includes(obj)) canvas.discardActiveObject();
+  canvas.renderAll(); refreshLayers(); refreshProps(); histSave();
+}
+function _setLocked(obj, lock) {
+  obj.set({ selectable: !lock, evented: !lock, lockMovementX: lock, lockMovementY: lock, lockRotation: lock, lockScalingX: lock, lockScalingY: lock, hasControls: !lock });
+}
+function toggleLockActive() {
+  const objs = canvas.getActiveObjects();
+  if (!objs.length) return;
+  canvas.discardActiveObject();
+  objs.forEach(o => _setLocked(o, true));
+  canvas.renderAll(); refreshLayers(); histSave();
+  showToast((objs.length > 1 ? objs.length + ' layers' : 'Layer') + ' locked — unlock it from the Layers list', 'info');
 }
 
 // ── Zoom ────────────────────────────────────────────────────────────
 let curZoom = 1;
+function _fitZoomValue() {
+  const area = document.getElementById('canvasArea');
+  if (!area || !canvasW || !canvasH) return 1;
+  const pad = window.innerWidth <= 900 ? 24 : 64;
+  const availW = area.clientWidth - pad, availH = area.clientHeight - pad;
+  if (availW <= 0 || availH <= 0) return 1;
+  return Math.max(0.05, Math.round(Math.min(availW / canvasW, availH / canvasH, 1) * 100) / 100);
+}
+function _syncZoomSel(z, isFit) {
+  const sel = document.getElementById('zoomSel');
+  if (!sel) return;
+  const fitOpt = [...sel.options].find(o => o.value === 'fit');
+  if (fitOpt) fitOpt.textContent = isFit ? 'Fit (' + Math.round(z * 100) + '%)' : 'Fit';
+  if (isFit) { sel.value = 'fit'; return; }
+  let o = [...sel.options].find(x => x.value !== 'fit' && Math.abs(+x.value - z) < 0.001);
+  if (!o) {   // show the real zoom (wheel/pinch values) instead of a misleading nearby preset
+    o = [...sel.options].find(x => x.dataset.custom) || document.createElement('option');
+    o.dataset.custom = '1'; o.value = String(z); o.textContent = Math.round(z * 100) + '%';
+    if (!o.parentNode) sel.appendChild(o);
+  }
+  sel.value = o.value;
+}
 function setZoom(val) {
-  curZoom = parseFloat(val);
+  const isFit = val === 'fit';
+  let z = isFit ? _fitZoomValue() : parseFloat(val);
+  if (!isFinite(z) || z <= 0) return;
+  z = Math.max(0.05, Math.min(4, z));
+  curZoom = z;
   canvas.setZoom(curZoom);
-  canvas.setWidth(canvasW  * curZoom);
-  canvas.setHeight(canvasH * curZoom);
+  canvas.setDimensions({ width: Math.round(canvasW * curZoom), height: Math.round(canvasH * curZoom) });
+  _syncZoomSel(z, isFit);
 }
 
-// Mouse wheel zoom
+// Ctrl/⌘ + wheel = zoom (like every design tool). A plain wheel now scrolls a
+// canvas larger than the screen — before, ANY wheel movement zoomed, so a big
+// design could not be scrolled at all, and the % shown drifted from reality.
 canvas.on('mouse:wheel', opt => {
-  const delta = opt.e.deltaY;
-  let z = canvas.getZoom();
-  z = Math.min(3, Math.max(0.2, z * (delta > 0 ? 0.95 : 1.05)));
-  canvas.setZoom(z);
-  canvas.setWidth(canvasW  * z);
-  canvas.setHeight(canvasH * z);
-  const sel = document.getElementById('zoomSel');
-  const closest = [...sel.options].reduce((a,o) => Math.abs(+o.value - z) < Math.abs(+a.value - z) ? o : a);
-  sel.value = closest.value;
-  opt.e.preventDefault(); opt.e.stopPropagation();
+  const e = opt.e;
+  const area = document.getElementById('canvasArea');
+  const scrollable = area && (area.scrollHeight > area.clientHeight + 2 || area.scrollWidth > area.clientWidth + 2);
+  if (!e.ctrlKey && !e.metaKey && scrollable) return;
+  const z = Math.min(4, Math.max(0.05, canvas.getZoom() * (e.deltaY > 0 ? 0.92 : 1.08)));
+  setZoom(z);
+  e.preventDefault(); e.stopPropagation();
 });
 
-/* ══════════════════════════════════════════════════════════
-   MOBILE — auto-fit zoom, pinch-to-zoom, Properties sheet open/close
-   (all gated to window.innerWidth<=900; desktop is never affected)
-══════════════════════════════════════════════════════════ */
-function mobileFitZoom() {
-  if (window.innerWidth > 900) return;
-  const area = document.getElementById('canvasArea');
-  if (!area || !canvasW || !canvasH) return;
-  const availW = area.clientWidth - 24, availH = area.clientHeight - 24;
-  if (availW <= 0 || availH <= 0) return;
-  let z = Math.min(availW / canvasW, availH / canvasH, 1);
-  z = Math.max(0.1, Math.round(z * 100) / 100);
-  setZoom(z);
-  const sel = document.getElementById('zoomSel');
-  if (sel) {
-    let opt = [...sel.options].find(o => o.value === 'fit');
-    if (!opt) { opt = document.createElement('option'); opt.value = 'fit'; sel.insertBefore(opt, sel.firstChild); }
-    opt.textContent = 'Fit (' + Math.round(z * 100) + '%)';
-    sel.value = 'fit';
-  }
+/* Fit large designs to the screen on open (a 300-DPI A4 opened at 100% was
+   several screens wide). On phones always fit. */
+function fitZoomIfNeeded(force) {
+  const fz = _fitZoomValue();
+  if (force || window.innerWidth <= 900 || fz < 1) setZoom('fit');
 }
+function mobileFitZoom() { if (window.innerWidth <= 900) setZoom('fit'); }
 let _edResizeTid = null;
 window.addEventListener('resize', () => {
   clearTimeout(_edResizeTid);
-  _edResizeTid = setTimeout(() => { if (window.innerWidth <= 900) mobileFitZoom(); }, 150);
+  _edResizeTid = setTimeout(() => { if (document.getElementById('zoomSel')?.value === 'fit') setZoom('fit'); }, 150);
 });
 
 // Pinch-to-zoom (2-finger) on the canvas area — mirrors the desktop mouse-wheel zoom above
@@ -3088,15 +3449,30 @@ window.addEventListener('resize', () => {
   }, { passive: true });
   area.addEventListener('touchmove', e => {
     if (e.touches.length === 2 && pinchStartDist) {
-      const z = Math.min(3, Math.max(0.2, pinchStartZoom * (dist(e.touches[0], e.touches[1]) / pinchStartDist)));
-      setZoom(z);
-      const sel = document.getElementById('zoomSel');
-      const opt = sel && [...sel.options].find(o => o.value === 'fit');
-      if (opt) opt.textContent = 'Fit (' + Math.round(z * 100) + '%)';
+      setZoom(Math.min(4, Math.max(0.1, pinchStartZoom * (dist(e.touches[0], e.touches[1]) / pinchStartDist))));
       e.preventDefault();
     }
   }, { passive: false });
   area.addEventListener('touchend', e => { if (e.touches.length < 2) pinchStartDist = null; }, { passive: true });
+})();
+
+// Space + drag = pan (scroll) a zoomed-in canvas.
+(function() {
+  const area = document.getElementById('canvasArea');
+  let space = false, st = null;
+  document.addEventListener('keydown', e => {
+    if (e.code !== 'Space' || e.repeat) return;
+    const t = (document.activeElement || {}).tagName;
+    if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT' || t === 'BUTTON' || canvas.getActiveObject()?.isEditing || canvas.isDrawingMode) return;
+    space = true; canvas.skipTargetFind = true; canvas.selection = false; canvas.defaultCursor = 'grab'; e.preventDefault();
+  });
+  document.addEventListener('keyup', e => {
+    if (e.code !== 'Space' || !space) return;
+    space = false; canvas.skipTargetFind = false; canvas.selection = true; canvas.defaultCursor = 'default';
+  });
+  canvas.on('mouse:down', o => { if (!space) return; const p = o.e.touches ? o.e.touches[0] : o.e; st = { x: p.clientX, y: p.clientY, l: area.scrollLeft, t: area.scrollTop }; area.classList.add('panning'); });
+  canvas.on('mouse:move', o => { if (!st) return; const p = o.e.touches ? o.e.touches[0] : o.e; area.scrollLeft = st.l - (p.clientX - st.x); area.scrollTop = st.t - (p.clientY - st.y); });
+  canvas.on('mouse:up', () => { st = null; area.classList.remove('panning'); });
 })();
 
 function openEdPanel() {
@@ -3114,52 +3490,44 @@ function mobAutoOpenProps() {
 }
 
 // ── Grid ────────────────────────────────────────────────────────────
+// Painted as an overlay (see the after:render handler) — never saved, never in undo.
 let gridOn = false;
-const gridLines = [];
 function toggleGrid() {
   gridOn = !gridOn;
   document.getElementById('btnGrid').classList.toggle('active', gridOn);
-  if (gridOn) {
-    const step = 20;
-    const opts = { stroke:'rgba(255,255,255,.12)', strokeWidth:0.5, selectable:false, evented:false, hoverCursor:'default', data:{grid:true} };
-    for (let x = step; x < canvasW; x += step) { const l = new fabric.Line([x,0,x,canvasH], opts); canvas.add(l); gridLines.push(l); }
-    for (let y = step; y < canvasH; y += step) { const l = new fabric.Line([0,y,canvasW,y],  opts); canvas.add(l); gridLines.push(l); }
-    canvas.renderAll();
-  } else {
-    gridLines.forEach(l => canvas.remove(l)); gridLines.length = 0; canvas.renderAll();
-  }
+  canvas.requestRenderAll();
 }
 
 // ── Save ────────────────────────────────────────────────────────────
+function _designName() {
+  return ((document.getElementById('tplNameInput')?.value || '').trim() || ED.name || 'Design').slice(0, 100);
+}
+function _thumbnail() {
+  // ≤ 600px on the long side regardless of zoom or canvas size.
+  try { return exportDataURL({ format:'jpeg', quality:0.82, multiplier: Math.min(1, 600 / Math.max(canvasW, canvasH)) }); }
+  catch (_) { return ''; }   // tainted canvas (image from another site without CORS)
+}
 async function saveCanvas() {
   const btn = document.getElementById('btnSave');
+  if (!btn) { return saveToGallery(); }   // non-admins have no template Save button — Ctrl+S used to crash here
+  if (btn.disabled) return;
   btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Saving…';
-
-  // Temp hide grid + print guides
-  const hadGrid = gridOn;
-  if (hadGrid) toggleGrid();
-  const hadPG = printGuidesOn;
-  if (hadPG) { hidePrintGuides(); printGuidesOn = false; }
-
-  const jsonData  = JSON.stringify(canvas.toJSON(['data','selectable','evented','hoverCursor']));
-  const thumbData = canvas.toDataURL({ format:'jpeg', quality:0.8, multiplier:0.5 });
-  const name      = document.getElementById('tplNameInput').value.trim() || ED.name;
-
-  if (hadGrid) toggleGrid();
-  if (hadPG)   { showPrintGuides(); printGuidesOn = true; document.getElementById('btnPrintGuides').classList.add('active'); }
 
   const fd = new FormData();
   fd.append('action',         'save_canvas');
   fd.append('csrf_token',     ED.csrf);
   fd.append('id',             ED.id);
-  fd.append('name',           name);
-  fd.append('canvas_json',    jsonData);
-  fd.append('thumbnail_data', thumbData);
+  fd.append('name',           _designName());
+  fd.append('canvas_json',    JSON.stringify(canvasJSON()));
+  fd.append('thumbnail_data', _thumbnail());
+  fd.append('canvas_width',   canvasW);
+  fd.append('canvas_height',  canvasH);
 
   try {
     const r = await idmFetch(ED.api_url, { method:'POST', body:fd }, 30000);
     const d = await r.json();
-    showToast(d.success ? 'Template saved!' : 'Error: ' + d.message, d.success ? '' : 'err');
+    if (d.success) { markClean(); showToast('Template saved!'); }
+    else showToast('Error: ' + (d.message || 'could not save'), 'err');
   } catch(e) {
     showToast('Network error. Try again.', 'err');
   }
@@ -3175,46 +3543,39 @@ async function saveCanvas() {
 // has no such risk and is never blocked.
 let _galSavePending = false, _galSaveQueueId = null;
 window.addEventListener('sszone-queue-synced', (e) => {
-  if (e.detail.panel !== 'editor' || e.detail.id !== _galSaveQueueId) return;
+  if (!e.detail || e.detail.panel !== 'editor' || e.detail.id !== _galSaveQueueId) return;
   _galSavePending = false; _galSaveQueueId = null;
   const result = e.detail.result;
-  if (result && result.success && result.gallery_id) ED.gallery_id = result.gallery_id;
+  if (result && result.success && result.gallery_id) { ED.gallery_id = result.gallery_id; markClean(); }
   const btn = document.getElementById('btnSaveGallery');
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-collection"></i> <span id="galleryBtnLabel">Update Gallery</span>'; }
 });
 
 async function saveToGallery() {
   const btn = document.getElementById('btnSaveGallery');
+  if (btn.disabled) return;
   if (_galSavePending && !ED.gallery_id) { showToast('Still syncing your last save — please wait', 'info'); return; }
   btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Saving…';
 
-  const hadGrid = gridOn; if (hadGrid) toggleGrid();
-  const hadPG   = printGuidesOn; if (hadPG) { hidePrintGuides(); printGuidesOn = false; }
-
-  const jsonData = JSON.stringify(canvas.toJSON(['data','selectable','evented','hoverCursor']));
-  let thumbData  = '';
-  try { thumbData = canvas.toDataURL({ format:'jpeg', quality:0.82, multiplier:0.5 }); } catch(_) {}
-  const name = (document.getElementById('tplNameInput')?.value || '').trim() || ED.name;
-
-  if (hadGrid) toggleGrid();
-  if (hadPG)   { showPrintGuides(); printGuidesOn = true; document.getElementById('btnPrintGuides').classList.add('active'); }
-
+  const name = _designName();
   const fd = new FormData();
   fd.append('action',             'save');
   fd.append('csrf_token',         ED.csrf);
   fd.append('gallery_id',         ED.gallery_id  || 0);
   fd.append('source_template_id', ED.src_tpl_id  || 0);
   fd.append('name',               name);
-  fd.append('canvas_json',        jsonData);
-  fd.append('thumbnail_data',     thumbData);
-  fd.append('canvas_width',       ED.width);
-  fd.append('canvas_height',      ED.height);
+  fd.append('canvas_json',        JSON.stringify(canvasJSON()));
+  fd.append('thumbnail_data',     _thumbnail());
+  // Current size — ED.width/height were the size at page load, so a resized
+  // or cropped design was saved with its old dimensions.
+  fd.append('canvas_width',       canvasW);
+  fd.append('canvas_height',      canvasH);
 
   const wasNew = !ED.gallery_id;
   try {
-    const d = await window.smartFetch(ED.gallery_api, fd, {
-      label: 'Save design: ' + name, panel: 'editor', timeoutMs: 30000,
-    });
+    const d = typeof window.smartFetch === 'function'
+      ? await window.smartFetch(ED.gallery_api, fd, { label: 'Save design: ' + name, panel: 'editor', timeoutMs: 30000 })
+      : await (await idmFetch(ED.gallery_api, { method:'POST', body:fd }, 30000)).json();
     if (d.queued) {
       if (wasNew) {
         // No real id yet — hold the button disabled until the sszone-queue-synced
@@ -3227,10 +3588,11 @@ async function saveToGallery() {
       }
       showToast(d.message || 'Saved offline — will sync automatically', 'ok');
     } else if (d.success) {
-      ED.gallery_id = d.gallery_id;
+      if (d.gallery_id) ED.gallery_id = d.gallery_id;
+      markClean();
       showToast(d.message || 'Saved to gallery!', 'ok');
     } else {
-      showToast('Error: ' + d.message, 'err');
+      showToast('Error: ' + (d.message || 'could not save'), 'err');
     }
   } catch(e) {
     console.error('saveToGallery fetch error:', e);
@@ -3241,43 +3603,43 @@ async function saveToGallery() {
 }
 
 // ── Export / Print ──────────────────────────────────────────────────
-function exportPng() {
-  const hadGrid = gridOn; if (hadGrid) toggleGrid();
-  const hadPG   = printGuidesOn; if (hadPG) { hidePrintGuides(); printGuidesOn = false; }
-  // Use DPI-aware multiplier for high-resolution PNG
+/* Export multiplier for ~300 DPI output, capped so the bitmap stays inside the
+   browser's canvas limits (a large banner ×3 used to fail with a blank file). */
+function _printMultiplier() {
   const dpi  = _ncCurrentDpi || 96;
-  const mult = Math.max(2, Math.round(300 / dpi));
-  const url  = canvas.toDataURL({ format:'png', quality:1, multiplier: mult });
-  if (hadGrid) toggleGrid();
-  if (hadPG)   { showPrintGuides(); printGuidesOn = true; document.getElementById('btnPrintGuides').classList.add('active'); }
+  let mult = Math.max(1, 300 / dpi);
+  if (dpi >= 300) mult = 1;
+  const maxSide = 14000, maxArea = 200e6;
+  mult = Math.min(mult, maxSide / Math.max(canvasW, canvasH), Math.sqrt(maxArea / (canvasW * canvasH)));
+  return Math.max(0.1, Math.round(mult * 100) / 100);
+}
+function exportPng() {
+  canvas.discardActiveObject().renderAll();
+  const mult = _printMultiplier();
+  let url;
+  try { url = exportDataURL({ format:'png', multiplier: mult }); }
+  catch (e) { showToast('Export blocked: an image from another website has no download permission. Re-upload it from your device.', 'err'); return; }
   const a = document.createElement('a');
-  a.href = url; a.download = (document.getElementById('tplNameInput').value.trim() || 'template') + '.png';
-  a.click();
-  showToast('PNG exported at ' + mult + '× resolution');
+  a.href = url; a.download = _fileBase() + '.png';
+  document.body.appendChild(a); a.click(); a.remove();
+  showToast('PNG exported — ' + Math.round(canvasW * mult) + '×' + Math.round(canvasH * mult) + ' px');
 }
 
 // ── Print — high-res, proper DPI, correct physical size ──────────
 function printCanvas() {
-  const hadGrid = gridOn; if (hadGrid) toggleGrid();
-  const hadPG   = printGuidesOn; if (hadPG) { hidePrintGuides(); printGuidesOn = false; }
-
+  canvas.discardActiveObject().renderAll();
   const dpi    = _ncCurrentDpi || 96;                // design DPI
-  const mult   = Math.max(2, Math.round(300 / dpi)); // export at ≥300 DPI equivalent
-  const url    = canvas.toDataURL({ format:'png', quality:1, multiplier: mult });
-
-  if (hadGrid) toggleGrid();
-  if (hadPG)   { showPrintGuides(); printGuidesOn = true; document.getElementById('btnPrintGuides').classList.add('active'); }
+  let url;
+  try { url = exportDataURL({ format:'png', multiplier: _printMultiplier() }); }
+  catch (e) { showToast('Print blocked: an image from another website has no download permission.', 'err'); return; }
 
   // Physical size in inches at original DPI
-  const wIn = canvasW / dpi;
-  const hIn = canvasH / dpi;
-  // CSS page size (in inches for @page)
-  const pageW = wIn.toFixed(4) + 'in';
-  const pageH = hIn.toFixed(4) + 'in';
+  const pageW = (canvasW / dpi).toFixed(4) + 'in';
+  const pageH = (canvasH / dpi).toFixed(4) + 'in';
 
   const w = window.open('', '_blank');
   if (!w) { showToast('Pop-up blocked — allow pop-ups for printing', 'err'); return; }
-  w.document.write(`<!DOCTYPE html><html><head><title>Print — ${(document.getElementById('tplNameInput').value||'Design').trim()}</title>
+  w.document.write(`<!DOCTYPE html><html><head><title>Print — ${escHtml(_designName())}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
 @page{margin:0;size:${pageW} ${pageH};}
@@ -3299,38 +3661,27 @@ function exportPDF() {
   if (typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined') {
     showToast('jsPDF loading — try again in a moment', 'err'); return;
   }
-  const hadGrid = gridOn; if (hadGrid) toggleGrid();
-  const hadPG   = printGuidesOn; if (hadPG) { hidePrintGuides(); printGuidesOn = false; }
-
+  canvas.discardActiveObject().renderAll();
   const dpi  = _ncCurrentDpi || 96;
-  const mult = Math.max(2, Math.round(300 / dpi)); // export at ≥300 DPI equivalent
-
   showToast('Generating PDF…');
   setTimeout(() => {
     try {
-      const url = canvas.toDataURL({ format:'png', quality:1, multiplier: mult });
-
-      if (hadGrid) toggleGrid();
-      if (hadPG)   { showPrintGuides(); printGuidesOn = true; document.getElementById('btnPrintGuides').classList.add('active'); }
-
+      const url = exportDataURL({ format:'png', multiplier: _printMultiplier() });
       const { jsPDF } = window.jspdf || window;
       const wMm = (canvasW / dpi) * 25.4; // convert px → mm
       const hMm = (canvasH / dpi) * 25.4;
       const ori = wMm >= hMm ? 'l' : 'p';
       const doc = new jsPDF({ orientation: ori, unit: 'mm', format: [wMm, hMm], compress: true });
-
       const img = new Image();
       img.onload = () => {
         // Draw image filling the entire PDF page
         doc.addImage(img, 'PNG', 0, 0, wMm, hMm, '', 'FAST');
-        const fname = (document.getElementById('tplNameInput').value.trim() || 'design') + '.pdf';
-        doc.save(fname);
+        doc.save(_fileBase() + '.pdf');
         showToast('PDF downloaded! (' + wMm.toFixed(1) + '×' + hMm.toFixed(1) + 'mm)');
       };
+      img.onerror = () => showToast('PDF error: could not render the design', 'err');
       img.src = url;
     } catch(ex) {
-      if (hadGrid) toggleGrid();
-      if (hadPG)   { showPrintGuides(); printGuidesOn = true; document.getElementById('btnPrintGuides').classList.add('active'); }
       showToast('PDF error: ' + ex.message, 'err');
     }
   }, 50);
@@ -3343,7 +3694,7 @@ function showToast(msg, cls = '') {
   t.textContent = msg;
   t.className = 'ed-toast show' + (cls ? ' ' + cls : '');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+  toastTimer = setTimeout(() => t.classList.remove('show'), cls === 'err' ? 4500 : 3000);
 }
 
 // ── In-app confirm/alert dialogs (replace native confirm()/alert() — better on mobile) ──
@@ -3356,13 +3707,15 @@ function edConfirm(message, onYes, onNo) {
 }
 function _edConfirmAnswer(yes) {
   document.getElementById('edConfirmOv').style.display = 'none';
-  if (yes && _edConfirmYes) _edConfirmYes();
-  if (!yes && _edConfirmNo) _edConfirmNo();
+  const y = _edConfirmYes, n = _edConfirmNo;
   _edConfirmYes = null; _edConfirmNo = null;
+  if (yes && y) y();
+  if (!yes && n) n();
 }
+/** lines: plain strings (escaped) — pass {html:'…'} for a trusted formatted line. */
 function edAlertList(title, lines) {
   document.getElementById('edListTitle').textContent = title;
-  document.getElementById('edListBody').innerHTML = lines.map(l => `<div style="padding:.3rem 0;border-bottom:1px solid #334155;">${l}</div>`).join('');
+  document.getElementById('edListBody').innerHTML = lines.map(l => `<div style="padding:.3rem 0;border-bottom:1px solid #334155;">${typeof l === 'object' && l && l.html ? l.html : escHtml(l)}</div>`).join('');
   document.getElementById('edListOv').style.display = 'flex';
 }
 
@@ -3370,37 +3723,68 @@ let _edPromptCb=null, _edPromptFields=null;
 function edPromptModal(title, fields, onOk) {
   document.getElementById('edPromptTitle').textContent = title;
   _edPromptFields = fields;
+  // Values/labels are escaped: a name containing a quote used to break the field.
   document.getElementById('edPromptBody').innerHTML = fields.map(f => {
+    const v = f.value !== undefined && f.value !== null ? f.value : '';
     const inputHtml = f.type === 'textarea'
-      ? `<textarea id="_edPf_${f.id}" rows="${f.rows||4}" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:.85rem;padding:.5rem .65rem;outline:none;resize:vertical;font-family:inherit;">${f.value||''}</textarea>`
-      : `<input type="${f.type||'text'}" id="_edPf_${f.id}" value="${f.value!==undefined&&f.value!==null?f.value:''}" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:.85rem;padding:.5rem .65rem;outline:none;" onkeydown="if(event.key==='Enter')_edPromptAnswer(true)">`;
-    return `<label style="font-size:.78rem;color:#94a3b8;display:block;margin:.5rem 0 .3rem;font-weight:600;">${f.label}</label>${inputHtml}`;
+      ? `<textarea id="_edPf_${f.id}" rows="${f.rows||4}" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:.85rem;padding:.5rem .65rem;outline:none;resize:vertical;font-family:inherit;">${escHtml(v)}</textarea>`
+      : `<input type="${f.type==='number'?'number':'text'}" id="_edPf_${f.id}" value="${escHtml(v)}" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:.85rem;padding:.5rem .65rem;outline:none;" onkeydown="if(event.key==='Enter'){event.preventDefault();_edPromptAnswer(true);}">`;
+    return `<label for="_edPf_${f.id}" style="font-size:.78rem;color:#94a3b8;display:block;margin:.5rem 0 .3rem;font-weight:600;">${escHtml(f.label)}</label>${inputHtml}`;
   }).join('');
   document.getElementById('edPromptOv').style.display = 'flex';
-  setTimeout(() => { const first = document.getElementById('_edPf_'+fields[0].id); if (first) first.focus(); }, 50);
+  setTimeout(() => { const first = document.getElementById('_edPf_'+fields[0].id); if (first) { first.focus(); first.select && first.select(); } }, 50);
   _edPromptCb = onOk;
 }
 function _edPromptAnswer(ok) {
   document.getElementById('edPromptOv').style.display = 'none';
-  if (ok && _edPromptCb && _edPromptFields) {
-    const vals = {};
-    _edPromptFields.forEach(f => { const el = document.getElementById('_edPf_'+f.id); vals[f.id] = el ? el.value : ''; });
-    _edPromptCb(vals);
-  }
+  const cb = _edPromptCb, fields = _edPromptFields;
   _edPromptCb = null; _edPromptFields = null;
+  if (ok && cb && fields) {
+    const vals = {};
+    fields.forEach(f => { const el = document.getElementById('_edPf_'+f.id); vals[f.id] = el ? el.value : ''; });
+    cb(vals);
+  }
 }
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────
+const _EDITOR_MODALS = ['edPromptOv','edConfirmOv','edListOv','warpModal','studio3DModal','urlModal','stickerModal','newCanvasModal','resizeModal','curvedTextModal','mockupModal','lspIframeModal'];
+function _openModalId() { return _EDITOR_MODALS.find(id => { const el = document.getElementById(id); return el && el.style.display && el.style.display !== 'none'; }); }
+function _closeModal(id) {
+  if (id === 'edPromptOv') return _edPromptAnswer(false);
+  if (id === 'edConfirmOv') return _edConfirmAnswer(false);
+  if (id === 'warpModal') return closeWarpModal();
+  if (id === 'studio3DModal') return close3DStudio();
+  if (id === 'lspIframeModal') return closeLspModal();
+  if (id === 'mockupModal') return closeMockupModal();
+  if (id === 'newCanvasModal') return closeNewCanvasModal();
+  document.getElementById(id).style.display = 'none';
+}
+let _nudgeT = null;
 document.addEventListener('keydown', e => {
+  // While a dialog is open: Escape closes it, Enter confirms a confirm-box,
+  // and no shortcut leaks through to the canvas (Delete used to delete the
+  // selected object behind an open dialog).
+  const modal = _openModalId();
+  if (modal) {
+    if (e.key === 'Escape') { e.preventDefault(); _closeModal(modal); }
+    else if (e.key === 'Enter' && modal === 'edConfirmOv') { e.preventDefault(); _edConfirmAnswer(true); }
+    return;
+  }
   const tag      = document.activeElement.tagName;
   const editing  = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || document.activeElement.isContentEditable;
-  const onCanvas = canvas.isDrawingMode || (canvas.getActiveObject()?.isEditing);
-  if (editing || onCanvas) return;
+  const textEditing = !!canvas.getActiveObject()?.isEditing;
+  if (editing || textEditing) return;
 
-  // Brush size: [ and ] keys when drawing
-  if (canvas.isDrawingMode) {
-    if (e.key === '[') { e.preventDefault(); const bs = document.getElementById('brushSize'); bs.value = Math.max(1, +bs.value - 2); document.getElementById('brushSizeVal').textContent = bs.value; updateBrush(); return; }
-    if (e.key === ']') { e.preventDefault(); const bs = document.getElementById('brushSize'); bs.value = Math.min(80, +bs.value + 2); document.getElementById('brushSizeVal').textContent = bs.value; updateBrush(); return; }
+  // While drawing: [ ] change brush size, Escape leaves draw mode, Ctrl+Z still undoes.
+  if (canvas.isDrawingMode || isEraserMode) {
+    if (e.key === '[' || e.key === ']') {
+      e.preventDefault();
+      const bs = document.getElementById('brushSize');
+      bs.value = e.key === '[' ? Math.max(1, +bs.value - 2) : Math.min(80, +bs.value + 2);
+      document.getElementById('brushSizeVal').textContent = bs.value; updateBrush(); return;
+    }
+    if (e.key === 'Escape') { e.preventDefault(); setActiveTool('select'); closeFlyouts(); showToast('Back to Select tool', 'info'); return; }
+    if (!(e.ctrlKey || e.metaKey)) return;
   }
 
   // Single-key shortcuts (no modifiers)
@@ -3420,7 +3804,6 @@ document.addEventListener('keydown', e => {
     if (k === 'm') { e.preventDefault(); openStickerModal(); return; }
     if (k === 'g') { e.preventDefault(); toggleGrid(); return; }
     if (k === 'h') { e.preventDefault(); toggleSnapGuides(); return; }
-    if (k === 'z') { e.preventDefault(); canvas.discardActiveObject().renderAll(); return; }
   }
 
   // Ctrl / Cmd shortcuts
@@ -3428,42 +3811,54 @@ document.addEventListener('keydown', e => {
     const k = e.key.toLowerCase();
     if (k === 'z' && !e.shiftKey) { e.preventDefault(); histUndo(); return; }
     if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); histRedo(); return; }
-    if (k === 's') { e.preventDefault(); saveCanvas(); return; }
+    if (k === 's') { e.preventDefault(); ED.is_admin && !ED.from_gallery && document.getElementById('btnSave') ? saveCanvas() : saveToGallery(); return; }
     if (k === 'd') { e.preventDefault(); dupSelected(); return; }
-    if (k === 'c') { e.preventDefault(); copySelected(); return; }
-    if (k === 'x') { e.preventDefault(); cutSelected(); return; }
-    if (k === 'v') { e.preventDefault(); pasteSelected(); return; }
+    if (k === 'c') { if (canvas.getActiveObject()) { e.preventDefault(); copySelected(); } return; }
+    if (k === 'x') { if (canvas.getActiveObject()) { e.preventDefault(); cutSelected(); } return; }
+    // Ctrl+V: our own clipboard first; otherwise let the browser fire 'paste'
+    // so an image copied from elsewhere can be pasted in.
+    if (k === 'v') { if (clipboard) { e.preventDefault(); pasteSelected(); } return; }
     if (k === 'g' && !e.shiftKey) { e.preventDefault(); groupSelected(); return; }
     if (k === 'g' &&  e.shiftKey) { e.preventDefault(); ungroupSelected(); return; }
     if (k === 'a') {
       e.preventDefault();
       canvas.discardActiveObject();
-      const sel = new fabric.ActiveSelection(
-        canvas.getObjects().filter(o => !o.data?.grid && !o.data?.isSnapGuide && !o.data?.printGuide),
-        { canvas }
-      );
-      canvas.setActiveObject(sel); canvas.renderAll(); return;
+      const objs = canvas.getObjects().filter(o => o.selectable !== false && o.visible !== false && !o.data?.isCropOverlay);
+      if (!objs.length) return;
+      canvas.setActiveObject(new fabric.ActiveSelection(objs, { canvas })); canvas.renderAll(); return;
     }
+    if (k === ']') { e.preventDefault(); const o = canvas.getActiveObject(); if (o) { e.shiftKey ? canvas.bringToFront(o) : canvas.bringForward(o); canvas.renderAll(); histSave(); refreshLayers(); } return; }
+    if (k === '[') { e.preventDefault(); const o = canvas.getActiveObject(); if (o) { e.shiftKey ? canvas.sendToBack(o) : canvas.sendBackwards(o); canvas.renderAll(); histSave(); refreshLayers(); } return; }
     if (k === 'p') { e.preventDefault(); printCanvas(); return; }
     if (k === 'e') { e.preventDefault(); exportPng(); return; }
-    if (e.key === '0') { e.preventDefault(); setZoom(1); document.getElementById('zoomSel').value = '1'; return; }
-    if (e.key === '+' || e.key === '=') { e.preventDefault(); const z = Math.min(3, curZoom * 1.2); setZoom(z); return; }
-    if (e.key === '-') { e.preventDefault(); const z = Math.max(0.2, curZoom / 1.2); setZoom(z); return; }
+    if (e.key === '0') { e.preventDefault(); setZoom('fit'); return; }
+    if (e.key === '1') { e.preventDefault(); setZoom(1); return; }
+    if (e.key === '+' || e.key === '=') { e.preventDefault(); setZoom(Math.min(4, canvas.getZoom() * 1.2)); return; }
+    if (e.key === '-') { e.preventDefault(); setZoom(Math.max(0.05, canvas.getZoom() / 1.2)); return; }
+    return;
   }
 
-  if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelected(); return; }
-  if (e.key === 'Escape') { e.preventDefault(); closeFlyouts(); canvas.discardActiveObject().renderAll(); return; }
+  if (e.key === 'Delete' || e.key === 'Backspace') { if (canvas.getActiveObject()) { e.preventDefault(); deleteSelected(); } return; }
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    if (isCropping) { toggleCropMode(); return; }
+    if (_gradDragMode) { _exitGradDrag(); return; }
+    if (eyedropperActive) { toggleEyedropper(); return; }
+    closeFlyouts(); canvas.discardActiveObject().renderAll(); return;
+  }
 
-  // Arrow nudge (Shift = 10px, default = 1px)
+  // Arrow nudge (Shift = 10px, default = 1px) — one undo step per burst
   const obj = canvas.getActiveObject();
   if (obj && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) {
     e.preventDefault();
+    if (obj.lockMovementX) return;
     const step = e.shiftKey ? 10 : 1;
     if (e.key === 'ArrowLeft')  obj.left -= step;
     if (e.key === 'ArrowRight') obj.left += step;
     if (e.key === 'ArrowUp')    obj.top  -= step;
     if (e.key === 'ArrowDown')  obj.top  += step;
     obj.setCoords(); canvas.renderAll(); refreshProps(obj);
+    clearTimeout(_nudgeT); _nudgeT = setTimeout(histSave, 400);
   }
 });
 
@@ -3614,11 +4009,18 @@ function updateEraserBrush() {
   canvas.freeDrawingBrush.width = size;
 
   if (eraserMode === 'pixel') {
-    // TRUE ERASE: paint with destination-out to make transparent
-    canvas.freeDrawingBrush.color = 'rgba(0,0,0,1)';
+    // TRUE ERASE: the stroke becomes destination-out when finished (path:created).
+    // Shown semi-transparent while drawing so you can see where you erase.
+    canvas.freeDrawingBrush.color = 'rgba(148,163,184,0.6)';
   } else {
-    // BACKGROUND mode: paint with canvas background color
-    const bg = canvas.backgroundColor || '#ffffff';
+    // BACKGROUND mode: paint with canvas background color. On a transparent
+    // background there's no colour to paint, so it used to draw nothing.
+    const bg = canvas.backgroundColor;
+    if (!bg || bg === 'transparent' || typeof bg !== 'string') {
+      setEraserMode('pixel');
+      showToast('Background is transparent — switched to Pixel eraser', 'info');
+      return;
+    }
     canvas.freeDrawingBrush.color = bg;
   }
 }
@@ -3665,10 +4067,12 @@ function _objectEraserMouseDown(opt) {
   const target = opt.target;
   // Don't delete guides, grids, or crop overlays
   if (!target || target.data?.grid || target.data?.isSnapGuide || target.data?.printGuide || target.data?.isCropOverlay) return;
+  hist.locked = true;
   canvas.discardActiveObject();
   canvas.remove(target);
+  hist.locked = false;
   canvas.renderAll();
-  histSave();
+  histSave(); refreshLayers();
   showToast('Object erased', 'info');
 }
 
@@ -3738,6 +4142,7 @@ function setActiveTool(name) {
 
   // Exit eyedropper
   eyedropperActive = false;
+  canvas.skipTargetFind = false;
   document.body.classList.remove('eyedrop-mode');
   const tEye = document.getElementById('tEye');
   if (tEye) tEye.classList.remove('active');
@@ -3746,20 +4151,22 @@ function setActiveTool(name) {
 // ── Handle path:created for Pixel Eraser ────────────────────────────
 // When user draws with eraser in pixel mode, apply destination-out
 canvas.on('path:created', function(e) {
-  if (!isEraserMode) return;
-
   const path = e.path;
+  if (!path) return;
+  if (!isEraserMode) { path.data = Object.assign({}, path.data, { name: 'Drawing' }); refreshLayers(); return; }
 
+  // The stroke was already recorded by object:added — replace that history
+  // step with the finished eraser stroke instead of adding a second one.
+  if (hist.idx > 0) { hist.states.splice(hist.idx, 1); hist.idx--; }
   if (eraserMode === 'pixel') {
     // TRUE TRANSPARENCY: destination-out makes pixels transparent
     path.set({
       globalCompositeOperation: 'destination-out',
+      stroke: 'rgba(0,0,0,1)',
       selectable: false,
       evented: false,
       data: { eraserPath: true }
     });
-    canvas.renderAll();
-    histSave();
   } else if (eraserMode === 'background') {
     // BACKGROUND COLOR: just a normal stroke with bg color
     path.set({
@@ -3767,9 +4174,9 @@ canvas.on('path:created', function(e) {
       evented: false,
       data: { eraserPath: true }
     });
-    canvas.renderAll();
-    histSave();
   }
+  canvas.renderAll();
+  histSave(); refreshLayers();
 });
 
 // ── Transparent Background Toggle ───────────────────────────────────
@@ -3779,13 +4186,14 @@ function toggleTransparentBg() {
 
   if (hasBg) {
     // Remove background → transparent
-    canvas.backgroundColor = 'transparent';
+    canvas.backgroundColor = '';
     if (btn) { btn.style.background = '#4f46e5'; btn.style.color = '#fff'; }
     showToast('Background transparent — Pixel Eraser will now erase to transparency!', 'info');
   } else {
     // Add white background
     canvas.backgroundColor = '#ffffff';
     document.getElementById('pCanvasBg').value = '#ffffff';
+    canvas.getObjects().forEach(o => { if (o.data?.eraserPath && o.globalCompositeOperation !== 'destination-out') o.set('stroke', '#ffffff'); });
     if (btn) { btn.style.background = '#334155'; btn.style.color = '#e2e8f0'; }
     showToast('Background set to white');
   }
@@ -3804,7 +4212,7 @@ function toggleTransparentBg() {
     cur.style.width  = sz + 'px';
     cur.style.height = sz + 'px';
   }
-  document.addEventListener('mousemove', e => followTo(e.clientX, e.clientY));
+  document.addEventListener('mousemove', e => { if (document.body.classList.contains('eraser-mode')) followTo(e.clientX, e.clientY); });
   document.addEventListener('touchmove', e => {
     if (!document.body.classList.contains('eraser-mode') || !e.touches.length) return;
     followTo(e.touches[0].clientX, e.touches[0].clientY);
@@ -3845,7 +4253,9 @@ let warpDebounceTimer = null;
 
 function openWarpModal() {
   const obj = canvas.getActiveObject();
-  if (!obj || !['i-text','text','textbox'].includes(obj.type)) {
+  // Selecting an already-warped text and pressing Warp again re-opens it for editing.
+  if (obj && obj.data?.warpedFrom && obj.type === 'image') { reEditWarp(); return; }
+  if (!obj || !isTextObj(obj)) {
     showToast('Select a text object first', 'err'); return;
   }
   warpTargetObj = obj;
@@ -3856,10 +4266,10 @@ function openWarpModal() {
   warpPreviewCanvas = document.getElementById('warpPreviewCanvas');
   warpPreviewCtx    = warpPreviewCanvas.getContext('2d');
   // Reset sliders
-  document.getElementById('warpAmount').value  = obj.data?.warpAmount  || 50;
-  document.getElementById('warpSpread').value  = obj.data?.warpSpread  || 100;
-  document.getElementById('warpSpacing').value = obj.data?.warpSpacing || 0;
-  document.getElementById('warpDepth').value   = obj.data?.warpDepth   || 0;
+  document.getElementById('warpAmount').value  = obj.data?.warpAmount  ?? 50;
+  document.getElementById('warpSpread').value  = obj.data?.warpSpread  ?? 100;
+  document.getElementById('warpSpacing').value = obj.data?.warpSpacing ?? 0;
+  document.getElementById('warpDepth').value   = obj.data?.warpDepth   ?? 0;
   document.getElementById('warpSmooth').checked        = true;
   document.getElementById('warpReverse').checked       = false;
   document.getElementById('warpPreserveSize').checked  = true;
@@ -4087,7 +4497,7 @@ function drawWarpPathGuide(ctx, W, H, pad, amount, smooth, reverse) {
 
 function applyTextWarp() {
   const obj = warpTargetObj || canvas.getActiveObject();
-  if (!obj || !['i-text','text','textbox'].includes(obj.type)) {
+  if (!obj || !isTextObj(obj)) {
     showToast('Select a warped text object first', 'err'); return;
   }
   const text   = obj.text || 'Text';
@@ -4107,22 +4517,26 @@ function applyTextWarp() {
   const keepSz = document.getElementById('warpPreserveSize').checked;
 
   const scale = 3;
-  const tmpC  = document.createElement('canvas');
-  const pad   = fs * 1.2;
-  const w     = Math.max(400, text.length * fs * 0.8 * spread + spacing*text.length + pad*2);
-  const h     = fs * 5;
-  tmpC.width  = w * scale;
-  tmpC.height = h * scale;
-  const ctx   = tmpC.getContext('2d');
-  ctx.scale(scale, scale);
-
-  ctx.font         = `${fi} ${fw} ${fs}px "${family}", sans-serif`;
-  ctx.textBaseline = 'middle';
-
+  const font  = `${fi} ${fw} ${fs}px "${family}", sans-serif`;
+  // Measure FIRST and size the work canvas from the real text width — the old
+  // estimate (chars × 0.8 × size) clipped wide letters / long names.
+  const mctx = document.createElement('canvas').getContext('2d');
+  mctx.font = font;
   const chars  = [...text];
   const sp     = fs * 0.04 + spacing;
-  const widths = chars.map(c => ctx.measureText(c).width * spread + sp);
+  const widths = chars.map(c => mctx.measureText(c).width * spread + sp);
   const total  = widths.reduce((a,b) => a+b, 0);
+  const pad   = fs * 1.5 + depth;
+  const w     = Math.max(200, total * 1.15 + pad * 2);
+  const h     = fs * 5 + depth * 2;
+  const tmpC  = document.createElement('canvas');
+  tmpC.width  = Math.round(w * scale);
+  tmpC.height = Math.round(h * scale);
+  const ctx   = tmpC.getContext('2d', { willReadFrequently: true });
+  ctx.scale(scale, scale);
+  ctx.font         = font;
+  ctx.textBaseline = 'middle';
+
   let   xOff   = (w - pad*2 - total) / 2;
   const tw     = w - pad*2, th = h - pad*2;
 
@@ -4148,32 +4562,50 @@ function applyTextWarp() {
     xOff += widths[i];
   });
 
-  const dataURL = tmpC.toDataURL('image/png');
+  // Trim the empty margin so the image's box hugs the warped text.
+  const W = tmpC.width, H = tmpC.height;
+  const px = ctx.getImageData(0, 0, W, H).data;
+  let x0 = W, y0 = H, x1 = -1, y1 = -1;
+  for (let y = 0; y < H; y++) { const row = y * W * 4; for (let x = 0; x < W; x++) { if (px[row + x * 4 + 3] > 8) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } } }
+  let src = tmpC;
+  if (x1 >= 0) {
+    const m = 4 * scale;
+    x0 = Math.max(0, x0 - m); y0 = Math.max(0, y0 - m); x1 = Math.min(W - 1, x1 + m); y1 = Math.min(H - 1, y1 + m);
+    src = document.createElement('canvas');
+    src.width = x1 - x0 + 1; src.height = y1 - y0 + 1;
+    src.getContext('2d').drawImage(tmpC, x0, y0, src.width, src.height, 0, 0, src.width, src.height);
+  }
+
+  const dataURL = src.toDataURL('image/png');
   const imgEl   = new Image();
   imgEl.onload  = () => {
-    let scX = 1/scale, scY = 1/scale;
-    if (keepSz) {
-      const origW = obj.width  * (obj.scaleX || 1);
-      const origH = obj.height * (obj.scaleY || 1);
-      scX = origW / tmpC.width;
-      scY = origH / tmpC.height;
-    }
+    // "Keep Size" now scales UNIFORMLY so the warped text is as wide as the
+    // original — it used to stretch width and height independently, which
+    // squashed the result into a thin, distorted strip.
+    let sc = (obj.scaleX || 1) / scale;
+    if (keepSz) sc = (obj.getScaledWidth() || src.width / scale) / src.width;
+    const center = obj.getCenterPoint();
     const fImg = new fabric.Image(imgEl, {
-      left: obj.left, top: obj.top, originX: obj.originX || 'left', originY: obj.originY || 'top',
-      scaleX: scX, scaleY: scY,
+      left: center.x, top: center.y, originX: 'center', originY: 'center',
+      scaleX: sc, scaleY: sc, angle: obj.angle || 0, opacity: obj.opacity ?? 1,
       data: {
         warpedFrom: text, warpType: selectedWarpType, warpAmount: amount,
         warpSpread: +document.getElementById('warpSpread').value,
         warpSpacing: spacing, warpDepth: depth,
         origFontSize: fs, origFill: fill, origFamily: family, origFw: fw, origFi: fi,
-        origStroke: stroke, origSw: sw
+        origStroke: stroke, origSw: sw, origScale: obj.scaleX || 1
       }
     });
+    hist.locked = true;
+    const idx = canvas.getObjects().indexOf(obj);
     canvas.remove(obj);
-    canvas.add(fImg).setActiveObject(fImg).renderAll();
-    histSave();
+    canvas.add(fImg);
+    if (idx >= 0) canvas.moveTo(fImg, idx);    // keep its place in the layer stack
+    hist.locked = false;
+    canvas.setActiveObject(fImg).renderAll();
+    histSave(); refreshLayers();
     closeWarpModal();
-    showToast('Text warp applied!');
+    showToast('Text warp applied! (select it and press Warp again to re-edit)');
   };
   imgEl.src = dataURL;
 }
@@ -4185,39 +4617,58 @@ function reEditWarp() {
   }
   // Restore original text object for re-editing
   const d = obj.data;
+  const center = obj.getCenterPoint();
   const txt = new fabric.IText(d.warpedFrom, {
-    left: obj.left, top: obj.top, originX: obj.originX || 'left', originY: obj.originY || 'top',
+    left: center.x, top: center.y, originX: 'center', originY: 'center',
     fontSize: d.origFontSize, fill: d.origFill, fontFamily: d.origFamily,
-    fontWeight: d.origFw, fontStyle: d.origFi,
-    stroke: d.origStroke || 'transparent', strokeWidth: d.origSw || 0,
+    fontWeight: d.origFw, fontStyle: d.origFi, angle: obj.angle || 0,
+    scaleX: d.origScale || 1, scaleY: d.origScale || 1,
+    stroke: d.origStroke || '', strokeWidth: d.origSw || 0,
     data: { warpType: d.warpType, warpAmount: d.warpAmount, warpSpread: d.warpSpread, warpSpacing: d.warpSpacing, warpDepth: d.warpDepth }
   });
+  hist.locked = true;
+  const idx = canvas.getObjects().indexOf(obj);
   canvas.remove(obj);
-  canvas.add(txt).setActiveObject(txt).renderAll();
+  canvas.add(txt);
+  if (idx >= 0) canvas.moveTo(txt, idx);
+  hist.locked = false;
+  canvas.setActiveObject(txt).renderAll();
+  histSave();
   openWarpModal();
 }
 
 // ── Gradient Fill (Pro) ─────────────────────────────────────────────
-function previewGrad() {
+/* Swatch only. CSS measures gradient angles from "to top" while the canvas
+   gradient measures from "to the right", so the preview used to point 90°
+   away from what was actually applied (e.g. "← →" previewed as "↑"). */
+function _previewGradSwatch() {
   const c1   = document.getElementById('gC1').value;
   const cMid = document.getElementById('gCMid').value;
   const c2   = document.getElementById('gC2').value;
-  const ang  = document.getElementById('gAngle').value || 90;
+  const ang  = +(document.getElementById('gAngle').value || 0);
   document.getElementById('gradPreview').style.background =
-    `linear-gradient(${ang}deg, ${c1}, ${cMid}, ${c2})`;
+    `linear-gradient(${ang + 90}deg, ${c1}, ${cMid}, ${c2})`;
+}
+function previewGrad() {
+  _previewGradSwatch();
+  const c1   = document.getElementById('gC1').value;
+  const cMid = document.getElementById('gCMid').value;
+  const c2   = document.getElementById('gC2').value;
+  const ang  = document.getElementById('gAngle').value || 0;
 
   // Live-update the object if a gradient is already applied to it, so dragging
   // the Start/Mid/End colour pickers previews on the real design immediately —
   // not just on the little swatch above (this was the "colour doesn't apply" bug).
-  const obj = canvas.getActiveObject();
-  if (obj && obj.data && obj.data._grad) {
+  const objs = canvas.getActiveObjects().filter(o => o.data && o.data._grad);
+  objs.forEach(obj => {
     const p = obj.data._grad;
     p.c1 = c1; p.cMid = cMid; p.c2 = c2;
     if (p.type !== 'custom2pt') p.ang = +ang || 0;
     _applyGradPattern(obj, p);
-  }
+  });
+  if (objs.length) histSaveSoon();
 }
-previewGrad();
+_previewGradSwatch();
 // init pattern preview after page load
 setTimeout(() => { try { previewPattern(); } catch(e){} }, 200);
 
@@ -4227,23 +4678,21 @@ setTimeout(() => { try { previewPattern(); } catch(e){} }, 200);
 // Gradient params are stored in obj.data._grad so the canvas:object:modified
 // event can reapply automatically when the object is moved or resized.
 function applyGradient(type, customParams) {
-  const obj = canvas.getActiveObject();
-  if (!obj) { showToast('Select an object first', 'info'); return; }
+  const objs = canvas.getActiveObjects().filter(o => o.type !== 'image' && o.type !== 'group');
+  if (!objs.length) { showToast('Select a shape or text first', 'info'); return; }
 
-  const p = customParams || {
-    c1:   document.getElementById('gC1').value,
-    cMid: document.getElementById('gCMid').value,
-    c2:   document.getElementById('gC2').value,
-    ang:  +document.getElementById('gAngle').value || 0,
-    type,
-  };
-  p.type = type;
-
-  // Store params on object so we can reapply on move/resize
-  if (!obj.data) obj.data = {};
-  obj.data._grad = p;
-
-  _applyGradPattern(obj, p);
+  objs.forEach(obj => {
+    const p = Object.assign({}, customParams || {
+      c1:   document.getElementById('gC1').value,
+      cMid: document.getElementById('gCMid').value,
+      c2:   document.getElementById('gC2').value,
+      ang:  +document.getElementById('gAngle').value || 0,
+    });
+    p.type = type;
+    // Store params on object so we can reapply on move/resize
+    obj.data = Object.assign({}, obj.data, { _grad: p });
+    _applyGradPattern(obj, p);
+  });
   histSave();
 
   ['gBtnLinear','gBtnRadial','gBtnDiamond','gBtnConical'].forEach(id=>{
@@ -4380,7 +4829,7 @@ function setGradDir(deg) {
   // Re-apply using whichever gradient type is currently on the object —
   // previously this always forced 'linear', silently reverting a user's
   // Radial/Diamond/Conical choice the moment they touched a direction arrow.
-  const obj = canvas.getActiveObject();
+  const obj = canvas.getActiveObjects()[0];
   if (obj) {
     let curType = (obj.data && obj.data._grad && obj.data._grad.type) || 'linear';
     // custom2pt has no "angle" concept (it's anchored to two drag points) —
@@ -4519,17 +4968,19 @@ canvas.on('object:modified', function(opt) {
 });
 
 function removeGradient() {
-  const obj = canvas.getActiveObject();
-  if (!obj) return;
+  const objs = canvas.getActiveObjects();
+  if (!objs.length) return;
   // Clear the stored gradient params — otherwise the canvas:object:modified
   // handler below would silently REAPPLY the old gradient the next time this
-  // object is moved or resized, undoing the removal (a real "reversed
-  // working" bug: Clear looked like it worked until you touched the object).
-  if (obj.data) obj.data._grad = null;
-  const fallback = ['i-text','text','textbox'].includes(obj.type) ? '#1f2937' : '#4f46e5';
-  obj.set('fill', fallback);
-  obj.dirty = true;
-  obj.setCoords();
+  // object is moved or resized, undoing the removal.
+  objs.forEach(obj => {
+    if (obj.data) obj.data._grad = null;
+    // Fall back to the gradient's start colour so the object keeps its look.
+    const start = (obj.fill && obj.fill.colorStops && obj.fill.colorStops[0]?.color) || document.getElementById('gC1').value;
+    obj.set('fill', start || (isTextObj(obj) ? '#1f2937' : '#4f46e5'));
+    obj.dirty = true;
+    obj.setCoords();
+  });
   canvas._currentTransform = null;
   canvas.renderAll();
   histSave();
@@ -4579,7 +5030,11 @@ function ncSetDpi(dpi) {
 
 function ncSetTransparent() {
   _ncBgTransparent = true;
-  document.getElementById('ncBg').value = '#ffffff';
+  showToast('New canvas will have a transparent background', 'info');
+}
+function ncSetBg(color) {
+  _ncBgTransparent = false;   // picking any colour cancels "transparent"
+  document.getElementById('ncBg').value = color;
 }
 
 function ncUnitChange() { ncUpdatePxPreview(); }
@@ -4673,6 +5128,7 @@ async function createNewCanvas() {
   const ph   = _ncToPx(document.getElementById('ncH').value, unit, dpi);
   const name = document.getElementById('ncName').value.trim() || 'My Design';
   const bg   = _ncBgTransparent ? '' : (document.getElementById('ncBg').value || '#ffffff');
+  if (!(+document.getElementById('ncW').value > 0) || !(+document.getElementById('ncH').value > 0)) { showToast('Enter a width and height', 'err'); return; }
 
   if (pw < 10 || ph < 10) {
     showToast('Canvas size too small (minimum 10 px)', 'err'); return;
@@ -4694,7 +5150,8 @@ async function createNewCanvas() {
   const blankJson = JSON.stringify({
     version: '5.3.0',
     objects: [],
-    background: bg || '#ffffff',
+    background: bg,          // '' = transparent (the choice used to be silently turned into white)
+    _size: { w: pw, h: ph },
     _meta: { dpi, unit, physW: document.getElementById('ncW').value, physH: document.getElementById('ncH').value }
   });
 
@@ -4702,11 +5159,12 @@ async function createNewCanvas() {
   const thumbEl = document.createElement('canvas');
   thumbEl.width = 240; thumbEl.height = Math.round(240 * ph / pw);
   const tctx = thumbEl.getContext('2d');
-  tctx.fillStyle = bg || '#ffffff';
-  tctx.fillRect(0, 0, thumbEl.width, thumbEl.height);
+  if (bg) { tctx.fillStyle = bg; tctx.fillRect(0, 0, thumbEl.width, thumbEl.height); }
+  else { for (let y = 0; y < thumbEl.height; y += 12) for (let x = 0; x < thumbEl.width; x += 12) { tctx.fillStyle = ((x + y) / 12) % 2 ? '#e5e7eb' : '#ffffff'; tctx.fillRect(x, y, 12, 12); } }
   const thumb = thumbEl.toDataURL('image/jpeg', 0.7);
 
   const btn = document.querySelector('#newCanvasModal button[onclick="createNewCanvas()"]');
+  if (btn && btn.disabled) return;
   if (btn) btn.disabled = true;
   showToast('Creating canvas…');
 
@@ -4726,7 +5184,8 @@ async function createNewCanvas() {
     if (d.success && d.gallery_id) {
       showToast('Canvas created! Opening…');
       closeNewCanvasModal();
-      window.location.href = window.location.pathname + '?gallery_id=' + d.gallery_id;
+      _dirty = false;   // the user chose to start a new design — don't block the navigation
+      window.location.href = window.location.pathname + '?gallery_id=' + encodeURIComponent(d.gallery_id);
     } else {
       showToast(d.message || 'Failed to create canvas', 'err');
       if (btn) btn.disabled = false;
@@ -4841,16 +5300,18 @@ function previewPattern() {
 }
 
 function applyPatternFill() {
-  const obj = canvas.getActiveObject();
-  if (!obj) { showToast('Select a shape first', 'info'); return; }
+  const objs = canvas.getActiveObjects().filter(o => o.type !== 'image' && o.type !== 'group');
+  if (!objs.length) { showToast('Select a shape first', 'info'); return; }
   const fg   = document.getElementById('patFg').value;
   const bgTr = document.getElementById('patBgTrans').checked;
   const bg   = bgTr ? 'rgba(0,0,0,0)' : document.getElementById('patBg').value;
   const size = +document.getElementById('patSize').value;
   const pc   = _buildPatternCanvas(_currentPatType, fg, bg, size);
-  const pat  = new fabric.Pattern({ source: pc, repeat: 'repeat' });
-  obj.set('fill', pat);
-  obj.dirty = true;
+  objs.forEach(obj => {
+    obj.set('fill', new fabric.Pattern({ source: pc, repeat: 'repeat' }));
+    if (obj.data) obj.data._grad = null;
+    obj.dirty = true;
+  });
   canvas.renderAll();
   histSave();
   showToast('Pattern fill applied!');
@@ -4892,19 +5353,25 @@ function openFadePanel() {
 // Result is a PNG image — use Ctrl+Z to undo.
 function applyFade(dir) {
   const obj = canvas.getActiveObject();
-  if (!obj) { showToast('Select an object first', 'info'); return; }
+  if (!obj || obj.type === 'activeSelection') { showToast('Select one object first', 'info'); return; }
   const intensity = +document.getElementById('fadeIntensity').value / 100;
 
   showToast('Applying fade…', 'info');
 
-  // 1. Capture the object as PNG via Fabric's own toDataURL
-  //    (respects fill, stroke, clip, rotation — returns bounding-box image)
-  const dataURL = obj.toDataURL({ format: 'png', multiplier: 1 });
-  const sw = Math.max(1, Math.round(obj.getScaledWidth()));
-  const sh = Math.max(1, Math.round(obj.getScaledHeight()));
+  // 1. Capture the object UNROTATED at 2× (sharper), then restore. Capturing it
+  //    rotated and then rotating the result again double-rotated it and
+  //    squashed the rotated bounding box into the unrotated size.
+  const savedAngle = obj.angle || 0;
+  obj.set('angle', 0); obj.setCoords();
+  let dataURL;
+  try { dataURL = obj.toDataURL({ format: 'png', multiplier: 2 }); }   // object export is zoom-independent
+  catch (e) { obj.set('angle', savedAngle); obj.setCoords(); showToast('This image cannot be edited (it is from another website)', 'err'); return; }
+  const center = obj.getCenterPoint();
+  obj.set('angle', savedAngle); obj.setCoords();
 
   const srcImg = new Image();
   srcImg.onload = () => {
+    const sw = srcImg.width, sh = srcImg.height;
     // 2. Create a mask canvas, draw the object, then erase with gradient
     const maskEl = document.createElement('canvas');
     maskEl.width  = sw;
@@ -4956,23 +5423,24 @@ function applyFade(dir) {
       mctx.fillRect(0, 0, sw, sh);
     }
 
-    // 3. Load masked PNG as fabric.Image and replace original object
+    // 3. Load masked PNG as fabric.Image and replace original object (same place, angle and layer)
     fabric.Image.fromURL(maskEl.toDataURL('image/png'), newImg => {
       newImg.set({
-        left:    obj.left,
-        top:     obj.top,
-        originX: obj.originX || 'left',
-        originY: obj.originY || 'top',
-        angle:   obj.angle   || 0,
-        scaleX:  1,
-        scaleY:  1,
+        left: center.x, top: center.y, originX: 'center', originY: 'center',
+        angle: savedAngle, scaleX: 0.5, scaleY: 0.5, opacity: obj.opacity ?? 1,
+        data: Object.assign({}, obj.data, { faded: dir, _grad: null }),
       });
+      hist.locked = true;
+      const idx = canvas.getObjects().indexOf(obj);
       canvas.remove(obj);
-      canvas.add(newImg).setActiveObject(newImg);
+      canvas.add(newImg);
+      if (idx >= 0) canvas.moveTo(newImg, idx);
+      hist.locked = false;
+      canvas.setActiveObject(newImg);
       canvas.renderAll();
-      histSave();
+      histSave(); refreshLayers();
       showToast('Fade applied! (Ctrl+Z to undo)');
-    }, { crossOrigin: 'anonymous' });
+    });
   };
   srcImg.src = dataURL;
 }
@@ -5020,36 +5488,43 @@ function getContrastRatio(color1, color2) {
 }
 
 function checkColorAccessibility() {
-  const objects = canvas.getObjects();
   const issues  = [];
+  const bgCol = typeof canvas.backgroundColor === 'string' && canvas.backgroundColor ? canvas.backgroundColor : '#ffffff';
 
-  objects.forEach(obj => {
-    if (!['i-text','text','textbox'].includes(obj.type)) return;
-    const fg = typeof obj.fill === 'string' ? obj.fill : '#000000';
-    const bg = obj.textBackgroundColor || canvas.backgroundColor || '#ffffff';
-    if (!fg || !bg) return;
-
+  canvas.getObjects().forEach(obj => {
+    if (!isTextObj(obj) || obj.visible === false) return;
+    if (typeof obj.fill !== 'string') return;          // gradient/pattern text can't be measured reliably
+    const fg = obj.fill;
+    const bg = (obj.textBackgroundColor && obj.textBackgroundColor !== 'transparent') ? obj.textBackgroundColor : _colorBehind(obj, bgCol);
     const ratio = getContrastRatio(bg, fg);
     const level = ratio >= 7 ? 'AAA' : ratio >= 4.5 ? 'AA' : ratio >= 3 ? 'AA Large' : 'Fail';
-    if (ratio < 4.5) {
-      issues.push({ obj, ratio: ratio.toFixed(2), level });
-      obj.set({ stroke: '#ef4444', strokeWidth: 2 });
-    } else {
-      obj.set({ stroke: null, strokeWidth: 0 });
-    }
+    if (ratio < 4.5) issues.push({ obj, ratio: ratio.toFixed(2), level });
   });
 
-  canvas.renderAll();
+  // Highlight with a temporary overlay box. It used to paint red strokes onto
+  // the text itself — and REMOVED the existing outline from every text that
+  // passed, permanently changing the design.
+  flagObjects(issues.map(i => i.obj), '#ef4444', 10000);
 
   if (issues.length) {
-    const lines = issues.map(i =>
-      `"${(i.obj.text||'').slice(0,15)}" — ${i.ratio}:1 (${i.level})`
-    );
-    edAlertList('WCAG Accessibility Issues Found', lines.concat(['<br><i>Red border marks failing objects. WCAG AA requires 4.5:1 contrast ratio.</i>']));
-    showToast(issues.length + ' contrast issue(s) found — check red borders', 'err');
+    const lines = issues.map(i => `"${(i.obj.text||'').slice(0,20)}" — ${i.ratio}:1 (${i.level})`);
+    edAlertList('WCAG Accessibility Issues Found', lines.concat([{ html: '<i>Failing text is outlined in red for 10 seconds (your design is not changed). WCAG AA needs at least 4.5 : 1 contrast.</i>' }]));
+    showToast(issues.length + ' contrast issue(s) found — check red outlines', 'err');
   } else {
     showToast('All text passes WCAG AA! ✓');
   }
+}
+/* Colour actually under a text object: the top-most solid-filled shape below
+   it whose box contains the text's centre (falls back to the canvas colour). */
+function _colorBehind(obj, fallback) {
+  const objs = canvas.getObjects();
+  const c = obj.getCenterPoint();
+  for (let i = objs.indexOf(obj) - 1; i >= 0; i--) {
+    const o = objs[i];
+    if (o.visible === false || typeof o.fill !== 'string' || !o.fill || o.fill === 'transparent' || isTextObj(o)) continue;
+    if (o.containsPoint && o.containsPoint(c, null, true)) return o.fill;
+  }
+  return fallback;
 }
 
 // ── Smart Templates ──────────────────────────────────────────────
@@ -5088,16 +5563,50 @@ function autoLayoutVisitingCard() {
 
 // ── Align to Canvas ────────────────────────────────────────────────
 function alignObj(dir) {
-  const obj = canvas.getActiveObject();
-  if (!obj) return;
-  const ow = obj.getScaledWidth(), oh = obj.getScaledHeight();
-  if (dir==='left')    obj.set({ left:0, originX:'left' });
-  if (dir==='right')   obj.set({ left:canvasW-ow, originX:'left' });
-  if (dir==='hcenter') obj.set({ left:canvasW/2, originX:'center' });
-  if (dir==='top')     obj.set({ top:0, originY:'top' });
-  if (dir==='bottom')  obj.set({ top:canvasH-oh, originY:'top' });
-  if (dir==='vcenter') obj.set({ top:canvasH/2, originY:'center' });
-  obj.setCoords(); canvas.renderAll(); histSave();
+  const a = canvas.getActiveObject();
+  if (!a) { showToast('Select an object first', 'info'); return; }
+  // Uses the visible bounding box, so rotated objects and any origin work
+  // (it used to change originX/Y, making rotated objects jump). With several
+  // objects selected they are aligned to each other.
+  const move = (o, ref) => {
+    const b = o.getBoundingRect(true, true);
+    let dx = 0, dy = 0;
+    if (dir === 'left')    dx = ref.l - b.left;
+    if (dir === 'right')   dx = ref.r - (b.left + b.width);
+    if (dir === 'hcenter') dx = (ref.l + ref.r) / 2 - (b.left + b.width / 2);
+    if (dir === 'top')     dy = ref.t - b.top;
+    if (dir === 'bottom')  dy = ref.b - (b.top + b.height);
+    if (dir === 'vcenter') dy = (ref.t + ref.b) / 2 - (b.top + b.height / 2);
+    o.left += dx; o.top += dy; o.setCoords();
+  };
+  if (a.type === 'activeSelection') {
+    const objs = a.getObjects();
+    canvas.discardActiveObject();
+    const bs = objs.map(o => o.getBoundingRect(true, true));
+    const ref = { l: Math.min(...bs.map(b => b.left)), t: Math.min(...bs.map(b => b.top)),
+                  r: Math.max(...bs.map(b => b.left + b.width)), b: Math.max(...bs.map(b => b.top + b.height)) };
+    objs.forEach(o => move(o, ref));
+    canvas.setActiveObject(new fabric.ActiveSelection(objs, { canvas }));
+  } else {
+    move(a, { l: 0, t: 0, r: canvasW, b: canvasH });
+  }
+  canvas.renderAll(); histSave(); refreshProps();
+}
+function distributeObjs(axis) {
+  const a = canvas.getActiveObject();
+  if (!a || a.type !== 'activeSelection' || a.size() < 3) { showToast('Select 3 or more objects to distribute', 'info'); return; }
+  const objs = a.getObjects();
+  canvas.discardActiveObject();
+  const items = objs.map(o => ({ o, b: o.getBoundingRect(true, true) }));
+  const k = axis === 'h' ? 'left' : 'top', s = axis === 'h' ? 'width' : 'height';
+  items.sort((p, q) => p.b[k] - q.b[k]);
+  const start = items[0].b[k], last = items[items.length - 1];
+  const gap = (last.b[k] + last.b[s] - start - items.reduce((t, i) => t + i.b[s], 0)) / (items.length - 1);
+  let pos = start;
+  items.forEach(i => { const d = pos - i.b[k]; if (axis === 'h') i.o.left += d; else i.o.top += d; i.o.setCoords(); pos += i.b[s] + gap; });
+  canvas.setActiveObject(new fabric.ActiveSelection(objs, { canvas }));
+  canvas.renderAll(); histSave();
+  showToast('Distributed evenly');
 }
 
 // ── BG Remove (magic eraser for images) ─────────────────────────────
@@ -5106,58 +5615,63 @@ function removeBgFromImage(tolerance) {
   if (!obj || obj.type !== 'image') { showToast('Select an image first', 'err'); return; }
   showToast('Removing background...', 'info');
 
-  // Use clone + StaticCanvas to avoid CORS taint
-  obj.clone(cloned => {
-    const sw = Math.round(obj.getScaledWidth());
-    const sh = Math.round(obj.getScaledHeight());
-    const tmpEl = document.createElement('canvas');
-    const tfc   = new fabric.StaticCanvas(tmpEl, {
-      width: sw, height: sh, backgroundColor: 'transparent',
-    });
-    cloned.set({ left:0, top:0, originX:'left', originY:'top', angle:0, scaleX: sw/cloned.width, scaleY: sh/cloned.height });
-    tfc.add(cloned);
-    tfc.renderAll();
+  setTimeout(() => {
+    // Work on the image at its ORIGINAL resolution (the old version rendered it
+    // at on-screen size, permanently lowering the photo's quality).
+    const el = obj._originalElement || obj.getElement();   // unfiltered source, so filters aren't applied twice
+    const iw = el.naturalWidth || el.width, ih = el.naturalHeight || el.height;
+    const pc = document.createElement('canvas');
+    pc.width = iw; pc.height = ih;
+    const ctx = pc.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(el, 0, 0, iw, ih);
+    let id;
+    try { id = ctx.getImageData(0, 0, iw, ih); }
+    catch (e) { showToast('This image is from another website and cannot be edited — download it and upload it instead.', 'err'); return; }
+    const d = id.data;
 
-    const dataURL = tfc.toDataURL({ format:'png', multiplier:1 });
-    const img = new Image();
-    img.onload = () => {
-      const pc  = document.createElement('canvas');
-      pc.width  = img.width;
-      pc.height = img.height;
-      const ctx = pc.getContext('2d', { willReadFrequently: true });
-      ctx.drawImage(img, 0, 0);
-      const id = ctx.getImageData(0, 0, pc.width, pc.height);
-      const d  = id.data;
-      const iw = pc.width, ih = pc.height;
+    // Background colour = average of the 4 corners.
+    const corners = [[0,0],[iw-1,0],[0,ih-1],[iw-1,ih-1]];
+    let bgR=0, bgG=0, bgB=0;
+    corners.forEach(([x,y]) => { const i=(y*iw+x)*4; bgR+=d[i]; bgG+=d[i+1]; bgB+=d[i+2]; });
+    bgR/=4; bgG/=4; bgB/=4;
+    const tol = tolerance * 3;
+    const isBg = i => d[i+3] > 0 && Math.abs(d[i]-bgR)+Math.abs(d[i+1]-bgG)+Math.abs(d[i+2]-bgB) < tol;
 
-      // Sample 4 corners to detect background color
-      const corners = [[0,0],[iw-1,0],[0,ih-1],[iw-1,ih-1]];
-      let bgR=0, bgG=0, bgB=0;
-      corners.forEach(([x,y]) => { const i=(y*iw+x)*4; bgR+=d[i]; bgG+=d[i+1]; bgB+=d[i+2]; });
-      bgR=Math.round(bgR/4); bgG=Math.round(bgG/4); bgB=Math.round(bgB/4);
+    // Flood-fill from the image border: only background CONNECTED to the edges
+    // is removed. The old global colour match also punched holes inside the
+    // subject (white shirts, eyes, teeth in an ID photo).
+    const seen = new Uint8Array(iw * ih);
+    const stack = new Int32Array(iw * ih);   // each pixel is pushed at most once
+    let sp = 0;
+    const push = (x, y) => { const p = y * iw + x; if (!seen[p] && isBg(p * 4)) { seen[p] = 1; stack[sp++] = p; } };
+    for (let x = 0; x < iw; x++) { push(x, 0); push(x, ih - 1); }
+    for (let y = 0; y < ih; y++) { push(0, y); push(iw - 1, y); }
+    let removed = 0;
+    while (sp > 0) {
+      const p = stack[--sp], x = p % iw, y = (p / iw) | 0;
+      d[p * 4 + 3] = 0; removed++;
+      if (x > 0) push(x - 1, y); if (x < iw - 1) push(x + 1, y);
+      if (y > 0) push(x, y - 1); if (y < ih - 1) push(x, y + 1);
+    }
+    if (!removed) { showToast('No plain background found at the edges — try a higher tolerance', 'info'); return; }
+    // Soften the cut edge: half-transparent rim pixels next to removed ones.
+    for (let y = 1; y < ih - 1; y++) for (let x = 1; x < iw - 1; x++) {
+      const p = y * iw + x;
+      if (seen[p]) continue;
+      if (seen[p-1] || seen[p+1] || seen[p-iw] || seen[p+iw]) d[p*4+3] = Math.min(d[p*4+3], 170);
+    }
+    ctx.putImageData(id, 0, 0);
 
-      for (let i=0; i<d.length; i+=4) {
-        if (Math.abs(d[i]-bgR)+Math.abs(d[i+1]-bgG)+Math.abs(d[i+2]-bgB) < tolerance*3) d[i+3]=0;
-      }
-      ctx.putImageData(id, 0, 0);
-
-      const newImg = new Image();
-      newImg.onload = () => {
-        const fImg = new fabric.Image(newImg, {
-          left:obj.left, top:obj.top,
-          scaleX: obj.scaleX * (sw / img.width),
-          scaleY: obj.scaleY * (sh / img.height),
-          angle:obj.angle, originX:obj.originX||'left', originY:obj.originY||'top'
-        });
-        canvas.remove(obj);
-        canvas.add(fImg).setActiveObject(fImg).renderAll();
-        histSave(); showToast('Background removed successfully!');
-        tfc.dispose();
-      };
-      newImg.src = pc.toDataURL('image/png');
+    const newImg = new Image();
+    newImg.onload = () => {
+      // Same element size → every transform (scale, angle, flip, crop, clip mask, filters) stays valid.
+      obj.setElement(newImg, { width: obj.width, height: obj.height });   // keep any crop window
+      obj.dirty = true;
+      canvas.renderAll();
+      histSave(); showToast('Background removed! (Ctrl+Z to undo)');
     };
-    img.src = dataURL;
-  });
+    newImg.src = pc.toDataURL('image/png');
+  }, 30);
 }
 
 // ── Eyedropper / Color Picker ────────────────────────────────────────
@@ -5165,26 +5679,49 @@ let eyedropperActive = false;
 let lastPickedColor  = '#ffffff';
 
 function toggleEyedropper() {
+  // Native EyeDropper (Chrome/Edge) can pick ANY colour on screen, exactly.
+  if (!eyedropperActive && window.EyeDropper) {
+    const btn = document.getElementById('tEye');
+    if (btn) btn.classList.add('active');
+    new window.EyeDropper().open().then(r => _setPickedColor(r.sRGBHex)).catch(() => {}).finally(() => { if (btn) btn.classList.remove('active'); });
+    return;
+  }
   eyedropperActive = !eyedropperActive;
   document.body.classList.toggle('eyedrop-mode', eyedropperActive);
   const btn = document.getElementById('tEye');
   if (btn) btn.classList.toggle('active', eyedropperActive);
   if (eyedropperActive) {
-    canvas.isDrawingMode = false;
-    showToast('Click on the canvas to pick a color', 'info');
-  }
+    if (canvas.isDrawingMode) setActiveTool('select');
+    eyedropperActive = true; document.body.classList.add('eyedrop-mode');
+    canvas.skipTargetFind = true;
+    showToast('Click on the canvas to pick a color (Esc to cancel)', 'info');
+  } else canvas.skipTargetFind = false;
+}
+function _setPickedColor(hex) {
+  lastPickedColor = colorToHex(hex);
+  const swatch = document.getElementById('eyeColorSwatch');
+  const hexEl  = document.getElementById('eyeColorHex');
+  const row    = document.getElementById('eyeColorRow');
+  if (swatch) swatch.style.background = lastPickedColor;
+  if (hexEl)  hexEl.textContent = lastPickedColor;
+  if (row)    row.style.display = '';
+  // Apply straight away to whatever is selected; otherwise keep it for "Apply".
+  if (canvas.getActiveObjects().length) { applyPickedColor(); return; }
+  document.getElementById('pCanvas').style.display = '';
+  document.getElementById('pObj').style.display = 'none';
+  try { navigator.clipboard && navigator.clipboard.writeText(lastPickedColor); } catch (_) {}
+  showToast('Color picked: ' + lastPickedColor + ' (copied) — select an object and press Apply');
 }
 
 function applyPickedColor() {
-  const obj = canvas.getActiveObject();
-  if (!obj) { showToast('Select an object first', 'info'); return; }
-  if (['i-text','text','textbox'].includes(obj.type)) {
+  const objs = canvas.getActiveObjects();
+  if (!objs.length) { showToast('Select an object first', 'info'); return; }
+  objs.forEach(obj => {
     obj.set('fill', lastPickedColor);
-    document.getElementById('pTextColor').value = lastPickedColor;
-  } else {
-    obj.set('fill', lastPickedColor);
-    document.getElementById('pFill').value = lastPickedColor;
-  }
+    if (obj.data && obj.data._grad) obj.data._grad = null;
+  });
+  if (isTextObj(objs[0])) document.getElementById('pTextColor').value = lastPickedColor;
+  else document.getElementById('pFill').value = lastPickedColor;
   canvas.renderAll(); histSave();
   showToast('Color applied: ' + lastPickedColor);
 }
@@ -5195,31 +5732,18 @@ canvas.on('mouse:down', opt => {
   const rect = canvasEl.getBoundingClientRect();
   // opt.e is the raw event — on touch devices Fabric still fires 'mouse:down' but
   // opt.e is a TouchEvent, which has no top-level clientX/clientY (only touches[0] does)
-  const _pt = opt.e.touches && opt.e.touches.length ? opt.e.touches[0] : opt.e;
+  const _pt = opt.e.touches && opt.e.touches.length ? opt.e.touches[0] : (opt.e.changedTouches && opt.e.changedTouches[0]) || opt.e;
   const pixX = Math.round((_pt.clientX - rect.left) * (canvasEl.width  / rect.width));
   const pixY = Math.round((_pt.clientY - rect.top)  * (canvasEl.height / rect.height));
-  const ctx2d = canvasEl.getContext('2d');
-  const px = ctx2d.getImageData(Math.max(0,pixX), Math.max(0,pixY), 1, 1).data;
-  const hex = '#' + [px[0],px[1],px[2]].map(v => v.toString(16).padStart(2,'0')).join('');
-  lastPickedColor = hex;
-
-  // Update swatch
-  const swatch = document.getElementById('eyeColorSwatch');
-  const hexEl  = document.getElementById('eyeColorHex');
-  const row    = document.getElementById('eyeColorRow');
-  if (swatch) swatch.style.background = hex;
-  if (hexEl)  hexEl.textContent = hex;
-  if (row)    row.style.display = '';
-  document.getElementById('pCanvas').style.display = '';
-  document.getElementById('pObj').style.display = 'none';
-
-  // Deactivate
+  // Deactivate first so a failure below never leaves the tool stuck on.
   eyedropperActive = false;
+  canvas.skipTargetFind = false;
   document.body.classList.remove('eyedrop-mode');
-  const btn = document.getElementById('tEye');
-  if (btn) btn.classList.remove('active');
-
-  showToast('Color picked: ' + hex + ' — Apply from the properties panel');
+  document.getElementById('tEye')?.classList.remove('active');
+  let px;
+  try { px = canvasEl.getContext('2d').getImageData(Math.max(0,pixX), Math.max(0,pixY), 1, 1).data; }
+  catch (e) { showToast('Cannot read colours from an image of another website', 'err'); return; }
+  _setPickedColor('#' + [px[0],px[1],px[2]].map(v => v.toString(16).padStart(2,'0')).join(''));
   opt.e.stopPropagation();
 });
 
@@ -5318,176 +5842,192 @@ function populateFonts() {
   const fonts = [
     'Noto Sans','Roboto','Open Sans','Lato','Montserrat','Poppins',
     'Playfair Display','Dancing Script','Baloo 2',
-    'Arial','Times New Roman','Georgia','Courier New','Verdana',
+    'Arial','Times New Roman','Georgia','Courier New','Verdana','Impact','Tahoma','Trebuchet MS',
   ];
   const sel = document.getElementById('pFont');
-  fonts.forEach(f => { const o = document.createElement('option'); o.value = o.textContent = f; sel.appendChild(o); });
+  fonts.forEach(f => { const o = document.createElement('option'); o.value = o.textContent = f; o.style.fontFamily = `'${f}'`; sel.appendChild(o); });
 }
 
 // ── Crop Tool ──────────────────────────────────────────────────────
+/* Crop tool. With a PHOTO selected it now crops just that photo (what most
+   people expect); with nothing / another object selected it crops the whole
+   design to the box (flattening it, as before — with a warning). */
+let _cropTarget = null;
+function _endCropUI() {
+  isCropping = false; cropRect = null; _cropTarget = null;
+  document.getElementById('btnApplyCrop').style.display = 'none';
+  document.getElementById('btnCropMode').classList.remove('active');
+  document.getElementById('tCrop')?.classList.remove('active');
+  document.body.classList.remove('crop-mode');
+}
 function toggleCropMode() {
   if (isCropping) {
-    if (cropRect) { canvas.remove(cropRect); cropRect = null; canvas.renderAll(); }
-    isCropping = false;
-    document.getElementById('btnApplyCrop').style.display = 'none';
-    document.getElementById('btnCropMode').classList.remove('active');
-    document.getElementById('tCrop')?.classList.remove('active');
-    document.body.classList.remove('crop-mode');
+    if (cropRect) { hist.locked = true; canvas.remove(cropRect); hist.locked = false; }
+    if (_cropTarget) { _cropTarget.set({ selectable: true, evented: true }); canvas.setActiveObject(_cropTarget); }
+    _endCropUI();
+    canvas.renderAll(); refreshLayers();
     return;
   }
+  const sel = canvas.getActiveObject();
+  _cropTarget = sel && sel.type === 'image' ? sel : null;
   isCropping = true;
+  let box = { left: canvasW * 0.1, top: canvasH * 0.1, width: canvasW * 0.8, height: canvasH * 0.8 };
+  if (_cropTarget) {
+    const b = _cropTarget.getBoundingRect(true, true);
+    box = { left: b.left + b.width * 0.05, top: b.top + b.height * 0.05, width: b.width * 0.9, height: b.height * 0.9 };
+    _cropTarget.set({ selectable: false, evented: false });
+  }
   cropRect = new fabric.Rect({
-    left: canvasW * 0.1, top: canvasH * 0.1,
-    width: canvasW * 0.8, height: canvasH * 0.8,
-    fill: 'rgba(0,0,0,0.2)', stroke: '#f59e0b', strokeWidth: 2,
-    strokeDashArray: [8,4], selectable: true, hasRotatingPoint: false,
+    ...box,
+    fill: 'rgba(0,0,0,0.2)', stroke: '#f59e0b', strokeWidth: 2, strokeUniform: true,
+    strokeDashArray: [8,4], selectable: true, hasRotatingPoint: false, lockRotation: true,
     cornerColor: '#f59e0b', cornerStrokeColor: '#f59e0b', cornerSize: 10,
     data: { isCropOverlay: true }
   });
+  cropRect.setControlsVisibility({ mtr: false });
+  hist.locked = true;          // the crop box is a temporary helper — never an undo step
   canvas.add(cropRect);
+  hist.locked = false;
   canvas.setActiveObject(cropRect);
   document.getElementById('btnApplyCrop').style.display = '';
   document.getElementById('btnCropMode').classList.add('active');
   document.getElementById('tCrop')?.classList.add('active');
   document.body.classList.add('crop-mode');
   canvas.renderAll();
-  showToast('Resize the crop area, then click "Apply Crop"', 'info');
+  showToast(_cropTarget ? 'Resize the box over the photo, then click "Apply Crop" (Esc cancels)' : 'Resize the crop area, then click "Apply Crop" — tip: select a photo first to crop only that photo', 'info');
 }
 
 function applyCrop() {
   if (!cropRect) return;
+  if (_cropTarget) { _cropImage(); return; }
   // This flattens the WHOLE design (every text/shape/image layer) into one
-  // picture and permanently resizes the canvas to the crop box — nothing
-  // in the toolbar label ("Crop Tool") hints at that, so a user could easily
-  // expect it to just crop one selected photo. Confirm first since it's a
-  // big, easy-to-misunderstand, hard-to-notice-until-later change (Ctrl+Z
-  // still undoes it right after, but only if noticed immediately).
+  // picture and permanently resizes the canvas to the crop box. Confirm first.
   edConfirm(
-    'This resizes the WHOLE canvas to the crop area and flattens all text/shapes/images into a single picture — you won\'t be able to edit them separately afterward (Ctrl+Z undoes it right away). Continue?',
+    'This resizes the WHOLE canvas to the crop area and flattens all text/shapes/images into a single picture — you won\'t be able to edit them separately afterward (Ctrl+Z undoes it). To crop only one photo, select that photo first. Continue?',
     () => _doApplyCrop(),
     () => {}
   );
 }
 
+/* Non-destructive photo crop via Fabric's cropX/cropY — the full image is kept,
+   so it can be re-cropped later. Handles rotated/flipped/scaled photos. */
+function _cropImage() {
+  const img = _cropTarget, r = cropRect;
+  const b = r.getBoundingRect(true, true);
+  const m = fabric.util.invertTransform(img.calcTransformMatrix());
+  const corners = [[b.left, b.top], [b.left + b.width, b.top], [b.left, b.top + b.height], [b.left + b.width, b.top + b.height]]
+    .map(([x, y]) => fabric.util.transformPoint({ x, y }, m));
+  const w = img.width, h = img.height;
+  // local coords are centred on the image; convert to 0..w / 0..h within the current crop window
+  let x0 = Math.max(0, Math.min(...corners.map(p => p.x)) + w / 2), x1 = Math.min(w, Math.max(...corners.map(p => p.x)) + w / 2);
+  let y0 = Math.max(0, Math.min(...corners.map(p => p.y)) + h / 2), y1 = Math.min(h, Math.max(...corners.map(p => p.y)) + h / 2);
+  if (x1 - x0 < 2 || y1 - y0 < 2) { showToast('Crop box must overlap the photo', 'err'); return; }
+  // centre of the kept region, in canvas coordinates (so the photo doesn't move)
+  const keepCenter = fabric.util.transformPoint({ x: (x0 + x1) / 2 - w / 2, y: (y0 + y1) / 2 - h / 2 }, img.calcTransformMatrix());
+  hist.locked = true;
+  canvas.remove(r);
+  img.set({ cropX: (img.cropX || 0) + x0, cropY: (img.cropY || 0) + y0, width: x1 - x0, height: y1 - y0, selectable: true, evented: true });
+  img.setPositionByOrigin(keepCenter, 'center', 'center');
+  if (img.clipPath) img.set('clipPath', null);   // old mask was sized for the uncropped photo
+  img.setCoords(); img.dirty = true;
+  hist.locked = false;
+  const t = img;
+  _endCropUI();
+  canvas.setActiveObject(t).renderAll();
+  histSave(); refreshLayers();
+  showToast('Photo cropped! (Ctrl+Z to undo)');
+}
+
 function _doApplyCrop() {
-  const cLeft   = cropRect.left;
-  const cTop    = cropRect.top;
-  const cWidth  = Math.round(cropRect.getScaledWidth());
-  const cHeight = Math.round(cropRect.getScaledHeight());
+  const b = cropRect.getBoundingRect(true, true);
+  const cLeft   = Math.max(0, Math.round(b.left));
+  const cTop    = Math.max(0, Math.round(b.top));
+  const cWidth  = Math.min(canvasW - cLeft, Math.round(b.width));
+  const cHeight = Math.min(canvasH - cTop,  Math.round(b.height));
+  if (cWidth < 10 || cHeight < 10) { showToast('Crop area is too small', 'err'); return; }
+
+  hist.locked = true;
+  canvas.remove(cropRect);
+  hist.locked = false;
+  canvas.discardActiveObject();
 
   // Reset viewport temporarily for accurate pixel export
   const savedVpt = canvas.viewportTransform.slice();
   canvas.setViewportTransform([1,0,0,1,0,0]);
-  canvas.remove(cropRect);
-  canvas.renderAll();
-
-  const dataURL = canvas.toDataURL({
-    format: 'png', multiplier: 1,
-    left: cLeft, top: cTop, width: cWidth, height: cHeight,
-  });
+  let dataURL;
+  try {
+    dataURL = canvas.toDataURL({ format: 'png', multiplier: 1, left: cLeft, top: cTop, width: cWidth, height: cHeight });
+  } catch (e) {
+    canvas.setViewportTransform(savedVpt); _endCropUI(); canvas.renderAll();
+    showToast('Crop blocked: an image from another website has no edit permission', 'err'); return;
+  }
   canvas.setViewportTransform(savedVpt);
 
   fabric.Image.fromURL(dataURL, (img) => {
+    hist.locked = true;
     canvas.clear();
-    canvasW = cWidth; canvasH = cHeight;
-    canvas.setWidth(cWidth);
-    canvas.setHeight(cHeight);
-    document.getElementById('pCanvasW').textContent = cWidth;
-    document.getElementById('pCanvasH').textContent = cHeight;
-    document.getElementById('sizeTag').textContent = cWidth + ' × ' + cHeight + ' px';
+    canvas.setBackgroundColor('', () => {});
+    resizeCanvasTo(cWidth, cHeight);
     img.set({ left:0, top:0, originX:'left', originY:'top', selectable:false, evented:false, data:{ isBg:true } });
     canvas.add(img);
-    canvas.setZoom(1);
-    document.getElementById('zoomSel').value = '1';
+    hist.locked = false;
+    setZoom('fit');
     canvas.renderAll();
     histSave(); refreshLayers();
-    isCropping = false; cropRect = null;
-    document.getElementById('btnApplyCrop').style.display = 'none';
-    document.getElementById('btnCropMode').classList.remove('active');
-    document.getElementById('tCrop')?.classList.remove('active');
-    document.body.classList.remove('crop-mode');
+    _endCropUI();
     showToast('Crop applied! ' + cWidth + ' × ' + cHeight + ' px');
   });
 }
 
 // ── Smart Snapping ─────────────────────────────────────────────────
+// Snaps to the canvas centre/edges AND to other objects' edges/centres.
+// Guides are drawn by the after:render overlay — no temporary objects.
 canvas.on('object:moving', function(e) {
   const obj = e.target;
-  if (obj.data?.grid || obj.data?.isSnapGuide || obj.data?.isCropOverlay || obj.data?.printGuide) return;
-  if (!snapEnabled) return;
-
-  // Clear previous guides without triggering history
-  hist.locked = true;
-  snapGuides.forEach(g => { clearTimeout(g._t); canvas.remove(g); });
-  hist.locked = false;
+  if (obj.data?.isCropOverlay) return;
   snapGuides = [];
-
-  const snapT  = 8;
-  const canCX  = canvasW / 2, canCY = canvasH / 2;
-  const sw     = obj.getScaledWidth(), sh = obj.getScaledHeight();
-  const objCX  = obj.originX === 'center' ? obj.left : obj.left + sw / 2;
-  const objCY  = obj.originY === 'center' ? obj.top  : obj.top  + sh / 2;
-  const objL   = obj.originX === 'center' ? obj.left - sw / 2 : obj.left;
-  const objT   = obj.originY === 'center' ? obj.top  - sh / 2 : obj.top;
-  const objR   = objL + sw, objB = objT + sh;
-
-  function setX(px) { obj.left = obj.originX === 'center' ? px : px - sw / 2; }
-  function setY(py) { obj.top  = obj.originY === 'center' ? py : py - sh / 2; }
-
-  // Horizontal snaps: center, left edge, right edge
-  if      (Math.abs(objCX - canCX)     < snapT) { setX(canCX);          showSnapGuide('v', canCX);    }
-  else if (Math.abs(objL)              < snapT) { setX(sw / 2);         showSnapGuide('v', 0);         }
-  else if (Math.abs(objR - canvasW)    < snapT) { setX(canvasW - sw/2); showSnapGuide('v', canvasW);   }
-
-  // Vertical snaps: center, top edge, bottom edge
-  if      (Math.abs(objCY - canCY)     < snapT) { setY(canCY);          showSnapGuide('h', canCY);    }
-  else if (Math.abs(objT)              < snapT) { setY(sh / 2);         showSnapGuide('h', 0);         }
-  else if (Math.abs(objB - canvasH)    < snapT) { setY(canvasH - sh/2); showSnapGuide('h', canvasH);   }
-
+  if (!snapEnabled) return;
+  const z = canvas.getZoom() || 1;
+  const snapT = 7 / z;
+  const b = obj.getBoundingRect(true, true);
+  const xs = [b.left, b.left + b.width / 2, b.left + b.width];
+  const ys = [b.top, b.top + b.height / 2, b.top + b.height];
+  const tx = [0, canvasW / 2, canvasW], ty = [0, canvasH / 2, canvasH];
+  const members = obj.type === 'activeSelection' ? obj.getObjects() : [obj];
+  const others = canvas.getObjects().filter(o => !members.includes(o) && o.visible !== false && !o.data?.isCropOverlay && !o.data?.isBg && !o.data?.eraserPath);
+  if (others.length <= 150) others.forEach(o => {
+    const ob = o.getBoundingRect(true, true);
+    tx.push(ob.left, ob.left + ob.width / 2, ob.left + ob.width);
+    ty.push(ob.top, ob.top + ob.height / 2, ob.top + ob.height);
+  });
+  let best = null;
+  xs.forEach(v => tx.forEach(t => { const d = t - v; if (Math.abs(d) < snapT && (!best || Math.abs(d) < Math.abs(best.d))) best = { d, t }; }));
+  if (best) { obj.left += best.d; snapGuides.push({ t: 'v', p: best.t }); }
+  best = null;
+  ys.forEach(v => ty.forEach(t => { const d = t - v; if (Math.abs(d) < snapT && (!best || Math.abs(d) < Math.abs(best.d))) best = { d, t }; }));
+  if (best) { obj.top += best.d; snapGuides.push({ t: 'h', p: best.t }); }
   if (snapGuides.length) obj.setCoords();
 });
 
-function showSnapGuide(type, pos) {
-  const line = new fabric.Line(
-    type === 'v' ? [pos, 0, pos, canvasH] : [0, pos, canvasW, pos],
-    { stroke:'#6366f1', strokeWidth:1, selectable:false, evented:false,
-      strokeDashArray:[5,4], opacity:.85, data:{ isSnapGuide:true } }
-  );
-  hist.locked = true;
-  canvas.add(line);
-  hist.locked = false;
-  snapGuides.push(line);
-  line._t = setTimeout(() => {
-    hist.locked = true; canvas.remove(line); hist.locked = false;
-    snapGuides = snapGuides.filter(g => g !== line);
-    canvas.renderAll();
-  }, 700);
-}
+function showSnapGuide(type, pos) { snapGuides.push({ t: type, p: pos }); canvas.requestRenderAll(); }
+function _clearSnapGuides() { if (snapGuides.length) { snapGuides = []; canvas.requestRenderAll(); } }
 
 // Clear snap guides when object drag ends
-canvas.on('object:modified', () => {
-  hist.locked = true;
-  snapGuides.forEach(g => { clearTimeout(g._t); canvas.remove(g); });
-  hist.locked = false;
-  snapGuides = [];
-});
+canvas.on('object:modified', _clearSnapGuides);
+canvas.on('mouse:up', _clearSnapGuides);
 
 // ── Fix: mouseup outside canvas leaves Fabric in stuck-drag state ─────
 // When user releases mouse over properties panel / toolbar, Fabric.js
 // never receives a mouseup on the canvas, so _currentTransform stays set
 // and the next mousemove drags the object. Reset it here.
-document.addEventListener('mouseup', () => {
-  if (canvas._currentTransform) {
+document.addEventListener('mouseup', (e) => {
+  if (canvas._currentTransform && !canvas.upperCanvasEl.contains(e.target)) {
+    const t = canvas._currentTransform.target;
     canvas._currentTransform = null;
+    if (t) { t.setCoords(); canvas.fire('object:modified', { target: t }); }   // the drag that happened is still an undo step
     canvas.renderAll();
   }
-  if (snapGuides.length) {
-    hist.locked = true;
-    snapGuides.forEach(g => { clearTimeout(g._t); canvas.remove(g); });
-    hist.locked = false;
-    snapGuides = [];
-    canvas.renderAll();
-  }
+  _clearSnapGuides();
 }, true /* capture phase — fires before Fabric's own handlers */);
 
 // ── Text Effects ─────────────────────────────────────────────────────
@@ -5662,129 +6202,115 @@ function addRealisticShadow() {
   obj.set('shadow', new fabric.Shadow({ color:'rgba(0,0,0,0.3)', blur:20, offsetX:10, offsetY:15 }));
   canvas.renderAll();
   obj.clone(clone => {
-    const scaledH = obj.getScaledHeight();
-    const refTop  = (obj.originY === 'center' ? obj.top + scaledH/2 : obj.top + scaledH) + 5;
-    clone.set({ top:refTop, originY:'top', flipY:true, opacity:0.22, selectable:true, evented:true });
-    canvas.add(clone); canvas.renderAll(); histSave();
-    showToast('Realistic shadow &amp; reflection added!');
+    const b = obj.getBoundingRect(true, true);
+    clone.set({ flipY: !obj.flipY, opacity: 0.22, selectable: true, evented: true, shadow: null, data: Object.assign({}, obj.data, { name: 'Reflection' }) });
+    clone.setCoords();
+    const cb = clone.getBoundingRect(true, true);
+    clone.top += (b.top + b.height + 4) - cb.top;   // directly under the original, whatever its origin/angle
+    clone.setCoords();
+    hist.locked = true; canvas.add(clone); hist.locked = false;
+    canvas.moveTo(clone, Math.max(0, canvas.getObjects().indexOf(obj)));
+    canvas.renderAll(); histSave(); refreshLayers();
+    showToast('Realistic shadow & reflection added!');
   });
 }
 
 // ── Print Guides (Bleed / Safe Area) ─────────────────────────────────
-function mmToPx(mm) { return Math.round(mm * SCREEN_DPI / 25.4); }
+// mm → design pixels at the DESIGN's DPI (it always used 96, so on a 300-DPI
+// card the bleed/safe guides were ~3× too thin).
+function mmToPx(mm) { return Math.round(mm * (_ncCurrentDpi || SCREEN_DPI) / 25.4); }
 
 function togglePrintGuides() {
-  if (printGuidesOn) {
-    hidePrintGuides(); printGuidesOn = false;
-    document.getElementById('btnPrintGuides').classList.remove('active');
-    showToast('Print guides OFF', 'info');
-  } else {
-    showPrintGuides(); printGuidesOn = true;
-    document.getElementById('btnPrintGuides').classList.add('active');
-    showToast('Print guides ON — Red: Bleed, Green: Safe Area', 'info');
-  }
+  printGuidesOn = !printGuidesOn;
+  document.getElementById('btnPrintGuides').classList.toggle('active', printGuidesOn);
+  canvas.requestRenderAll();
+  showToast(printGuidesOn ? 'Print guides ON — Red: 3 mm cut/bleed line, Green: 5 mm safe area for text' : 'Print guides OFF', 'info');
 }
-
-function showPrintGuides() {
-  const bp = mmToPx(BLEED_MM), sp = mmToPx(SAFE_MM);
-  const opts = { selectable:false, evented:false, hoverCursor:'default', data:{ printGuide:true } };
-  const ml = 14;
-  const all = [];
-  all.push(new fabric.Rect({ left:-bp, top:-bp, width:canvasW+bp*2, height:canvasH+bp*2, fill:'transparent', stroke:'#ef4444', strokeWidth:1, strokeDashArray:[6,4], ...opts }));
-  all.push(new fabric.Rect({ left:sp,  top:sp,  width:canvasW-sp*2, height:canvasH-sp*2, fill:'transparent', stroke:'#22c55e', strokeWidth:1, strokeDashArray:[6,4], ...opts }));
-  [[-bp,-bp],[canvasW+bp,-bp],[-bp,canvasH+bp],[canvasW+bp,canvasH+bp]].forEach(([cx,cy]) => {
-    const sx = cx < canvasW/2 ? -ml : ml, sy = cy < canvasH/2 ? -ml : ml;
-    all.push(new fabric.Line([cx+sx,cy,cx,cy], { stroke:'#64748b', strokeWidth:0.8, ...opts }));
-    all.push(new fabric.Line([cx,cy+sy,cx,cy], { stroke:'#64748b', strokeWidth:0.8, ...opts }));
-  });
-  hist.locked = true;
-  all.forEach(o => canvas.add(o));
-  hist.locked = false;
-  printGuideObjects = all;
-  canvas.renderAll();
-}
-
-function hidePrintGuides() {
-  hist.locked = true;
-  printGuideObjects.forEach(o => canvas.remove(o));
-  hist.locked = false;
-  printGuideObjects = [];
-  canvas.renderAll();
-}
+// Kept for older callers — guides are an overlay now (see after:render).
+function showPrintGuides() { printGuidesOn = true; canvas.requestRenderAll(); }
+function hidePrintGuides() { printGuidesOn = false; canvas.requestRenderAll(); }
 
 // ── Resolution Check ──────────────────────────────────────────────────
 function checkImageResolution() {
-  const warnings = [];
-  canvas.getObjects().forEach(obj => {
-    if (obj.type !== 'image') return;
-    const displayW = obj.getScaledWidth();
-    const nativeW  = obj.width || 1;
-    const dpi      = Math.round(nativeW / (displayW / SCREEN_DPI));
-    if (dpi < 150) {
-      warnings.push('• ~' + dpi + ' DPI (300+ recommended for print)');
-      obj.set({ stroke:'#ef4444', strokeWidth:2 });
-    }
-  });
-  canvas.renderAll();
-  if (warnings.length) {
-    showToast(warnings.length + ' low-res image(s) detected!', 'err');
-    edAlertList('Low Resolution Images', warnings.concat(['<br><i>These images are highlighted with a red border.</i>']));
+  const dpi = _ncCurrentDpi || SCREEN_DPI;
+  const low = [], lines = [];
+  const walk = obj => {
+    if (obj.type === 'group') { obj.getObjects().forEach(walk); return; }
+    if (obj.type !== 'image' || obj.data?.isBg && obj.data?.flattened) return;
+    const el = obj._originalElement || obj.getElement();
+    const nativeW = obj.width || el?.naturalWidth || 1;              // source pixels (after crop)
+    const printedIn = obj.getScaledWidth() / dpi;                     // inches on paper at the design DPI
+    const eff = Math.round(nativeW / Math.max(printedIn, 0.0001));
+    if (eff < 150) { low.push(obj); lines.push('• ' + (_layerLabel(obj)) + ' — ~' + eff + ' DPI (300+ recommended for print)'); }
+  };
+  canvas.getObjects().forEach(walk);
+  flagObjects(low.filter(o => canvas.contains(o)), '#ef4444', 10000);
+  if (lines.length) {
+    showToast(lines.length + ' low-res image(s) detected!', 'err');
+    edAlertList('Low Resolution Images', lines.concat([{ html: '<i>Outlined in red for 10 seconds (your design is not changed). Replace them with larger photos for sharp printing.</i>' }]));
   } else {
     showToast('All images are print-ready!');
   }
 }
 
 // ── Export Print-Ready (bleed + crop marks) ───────────────────────────
+// The old version drew the crop marks exactly ON the outer edge pointing
+// outward — i.e. off the image, so they were never visible. Now the file has
+// a white margin with real crop marks at the trim corners, plus 3 mm bleed.
 function exportPrintReady() {
-  const bp = mmToPx(BLEED_MM);
-  const hadGrid = gridOn; if (hadGrid) toggleGrid();
-  const hadPG   = printGuidesOn; if (hadPG) { hidePrintGuides(); }
-
-  const dpi  = _ncCurrentDpi || 96;
-  const mult = Math.max(2, Math.round(300 / dpi));
-  const baseURL = canvas.toDataURL({ format:'png', quality:1, multiplier: mult });
-  const expW = (canvasW + bp*2) * mult, expH = (canvasH + bp*2) * mult;
+  canvas.discardActiveObject().renderAll();
+  const mult = _printMultiplier();
+  let baseURL;
+  try { baseURL = exportDataURL({ format:'png', multiplier: mult }); }
+  catch (e) { showToast('Export blocked: an image from another website has no download permission.', 'err'); return; }
+  const bleed = mmToPx(BLEED_MM) * mult, margin = mmToPx(10) * mult;
+  const W = Math.round(canvasW * mult), H = Math.round(canvasH * mult);
   const ec = document.createElement('canvas');
-  ec.width = expW; ec.height = expH;
+  ec.width = Math.round(W + margin * 2); ec.height = Math.round(H + margin * 2);
   const ctx = ec.getContext('2d');
-  ctx.fillStyle = canvas.backgroundColor || '#ffffff';
-  ctx.fillRect(0, 0, expW, expH);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, ec.width, ec.height);
 
   const img = new Image();
   img.onload = () => {
-    ctx.drawImage(img, bp*mult, bp*mult);
-    ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
-    [[0,0],[expW,0],[0,expH],[expW,expH]].forEach(([x,y]) => {
-      const sx = x===0 ? -24 : 24, sy = y===0 ? -24 : 24;
-      ctx.beginPath(); ctx.moveTo(x+sx,y); ctx.lineTo(x,y); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(x,y+sy); ctx.lineTo(x,y); ctx.stroke();
+    // Bleed: stretch the outermost pixels of the design outward by 3 mm.
+    const x = margin, y = margin, b = bleed;
+    ctx.drawImage(img, 0, 0, 1, H, x - b, y, b, H);           // left
+    ctx.drawImage(img, W - 1, 0, 1, H, x + W, y, b, H);       // right
+    ctx.drawImage(img, 0, 0, W, 1, x, y - b, W, b);           // top
+    ctx.drawImage(img, 0, H - 1, W, 1, x, y + H, W, b);       // bottom
+    ctx.drawImage(img, 0, 0, 1, 1, x - b, y - b, b, b);
+    ctx.drawImage(img, W - 1, 0, 1, 1, x + W, y - b, b, b);
+    ctx.drawImage(img, 0, H - 1, 1, 1, x - b, y + H, b, b);
+    ctx.drawImage(img, W - 1, H - 1, 1, 1, x + W, y + H, b, b);
+    ctx.drawImage(img, x, y);
+    // Crop marks at the trim corners, in the white margin.
+    ctx.strokeStyle = '#000'; ctx.lineWidth = Math.max(1, mult * 0.75);
+    const L = margin - bleed - 2 * mult, gap = bleed + 2 * mult;
+    [[x, y, -1, -1], [x + W, y, 1, -1], [x, y + H, -1, 1], [x + W, y + H, 1, 1]].forEach(([cx, cy, sx, sy]) => {
+      ctx.beginPath(); ctx.moveTo(cx + sx * gap, cy); ctx.lineTo(cx + sx * (gap + L), cy); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx, cy + sy * gap); ctx.lineTo(cx, cy + sy * (gap + L)); ctx.stroke();
     });
-    const a = document.createElement('a');
-    a.href = ec.toDataURL('image/png');
-    a.download = (document.getElementById('tplNameInput').value.trim() || 'template') + '-print-ready.png';
-    a.click();
-    if (hadGrid) toggleGrid();
-    if (hadPG)   { showPrintGuides(); printGuidesOn = true; document.getElementById('btnPrintGuides').classList.add('active'); }
-    showToast('Print-ready export complete! (bleed + crop marks included)');
+    ec.toBlob(blob => {
+      if (!blob) { showToast('Export failed — design too large', 'err'); return; }
+      _downloadBlob(blob, _fileBase() + '-print-ready.png');
+      showToast('Print-ready export complete! (3 mm bleed + crop marks)');
+    }, 'image/png');
   };
+  img.onerror = () => showToast('Export failed', 'err');
   img.src = baseURL;
 }
 
 // ── CMYK Preview (simulation) ──────────────────────────────────────────
+// Now a view-only screen filter over the whole canvas. It used to push a tint
+// filter into every photo — which got SAVED and EXPORTED if left on, and did
+// nothing for text/shapes.
 function toggleCMYKPreview() {
-  const btn    = document.getElementById('btnCMYK');
-  const active = btn ? btn.classList.toggle('active') : false;
-  canvas.getObjects().forEach(obj => {
-    if (obj.type !== 'image') return;
-    if (active) {
-      obj.filters.push(new fabric.Image.filters.BlendColor({ color:'#ff00ff', mode:'tint', alpha:0.08 }));
-    } else {
-      obj.filters = obj.filters.filter(f => !(f instanceof fabric.Image.filters.BlendColor));
-    }
-    obj.applyFilters();
-  });
-  canvas.renderAll();
-  showToast('CMYK Preview ' + (active ? 'ON (simulation)' : 'OFF'), 'info');
+  const btn  = document.getElementById('btnCMYK');
+  const wrap = document.getElementById('canvasWrap');
+  const on = !wrap.classList.contains('cmyk-sim');
+  wrap.classList.toggle('cmyk-sim', on);
+  if (btn) { btn.classList.toggle('active', on); btn.style.background = on ? '#4f46e5' : '#334155'; }
+  showToast('CMYK Preview ' + (on ? 'ON (approximate print colours — view only)' : 'OFF'), 'info');
 }
 
 // ── Spot Color / Pantone ───────────────────────────────────────────────
@@ -5794,22 +6320,20 @@ const spotColors = {
 };
 
 function applySpotColor(name) {
-  const obj = canvas.getActiveObject();
-  if (!obj) { showToast('Select an object first', 'err'); return; }
+  const objs = canvas.getActiveObjects();
+  if (!objs.length) { showToast('Select an object first', 'err'); return; }
   const hex = spotColors[name]; if (!hex) return;
-  obj.set({ fill: hex, data: { ...obj.data, spotColor: name } });
-  canvas.renderAll(); histSave(); refreshProps(obj);
+  objs.forEach(obj => obj.set({ fill: hex, data: { ...obj.data, spotColor: name, _grad: null } }));
+  canvas.renderAll(); histSave(); refreshProps();
   showToast(name + ' color applied!');
 }
 
 // ── Mockup Preview ─────────────────────────────────────────────────────
 function openMockupModal() {
   closeEdPanel();
-  const hadGrid = gridOn; if (hadGrid) toggleGrid();
-  const hadPG   = printGuidesOn; if (hadPG) hidePrintGuides();
-  const dataURL = canvas.toDataURL({ format:'png', multiplier:1 });
-  if (hadGrid) toggleGrid();
-  if (hadPG)   showPrintGuides();
+  let dataURL;
+  try { dataURL = exportDataURL({ format:'png', multiplier: Math.min(1, 1200 / Math.max(canvasW, canvasH)) }); }
+  catch (e) { showToast('Preview blocked: an image from another website has no permission', 'err'); return; }
   document.getElementById('mockupDesign').src = dataURL;
   document.getElementById('mockupFrame').style.transform = 'none';
   document.querySelectorAll('.mockup-type-btn').forEach((b,i) => b.classList.toggle('active', i===0));
@@ -5838,7 +6362,7 @@ function setMockupType(type, btn) {
 // ── Snap Guides Toggle ─────────────────────────────────────────────────
 function toggleSnapGuides() {
   snapEnabled = !snapEnabled;
-  showToast('Smart Snap ' + (snapEnabled ? 'ON' : 'OFF'), 'info');
+  showToast('Smart Snap ' + (snapEnabled ? 'ON — snaps to canvas & other objects (H to toggle)' : 'OFF'), 'info');
 }
 
 // ── Global tooltip (replaces CSS :hover approach) ─────────────────────
@@ -5865,15 +6389,21 @@ function toggleSnapGuides() {
 // ── Init ─────────────────────────────────────────────────────────────
 populateFonts();
 initEditor();
-mobileFitZoom();
+fitZoomIfNeeded();
+// Web fonts finish loading after the first paint — re-measure text so boxes fit.
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => ensureFontsFor());
 
-// Auto-save to localStorage every 30 seconds
+// Auto-save to localStorage every 20 seconds — only when there are unsaved
+// changes (it used to overwrite the slot even right after a real save, so the
+// "recover session?" prompt appeared on every visit). Quota errors (designs
+// with big photos) no longer throw every 30 s.
 setInterval(() => {
-  if (hist.states.length <= 1) return;
-  const json = JSON.stringify(canvas.toJSON(['data','selectable','evented','hoverCursor']));
-  localStorage.setItem('editor_autosave_' + ED.id, json);
-  localStorage.setItem('editor_autosave_time_' + ED.id, Date.now());
-}, 30000);
+  if (!_dirty || hist.locked) return;
+  try {
+    localStorage.setItem(AUTOSAVE_KEY, hist.states[hist.idx] || JSON.stringify(canvasJSON()));
+    localStorage.setItem(AUTOSAVE_TKEY, String(Date.now()));
+  } catch (e) { /* storage full — skip */ }
+}, 20000);
 
 // ════════════════════════════════════════════════════════════════════
 // ██████████  3D TEXT STUDIO  ████████████████████████████████████████
@@ -6141,19 +6671,23 @@ function build3DEffectGrid(cat, q='') {
 /* ── Get Config from UI controls ────────────────────────────── */
 function get3DConfig() {
   const mainGradOn = document.getElementById('fx3DMainGradOn') &&
-                     document.getElementById('fx3DMainGradOn').checked;
+                     document.getElementById('fx3DMainGradOn').checked &&
+                     document.getElementById('fx3DMainGradRow')?.style.display !== 'none';
+  // `+value || default` turned a deliberate 0 into the default — Depth 0 came
+  // out as 12 and Angle 0 as 45. Only fall back when the field is empty/invalid.
+  const num = (id, def) => { const el = document.getElementById(id); const v = el ? parseFloat(el.value) : NaN; return isFinite(v) ? v : def; };
   return {
     mainColor:   document.getElementById('fx3DMainColor')?.value   || '#ffffff',
     extColor:    document.getElementById('fx3DExtColor')?.value    || '#7c3aed',
     shadowColor: document.getElementById('fx3DShadowColor')?.value || '#000000',
     font:        document.getElementById('fx3DFont')?.value        || 'Poppins',
-    fontSize:    +document.getElementById('fx3DFontSize')?.value   || 72,
-    depth:       +document.getElementById('fx3DDepth')?.value      || 12,
-    angle:       +document.getElementById('fx3DAngle')?.value      || 45,
-    outline:     +document.getElementById('fx3DOutline')?.value    || 0,
+    fontSize:    num('fx3DFontSize', 72) || 72,
+    depth:       num('fx3DDepth', 12),
+    angle:       num('fx3DAngle', 45),
+    outline:     num('fx3DOutline', 0),
     outlineColor:document.getElementById('fx3DOutlineColor')?.value|| '#000000',
-    glow:        +document.getElementById('fx3DGlow')?.value       || 0,
-    spacing:     +document.getElementById('fx3DSpacing')?.value    || 0,
+    glow:        num('fx3DGlow', 0),
+    spacing:     num('fx3DSpacing', 0),
     bold:        document.getElementById('fx3DBold')?.checked      ?? true,
     italic:      document.getElementById('fx3DItalic')?.checked    ?? false,
     transBg:     document.getElementById('fx3DTransBg')?.checked   ?? false,
@@ -6184,19 +6718,42 @@ function update3DPreview() {
   }
 
   const fx = FX3D_EFFECTS.find(f => f.id === fx3D_selected);
-  if (fx) { try { fx.render(ctx, cv.width, cv.height, txt, cfg); } catch(e){ console.warn('3D FX error:', e); } }
+  if (fx) { try { ctx.save(); fx.render(ctx, cv.width, cv.height, txt, _fit3DConfig(ctx, cv.width, cv.height, txt, cfg)); ctx.restore(); } catch(e){ ctx.restore(); console.warn('3D FX error:', e); } }
+}
+/* Shrink the font so the whole word fits — long names (up to 30 chars) were
+   cut off at the left/right edge in both the preview and the applied image. */
+function _fit3DConfig(ctx, W, H, txt, cfg) {
+  const c = Object.assign({}, cfg);
+  let fs = Math.min(c.fontSize, H * 0.65);
+  ctx.save();
+  for (let i = 0; i < 40 && fs > 8; i++) {
+    ctx.font = `${c.italic ? 'italic' : 'normal'} ${c.bold ? 'bold' : 'normal'} ${fs}px "${c.font}", sans-serif`;
+    const w = ctx.measureText(txt).width + Math.max(0, c.spacing) * txt.length + c.depth * 1.2 + c.glow + c.outline * 2;
+    if (w <= W * 0.9) break;
+    fs *= 0.92;
+  }
+  ctx.restore();
+  c.fontSize = Math.round(fs);
+  return c;
 }
 
 /* ── Color setters ───────────────────────────────────────────── */
 function setFx3DColor(type, hex) {
   const map = { main:'fx3DMainColor', ext:'fx3DExtColor', shadow:'fx3DShadowColor', bg:'fx3DBgColor' };
   const el = document.getElementById(map[type]);
+  if (type === 'main') setFx3DMainSolid();   // picking a solid main colour switches the gradient off
   if (el) { el.value = hex; update3DPreview(); }
 }
 function pick3DGradMain() {
   const row = document.getElementById('fx3DMainGradRow');
-  if (row) { row.style.display = row.style.display === 'none' ? 'flex' : 'none'; update3DPreview(); }
+  const chk = document.getElementById('fx3DMainGradOn');
+  if (!row) return;
+  const show = row.style.display === 'none';
+  row.style.display = show ? 'flex' : 'none';
+  if (chk) chk.checked = show;          // opening the gradient row turns it on, closing turns it off
+  update3DPreview();
 }
+function setFx3DMainSolid() { const chk = document.getElementById('fx3DMainGradOn'); if (chk) chk.checked = false; }
 
 /* ── Apply to Canvas ─────────────────────────────────────────── */
 function apply3DEffect() {
@@ -6211,8 +6768,9 @@ function apply3DEffect() {
   ctx.scale(scale, scale);
 
   ctx.clearRect(0, 0, W0, H0);
+  // (The preview background is only for viewing — the applied text is always transparent.)
   const fx = FX3D_EFFECTS.find(f => f.id === fx3D_selected);
-  if (fx) { try { fx.render(ctx, W0, H0, txt, cfg); } catch(e){ console.error(e); } }
+  if (fx) { try { ctx.save(); fx.render(ctx, W0, H0, txt, _fit3DConfig(ctx, W0, H0, txt, cfg)); ctx.restore(); } catch(e){ ctx.restore(); console.error(e); } }
 
   // ── Auto-trim: find tight bounding box of non-transparent pixels ──
   const fullW = tmpC.width, fullH = tmpC.height;
@@ -6251,6 +6809,7 @@ function apply3DEffect() {
   const imgEl = new Image();
   imgEl.onload = () => {
     const scl = Math.min(canvasW * 0.75 / imgEl.width, canvasH * 0.75 / imgEl.height);
+    if (activeTool !== 'select') setActiveTool('select');
     const fImg = new fabric.Image(imgEl, {
       left: canvasW / 2, top: canvasH / 2,
       originX: 'center', originY: 'center',
@@ -7449,7 +8008,8 @@ document.addEventListener('keydown', function(e) {
 });
 
 window.addEventListener('message', function(e) {
-  if (!e.data) return;
+  // Only accept images from our own Logo Studio page (any site could post here before).
+  if (e.origin !== location.origin || !e.data) return;
   if (e.data.type === 'lspClose') { closeLspModal(); return; }
   if (e.data.type !== 'lspApply') return;
   const dataURL = e.data.dataURL;
