@@ -823,6 +823,72 @@ body.pen-mode .canvas-shadow { outline:2px solid #22d3ee; outline-offset:2px; }
 .p2-lv input.b::-webkit-slider-thumb { background:#000; border-color:#94a3b8; }
 .p2-lv .track { position:absolute; left:0; right:0; top:6px; height:4px; border-radius:2px; background:linear-gradient(90deg,#000,#fff); }
 </style>
+<style>
+/* ═══════════ EDITOR PRO 3 — front/back sides, mail merge, print sheet ═══════════ */
+#p3Sides { display:flex; align-items:center; gap:2px; background:#0f172a; border:1px solid var(--pro-line); border-radius:7px; padding:1px; flex:none; }
+#proStatus #p3Sides button { border:none; padding:1px 8px; border-radius:5px; font-weight:600; }
+#proStatus #p3Sides button.on { background:var(--pro-acc); color:#fff; }
+#proStatus #p3Sides button.add { color:#a5b4fc; }
+#p3MergeOv { padding-top:3vh; }
+#p3MergeOv .pro-box { max-width:1180px; }
+#p3MergeOv .pro-box-bd { max-height:74vh; }
+.p3-wrap { display:grid; grid-template-columns:minmax(0,1fr) 330px; gap:1rem; }
+@media (max-width:900px) { .p3-wrap { grid-template-columns:1fr; } #p3MergeOv .pro-actions { flex-wrap:wrap; } }
+.p3-tabs { display:flex; gap:.2rem; border-bottom:1px solid var(--pro-line); padding:0 .8rem; overflow-x:auto; }
+.p3-tab { background:none; border:none; border-bottom:2px solid transparent; color:var(--pro-mute); padding:.6rem .75rem; font-weight:600; font-size:.82rem; cursor:pointer; white-space:nowrap; }
+.p3-tab.on { color:#fff; border-bottom-color:var(--pro-acc); }
+.p3-tab .n { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:50%; background:#334155; color:#fff; font-size:.66rem; margin-right:.3rem; }
+.p3-tab.on .n { background:var(--pro-acc); }
+.p3-tab .ok { color:#22c55e; margin-left:.25rem; }
+.p3-pane { display:none; } .p3-pane.on { display:block; }
+.p3-drop { border:2px dashed #475569; border-radius:12px; padding:1.6rem 1rem; text-align:center; color:#94a3b8; cursor:pointer; font-size:.8rem; }
+.p3-drop:hover, .p3-drop.hot { border-color:#818cf8; background:rgba(79,70,229,.1); }
+.p3-bar { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem; margin-bottom:.5rem; }
+.p3-bar input[type=search], .p3-bar select { background:var(--pro-bg); border:1px solid var(--pro-line); border-radius:7px; color:var(--pro-text); padding:.28rem .5rem; font-size:.76rem; outline:none; }
+.p3-table-wrap { max-height:46vh; overflow:auto; border:1px solid var(--pro-line); border-radius:8px; }
+table.p3-t { border-collapse:collapse; width:100%; font-size:.76rem; }
+.p3-t th { position:sticky; top:0; background:#0f172a; color:#94a3b8; text-align:left; padding:.4rem .5rem; white-space:nowrap; z-index:1; font-weight:600; }
+.p3-t th.used { color:#a5b4fc; }
+.p3-t td { border-top:1px solid #1e293b; padding:.3rem .5rem; white-space:nowrap; max-width:220px; overflow:hidden; text-overflow:ellipsis; color:#e2e8f0; }
+.p3-t td.c { width:28px; color:#64748b; cursor:pointer; }
+.p3-t td[contenteditable]:focus { outline:2px solid var(--pro-acc); background:#0f172a; white-space:normal; text-overflow:clip; }
+.p3-t tr.off td:not(.c) { opacity:.35; }
+.p3-t tr.cur td { background:#1e1b4b; }
+.p3-t td.miss { background:rgba(249,115,22,.14); }
+.p3-t tr:hover td { background:#172036; }
+.p3-prev { background:repeating-conic-gradient(#1e293b 0 25%, #172033 0 50%) 0 0/16px 16px; border:1px solid var(--pro-line); border-radius:10px; padding:.6rem; display:flex; flex-direction:column; gap:.5rem; align-items:center; }
+.p3-prev canvas { max-width:100%; height:auto; box-shadow:0 4px 18px rgba(0,0,0,.45); border-radius:2px; }
+.p3-prev .lbl { font-size:.62rem; color:#94a3b8; text-transform:uppercase; letter-spacing:.08em; align-self:flex-start; }
+.p3-nav { display:flex; align-items:center; gap:.4rem; font-size:.76rem; color:#e2e8f0; width:100%; }
+.p3-nav .t { flex:1; text-align:center; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.p3-issues { max-height:180px; overflow:auto; font-size:.74rem; margin-top:.3rem; }
+.p3-issue { padding:.25rem .4rem; border-radius:6px; cursor:pointer; color:#fdba74; display:flex; gap:.4rem; }
+.p3-issue:hover { background:#1e293b; }
+.p3-issue.ok { color:#86efac; cursor:default; }
+.p3-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:0 .75rem; }
+@media (max-width:600px) { .p3-grid2 { grid-template-columns:1fr; } }
+.p3-in2 { display:flex; gap:.35rem; align-items:center; color:var(--pro-mute); font-size:.75rem; }
+.p3-in2 input { min-width:0; }
+.p3-prog { height:6px; background:#0f172a; border-radius:3px; overflow:hidden; }
+.p3-prog > div { height:100%; width:0; background:linear-gradient(90deg,#6366f1,#22d3ee); transition:width .15s; }
+.p3-map { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) minmax(0,1fr); gap:.5rem; align-items:center; padding:.4rem 0; border-bottom:1px dashed #263244; font-size:.78rem; }
+.p3-map select { width:100%; background:var(--pro-bg); border:1px solid var(--pro-line); border-radius:7px; color:var(--pro-text); padding:.28rem .4rem; font-size:.76rem; }
+.p3-map select.bad { border-color:#f97316; }
+.p3-map .smp { color:#94a3b8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.p3-tok { font-family:ui-monospace,Consolas,monospace; color:#c7d2fe; background:#1e1b4b; padding:1px 6px; border-radius:5px; font-size:.74rem; white-space:nowrap; }
+.p3-chk { display:flex; align-items:center; gap:.4rem; font-size:.78rem; color:#cbd5e1; cursor:pointer; margin:.2rem 0; }
+.p3-stat { font-size:.75rem; color:var(--pro-mute); } .p3-stat b { color:#fff; }
+.p3-h { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#64748b; margin:1rem 0 .45rem; display:flex; align-items:center; gap:.4rem; }
+.p3-h:first-child { margin-top:0; }
+#p3SheetCv { max-width:100%; height:auto; background:#fff; box-shadow:0 4px 18px rgba(0,0,0,.45); }
+#p3PrevBar { position:fixed; z-index:47; display:none; align-items:center; gap:.45rem; padding:.4rem .6rem; background:#4338ca; color:#eef2ff; border-radius:10px; font-size:.76rem; box-shadow:0 10px 30px rgba(0,0,0,.45); max-width:calc(100vw - 16px); }
+#p3PrevBar.on { display:flex; }
+#p3PrevBar button { background:rgba(255,255,255,.16); border:none; color:#fff; border-radius:6px; padding:.25rem .55rem; font-size:.74rem; cursor:pointer; }
+#p3PrevBar button:hover { background:rgba(255,255,255,.3); }
+#p3PrevBar b { max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#p3PrevImg { position:fixed; z-index:38; pointer-events:none; display:none; }
+.p3-badge { background:#22c55e; color:#04260f; border-radius:999px; font-size:.62rem; font-weight:800; padding:0 6px; margin-left:.25rem; }
+</style>
 </head>
 <body>
 <div class="eraser-cursor" id="eraserCursor"></div>
@@ -8965,11 +9031,15 @@ function proOpenQr(obj, type) {
 function proCloseQr() { $pro('proQrOv').classList.remove('open'); _proQr.editing = null; }
 /** Build the SVG markup for the current settings. */
 async function proQrSvg() {
-  const val = $pro('proQrVal').value.trim(), fg = $pro('proQrFg').value, bg = $pro('proQrBg').value;
+  return proCodeSvg({ type: _proQr.type, value: $pro('proQrVal').value.trim(), fg: $pro('proQrFg').value, bg: $pro('proQrBg').value, ecc: $pro('proQrEcc').value, showText: $pro('proQrShowText').checked });
+}
+/** SVG markup for a QR code / barcode config ({type, value, fg, bg, ecc, showText}) — also used by Mail Merge. */
+async function proCodeSvg(cfg) {
+  const val = String(cfg.value || '').trim(), fg = cfg.fg || '#000000', bg = cfg.bg || '#ffffff', type = cfg.type || 'qr';
   if (!val) throw new Error('Enter the text or number to encode');
-  if (_proQr.type === 'qr') {
+  if (type === 'qr') {
     await proLoadLib('qr');
-    const q = window.qrcode(0, $pro('proQrEcc').value);
+    const q = window.qrcode(0, cfg.ecc || 'M');
     q.addData(unescape(encodeURIComponent(val)), 'Byte');   // UTF-8 (Hindi text works)
     q.make();
     const n = q.getModuleCount(), m = 4, size = n + m * 2;
@@ -8980,8 +9050,8 @@ async function proQrSvg() {
   await proLoadLib('bar');
   const el = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   let ok = true;
-  window.JsBarcode(el, val, { format: _proQr.type, lineColor: fg, background: bg, displayValue: $pro('proQrShowText').checked, font: 'monospace', fontSize: 18, height: 80, margin: 10, valid: v => { ok = v; } });
-  if (!ok) throw new Error(_proQr.type === 'EAN13' ? 'EAN-13 needs exactly 12 or 13 digits' : 'These characters cannot be used in this barcode type');
+  window.JsBarcode(el, val, { format: type, lineColor: fg, background: bg, displayValue: cfg.showText !== false, font: 'monospace', fontSize: 18, height: 80, margin: 10, valid: v => { ok = v; } });
+  if (!ok) throw new Error(type === 'EAN13' ? 'EAN-13 needs exactly 12 or 13 digits' : 'These characters cannot be used in this barcode type');
   el.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
   return new XMLSerializer().serializeToString(el);
 }
@@ -10081,6 +10151,1351 @@ document.addEventListener('keydown', e => {
   if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'p' && !document.querySelector('.pro-ov.open')) { e.preventDefault(); e.stopImmediatePropagation(); p2PenStart(); }
 }, true);
 window.addEventListener('resize', () => { if (pen.active) p2PenBar(); });
+</script>
+
+<!-- ═══════════ EDITOR PRO 3 — Mail Merge & Print Sheet ═══════════ -->
+<div class="pro-ov" id="p3MergeOv" role="dialog" aria-label="Mail merge and print sheet">
+  <div class="pro-box">
+    <div class="pro-box-hd"><i class="bi bi-people-fill" style="color:#818cf8;"></i> Mail Merge &amp; Print Sheet <span class="pro-note" id="p3HdInfo" style="margin:0 0 0 .4rem;font-weight:400;"></span><button class="x" onclick="p3Close()" title="Close (Esc)">✕</button></div>
+    <div class="p3-tabs" id="p3Tabs">
+      <button class="p3-tab on" data-t="data"><span class="n">1</span>Data<span class="ok" id="p3OkData"></span></button>
+      <button class="p3-tab" data-t="fields"><span class="n">2</span>Fields &amp; photos<span class="ok" id="p3OkFields"></span></button>
+      <button class="p3-tab" data-t="print"><span class="n">3</span>Print layout</button>
+    </div>
+    <div class="pro-box-bd">
+      <div class="p3-wrap">
+        <div>
+          <!-- 1. DATA -->
+          <div class="p3-pane on" data-p="data">
+            <div id="p3NoData">
+              <div class="p3-drop" id="p3Drop" onclick="document.getElementById('p3File').click()">
+                <i class="bi bi-file-earmark-spreadsheet" style="font-size:2.2rem;color:#22c55e;"></i>
+                <div style="font-weight:700;color:#e2e8f0;font-size:.95rem;margin:.4rem 0 .2rem;">Drop your Excel / CSV file here</div>
+                <div>or click to choose — .xlsx, .xls, .csv · first row = column names (Name, Class, Roll No, Photo…)</div>
+              </div>
+              <div class="p2-btns" style="margin-top:.7rem;justify-content:center;">
+                <button class="p2-btn" onclick="p3TogglePaste()"><i class="bi bi-clipboard"></i> Paste from Excel / Google Sheets</button>
+                <button class="p2-btn" onclick="p3SampleCsv()"><i class="bi bi-download"></i> Download sample sheet for this design</button>
+              </div>
+              <div id="p3PasteBox" style="display:none;margin-top:.7rem;">
+                <textarea id="p3PasteTa" rows="7" placeholder="Select the cells in Excel / Google Sheets (with the heading row), copy (Ctrl+C) and paste here (Ctrl+V)" style="width:100%;background:var(--pro-bg);border:1px solid var(--pro-line);border-radius:8px;color:var(--pro-text);padding:.5rem;font-size:.78rem;font-family:ui-monospace,monospace;"></textarea>
+                <button class="p2-btn primary" style="margin-top:.4rem;" onclick="p3UsePaste()"><i class="bi bi-check2"></i> Use this data</button>
+              </div>
+              <div class="pro-note" style="margin-top:.9rem;text-align:center;">Your data stays in this browser — it is never uploaded or saved with the design.</div>
+            </div>
+            <div id="p3HasData" style="display:none;">
+              <div class="p3-bar">
+                <span class="p3-stat" id="p3DataInfo"></span>
+                <select id="p3Sheet" style="display:none;" title="Excel sheet"></select>
+                <span style="flex:1"></span>
+                <input type="search" id="p3Search" placeholder="Search rows…" style="width:150px;">
+                <button class="p2-btn" onclick="p3SelAll(true)" title="Print every row">All</button>
+                <button class="p2-btn" onclick="p3SelAll(false)" title="Untick every row">None</button>
+                <button class="p2-btn" onclick="document.getElementById('p3File').click()" title="Load a different file"><i class="bi bi-arrow-repeat"></i> Replace</button>
+                <button class="p2-btn" onclick="p3ClearData()" title="Remove the data"><i class="bi bi-x-lg"></i></button>
+              </div>
+              <div class="p3-table-wrap"><table class="p3-t" id="p3Table"></table></div>
+              <div class="pro-note">Tick = print this row · click a row to preview it · click a cell to fix a spelling (changes stay in this session only).</div>
+            </div>
+            <input type="file" id="p3File" accept=".xlsx,.xls,.xlsm,.ods,.csv,.tsv,.txt" hidden>
+          </div>
+
+          <!-- 2. FIELDS -->
+          <div class="p3-pane" data-p="fields">
+            <div class="p3-h"><i class="bi bi-input-cursor-text"></i> Text fields in your design</div>
+            <div id="p3MapList"></div>
+            <div class="pro-note">Any text containing <span class="p3-tok">{{Column name}}</span> is filled from the sheet, on the front and the back. Add <span class="p3-tok">|upper</span> for CAPITALS, <span class="p3-tok">|title</span> for Title Case, e.g. <span class="p3-tok">{{Name|upper}}</span>. Turn on <b>Auto-fit</b> on name text so long names shrink instead of overflowing.</div>
+            <div class="p3-h"><i class="bi bi-plus-circle"></i> Add a field to the design</div>
+            <div class="p2-btns" id="p3ColChips"></div>
+            <div class="pro-note">Click a column: it is inserted into the selected text (or added as new text).</div>
+
+            <div class="p3-h"><i class="bi bi-person-bounding-box"></i> Photos</div>
+            <div id="p3PhotoInfo" class="p3-stat" style="margin-bottom:.45rem;"></div>
+            <div class="p2-btns" style="margin-bottom:.55rem;">
+              <button class="p2-btn primary" onclick="document.getElementById('p3Photos').click()"><i class="bi bi-images"></i> Add photos</button>
+              <button class="p2-btn" onclick="document.getElementById('p3PhotoDir').click()"><i class="bi bi-folder2-open"></i> Add a photo folder</button>
+              <button class="p2-btn" onclick="document.getElementById('p3PhotoZip').click()"><i class="bi bi-file-zip"></i> Photos ZIP</button>
+              <button class="p2-btn" onclick="p3ClearPhotos()" title="Remove the loaded photos"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="p3-grid2">
+              <div class="pro-field"><label>Photo file name is in column</label><select id="p3PhotoCol"></select></div>
+              <div class="pro-field"><label>Photo position in frame</label><select id="p3PhotoFocus"><option value="0.5">Centre</option><option value="0.3">Upper (faces)</option><option value="0">Top</option></select></div>
+            </div>
+            <div class="pro-note" style="margin-top:-.3rem;">Photos are matched by file name: a row with <span class="p3-tok">1024</span> or <span class="p3-tok">1024.jpg</span> uses photo <b>1024.jpg</b>. A full https:// link in the column also works. Mark where photos go with <b>Placeholder → Photo</b>, or select any photo in the design and tick <b>Merge photo</b>.</div>
+            <input type="file" id="p3Photos" accept="image/*" multiple hidden>
+            <input type="file" id="p3PhotoDir" webkitdirectory directory multiple hidden>
+            <input type="file" id="p3PhotoZip" accept=".zip" hidden>
+
+            <div class="p3-h"><i class="bi bi-file-earmark-image"></i> File names for PNG export</div>
+            <div class="pro-field"><input type="text" id="p3NamePat" placeholder="e.g. {{Class}}-{{Roll No}}-{{Name}}"></div>
+          </div>
+
+          <!-- 3. PRINT -->
+          <div class="p3-pane" data-p="print">
+            <div class="p3-grid2">
+              <div class="pro-field"><label>What to print</label>
+                <select id="p3Src"><option value="data">One card per row of data</option><option value="copies">Copies of this design</option></select></div>
+              <div class="pro-field" id="p3CopiesF"><label>Copies</label>
+                <div class="p3-in2"><input type="number" id="p3Copies" min="1" max="2000" value="10" style="width:100%;background:var(--pro-bg);border:1px solid var(--pro-line);border-radius:8px;color:var(--pro-text);padding:.45rem .6rem;"><button class="p2-btn" onclick="p3FillPage()" title="Exactly as many as fit on one sheet">Fill 1 page</button></div></div>
+              <div class="pro-field"><label>Paper</label>
+                <select id="p3Paper">
+                  <option value="210x297">A4 (210 × 297 mm)</option><option value="297x420">A3 (297 × 420 mm)</option><option value="148x210">A5 (148 × 210 mm)</option>
+                  <option value="215.9x279.4">Letter (8.5 × 11 in)</option><option value="215.9x355.6">Legal (8.5 × 14 in)</option>
+                  <option value="304.8x457.2">12 × 18 in</option><option value="330.2x482.6">13 × 19 in (Super A3)</option><option value="custom">Custom…</option>
+                </select></div>
+              <div class="pro-field"><label>Orientation</label>
+                <select id="p3Orient"><option value="auto">Auto — whichever fits more</option><option value="p">Portrait</option><option value="l">Landscape</option></select></div>
+              <div class="pro-field" id="p3CustomF" style="display:none;"><label>Paper size W × H (mm)</label>
+                <div class="p3-in2"><input type="number" id="p3PW" step="0.1" min="40" value="210"> × <input type="number" id="p3PH" step="0.1" min="40" value="297"></div></div>
+              <div class="pro-field"><label>Card size W × H (mm)</label>
+                <div class="p3-in2"><input type="number" id="p3CW" step="0.1" min="5"> × <input type="number" id="p3CH" step="0.1" min="5"></div>
+                <div class="pro-chips" style="margin-top:.35rem;"><span class="pro-chip" data-cs="design">Design size</span><span class="pro-chip" data-cs="cr80">ID card 85.6 × 54</span><span class="pro-chip" data-cs="rot">Rotate 90°</span></div></div>
+              <div class="pro-field"><label>Page margin / gap between cards (mm)</label>
+                <div class="p3-in2"><input type="number" id="p3Margin" step="0.5" min="0" value="8"> / <input type="number" id="p3Gap" step="0.5" min="0" value="4"></div></div>
+              <div class="pro-field"><label>Quality</label>
+                <select id="p3Dpi"><option value="150">150 DPI — quick proof</option><option value="300" selected>300 DPI — print (recommended)</option><option value="450">450 DPI — extra sharp</option></select></div>
+              <div class="pro-field" id="p3BackF"><label>Back side</label>
+                <select id="p3Back">
+                  <option value="long">Two-sided — flip on long edge (most printers)</option>
+                  <option value="short">Two-sided — flip on short edge</option>
+                  <option value="pair">Front &amp; back next to each other</option>
+                  <option value="none">Front only</option>
+                  <option value="backonly">Back only</option>
+                </select></div>
+              <div class="pro-field" id="p3ShiftF"><label>Back page shift X / Y (mm) — fixes printer misalignment</label>
+                <div class="p3-in2"><input type="number" id="p3SX" step="0.1" value="0"> / <input type="number" id="p3SY" step="0.1" value="0"></div></div>
+            </div>
+            <label class="p3-chk"><input type="checkbox" id="p3Marks" checked> Crop marks (cutting guides in the margin)</label>
+            <label class="p3-chk"><input type="checkbox" id="p3Lines"> Thin cut lines around every card</label>
+            <label class="p3-chk"><input type="checkbox" id="p3Center" checked> Centre the cards on the page</label>
+            <div class="p3-stat" id="p3LayoutInfo" style="margin-top:.6rem;"></div>
+          </div>
+        </div>
+
+        <!-- preview column -->
+        <div>
+          <div id="p3RecPrev" class="p3-prev">
+            <div class="lbl" id="p3PvLblF">Front</div><canvas id="p3PvF" width="10" height="10"></canvas>
+            <div class="lbl" id="p3PvLblB" style="display:none;">Back</div><canvas id="p3PvB" width="10" height="10" style="display:none;"></canvas>
+            <div class="p3-nav" id="p3RecNav"><button class="p2-btn" onclick="p3Step(-1)" title="Previous row"><i class="bi bi-chevron-left"></i></button><span class="t" id="p3RecLbl">—</span><button class="p2-btn" onclick="p3Step(1)" title="Next row"><i class="bi bi-chevron-right"></i></button></div>
+            <button class="p2-btn" id="p3PvCanvasBtn" onclick="p3PreviewOnCanvas()"><i class="bi bi-eye"></i> Show this row on the canvas</button>
+          </div>
+          <div id="p3SheetPrev" class="p3-prev" style="display:none;">
+            <canvas id="p3SheetCv" width="10" height="10"></canvas>
+            <div class="p3-nav"><button class="p2-btn" onclick="p3SheetStep(-1)"><i class="bi bi-chevron-left"></i></button><span class="t" id="p3SheetLbl">—</span><button class="p2-btn" onclick="p3SheetStep(1)"><i class="bi bi-chevron-right"></i></button></div>
+          </div>
+          <div class="p3-h" style="margin-top:.8rem;"><i class="bi bi-clipboard-check"></i> Checks <span style="flex:1"></span><button class="p2-btn" onclick="p3CheckAll()" title="Fill every selected row and look for problems"><i class="bi bi-search"></i> Check all rows</button></div>
+          <div class="p3-issues" id="p3Issues"><div class="p3-issue ok">Load data to see checks.</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="pro-actions" style="align-items:center;">
+      <div style="flex:1;min-width:140px;">
+        <div class="p3-prog" id="p3Prog" style="display:none;"><div></div></div>
+        <div class="pro-note" id="p3ProgTxt" style="margin:.25rem 0 0;"></div>
+      </div>
+      <button class="pro-btn" id="p3Stop" style="display:none;" onclick="p3.cancel = true">Stop</button>
+      <button class="pro-btn p3-run" onclick="p3Run('zip')" title="One PNG per card (and back), in a ZIP"><i class="bi bi-file-zip"></i> PNGs (ZIP)</button>
+      <button class="pro-btn p3-run" onclick="p3Run('print')" title="Print the sheets now"><i class="bi bi-printer"></i> Print</button>
+      <button class="pro-btn primary p3-run" onclick="p3Run('pdf')" title="Print-ready PDF of the sheets"><i class="bi bi-filetype-pdf"></i> Download PDF</button>
+    </div>
+  </div>
+</div>
+<div id="p3PrevBar"><i class="bi bi-eye"></i> Preview <button onclick="p3PvStep(-1)" title="Previous (←)"><i class="bi bi-chevron-left"></i></button><b id="p3PbLbl"></b><button onclick="p3PvStep(1)" title="Next (→)"><i class="bi bi-chevron-right"></i></button><button onclick="p3PvOff()" title="Back to editing (Esc)"><i class="bi bi-pencil"></i> Edit</button><button onclick="p3PvOff();p3Open()" title="Mail merge"><i class="bi bi-people"></i></button></div>
+<img id="p3PrevImg" alt="">
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   EDITOR PRO 3 — two-sided designs, mail merge (Excel/CSV + photos) and
+   print sheets (A4/A3… imposition, crop marks, duplex) → PDF / Print / ZIP
+   ═══════════════════════════════════════════════════════════════════════ */
+const $p3 = id => document.getElementById(id);
+const P3_PROXY = '<?= BASE_URL ?>/api/img_proxy.php?url=';
+const P3_SIDE_KEYS = ['objects', 'background', 'backgroundImage', 'overlay', 'overlayImage'];
+const p3 = {
+  cur: 'front', front: null, back: null, frontThumb: '', _raw: false,
+  data: null,              // { name, cols:[], rows:[[]], on:[bool] } — this session only, never saved
+  wb: null, wbName: '',
+  rec: 0,                  // row being previewed
+  photos: new Map(),       // file key → File
+  cfg: { map: {}, photoCol: '', focus: 0.3, namePat: '', print: {} },   // saved inside the design
+  cancel: false, busy: false, tab: 'data', sheetPage: 0, pv: false,
+};
+try { const j = ED.canvas_json ? JSON.parse(ED.canvas_json) : null; if (j && j._merge && typeof j._merge === 'object') p3.cfg = Object.assign(p3.cfg, j._merge, { map: Object.assign({}, j._merge.map), print: Object.assign({}, j._merge.print) }); } catch (_) {}
+
+/* ─────────────────────────── 1. FRONT / BACK SIDES ───────────────────────────
+   The canvas always shows one side. The saved JSON keeps the FRONT at the top
+   level (so every page that already renders designs keeps working) and the
+   back under `_back`; `_side` remembers which side history/autosave was on. */
+function p3PickSide(j) { const s = {}; P3_SIDE_KEYS.forEach(k => { if (j && j[k] !== undefined) s[k] = j[k]; }); if (!s.objects) s.objects = []; return s; }
+const _p3Load = canvas.loadFromJSON;
+canvas.loadFromJSON = function (json, cb, rev) {
+  if (p3._raw) return _p3Load.call(this, json, cb, rev);
+  let j = null; try { j = typeof json === 'string' ? JSON.parse(json) : json; } catch (_) {}
+  if (!j || typeof j !== 'object') return _p3Load.call(this, json, cb, rev);
+  p3.back = j._back && Array.isArray(j._back.objects) ? j._back : null;
+  // a design always opens on its front; undo/redo/recovery return to the side they were on
+  const side = p3.back && j._side === 'back' && json !== ED.canvas_json ? 'back' : 'front';
+  p3.cur = side; p3.front = null; p3.frontThumb = '';
+  setTimeout(p3SidesUI);
+  if (side === 'front') return _p3Load.call(this, json, cb, rev);
+  p3.front = p3PickSide(j);
+  const load = Object.assign({}, j); P3_SIDE_KEYS.forEach(k => delete load[k]); Object.assign(load, p3.back);
+  p3RenderThumbOf(p3.front);
+  return _p3Load.call(this, load, cb, rev);
+};
+const _p3PrevJSON = canvasJSON;
+canvasJSON = function () {
+  const j = _p3PrevJSON();
+  const c = p3.cfg;
+  if (Object.keys(c.map).length || c.photoCol || c.namePat || Object.keys(c.print).length) j._merge = c;   // mapping + print settings only — never the student data
+  if (!p3.back && p3.cur === 'front') return j;
+  const curSide = p3PickSide(j);
+  P3_SIDE_KEYS.forEach(k => delete j[k]);
+  const out = Object.assign({ version: j.version }, p3.cur === 'front' ? curSide : p3.front, j);
+  out._back = p3.cur === 'back' ? curSide : p3.back;
+  out._side = p3.cur;
+  return out;
+};
+// gallery thumbnail = the front, even while you are working on the back
+const _p3ThumbRaw = _thumbnail;
+_thumbnail = function () { return p3.cur === 'back' && p3.frontThumb ? p3.frontThumb : _p3ThumbRaw(); };
+function p3RenderThumbOf(side) {
+  p3.frontThumb = '';
+  const want = side;
+  p3Q(async () => {
+    const prep = await p3Prepare(want, 'thumb');
+    const c = prep.sc.toCanvasElement(Math.min(1, 600 / Math.max(canvasW, canvasH)));
+    const w = document.createElement('canvas'); w.width = c.width; w.height = c.height;
+    const x = w.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, w.width, w.height); x.drawImage(c, 0, 0);
+    try { if (p3.cur === 'back') p3.frontThumb = w.toDataURL('image/jpeg', 0.82); } catch (_) {}
+  }).catch(() => {});
+}
+
+function p3Flush() {
+  const a = canvas.getActiveObject();
+  if (a && a.isEditing) a.exitEditing();
+  if (typeof pen !== 'undefined' && pen.active) setActiveTool('select');
+  if (typeof isCropping !== 'undefined' && isCropping && typeof toggleCropMode === 'function') toggleCropMode();
+  canvas.discardActiveObject();
+  if (!hist.locked) histSave();
+}
+function p3LoadSide(sideJson, cb) {
+  hist.locked = true; p3._raw = true;
+  try {
+    canvas.loadFromJSON(Object.assign({}, sideJson), () => {
+      canvas.renderAll(); hist.locked = false;
+      refreshLayers(); refreshProps(); p3SidesUI(); ensureFontsFor();
+      cb && cb();
+    });
+  } finally { p3._raw = false; }
+}
+function p3Switch(side) {
+  if (hist.locked || side === p3.cur) return;
+  if (side === 'back' && !p3.back) { p3AddBackMenu(); return; }
+  p3Flush();
+  const doc = canvasJSON();
+  if (p3.cur === 'front') { try { p3.frontThumb = _p3ThumbRaw(); } catch (_) {} }
+  p3.front = p3PickSide(doc); p3.back = doc._back;
+  p3.cur = side;
+  p3LoadSide(side === 'back' ? p3.back : p3.front, () => {
+    if (side === 'front') p3.frontThumb = '';
+    // just looking at the other side is not an undo step — keep the current step pointing here
+    if (hist.idx >= 0) hist.states[hist.idx] = JSON.stringify(canvasJSON());
+    if (p3.pv) p3PvDraw();
+  });
+}
+function p3AddBackMenu() {
+  const b = $p3('p3SideBack'), r = b ? b.getBoundingClientRect() : { left: innerWidth / 2, top: innerHeight / 2 };
+  proOpenMenu(r.left, r.top - 130, [
+    proMenuItem('bi-file-earmark', 'Blank back side', '', () => p3AddBack('blank')),
+    proMenuItem('bi-image', 'Back side with the same background', '', () => p3AddBack('bg')),
+    proMenuItem('bi-files', 'Back side = copy of the front', '', () => p3AddBack('copy')),
+  ]);
+}
+function p3AddBack(mode) {
+  if (p3.back || p3.cur !== 'front') return;
+  p3Flush();
+  const front = p3PickSide(canvasJSON());
+  let back;
+  if (mode === 'copy') back = JSON.parse(JSON.stringify(front));
+  else {
+    back = { objects: [], background: front.background || '#ffffff' };
+    if (front.backgroundImage) back.backgroundImage = JSON.parse(JSON.stringify(front.backgroundImage));
+    if (mode === 'bg') {
+      // the bottom layers that cover (almost) the whole card = its background artwork
+      const objs = canvas.getObjects().filter(o => !o.excludeFromExport);
+      if (objs.length === front.objects.length) {
+        for (let i = 0; i < objs.length; i++) {
+          const b = objs[i].getBoundingRect(true, true);
+          const cover = Math.max(0, Math.min(b.left + b.width, canvasW) - Math.max(b.left, 0)) * Math.max(0, Math.min(b.top + b.height, canvasH) - Math.max(b.top, 0)) / (canvasW * canvasH);
+          if (cover < 0.85 && !objs[i].data?.isBg) break;
+          back.objects.push(JSON.parse(JSON.stringify(front.objects[i])));
+        }
+      }
+    }
+  }
+  try { p3.frontThumb = _p3ThumbRaw(); } catch (_) {}
+  p3.front = front; p3.back = back; p3.cur = 'back';
+  p3LoadSide(back, () => { histSave('Add back side'); showToast('Back side added — switch with the Front / Back buttons at the bottom', 'ok'); });
+}
+function p3SideMenu(ev) {
+  const r = ev.currentTarget.getBoundingClientRect();
+  proOpenMenu(r.left, r.top - 120, [
+    proMenuItem('bi-arrow-left-right', 'Swap front and back', '', p3SwapSides),
+    proMenuItem('bi-files', 'Replace back with a copy of the front', '', p3CopyFrontToBack),
+    '-',
+    proMenuItem('bi-trash', 'Delete back side', '', p3DeleteBack, { danger: true }),
+  ]);
+}
+function p3SwapSides() {
+  if (!p3.back && p3.cur === 'front') return;
+  p3Flush();
+  const doc = canvasJSON(), f = p3PickSide(doc), b = doc._back;
+  p3.front = b; p3.back = f;
+  p3LoadSide(p3.cur === 'front' ? b : f, () => { histSave('Swap front & back'); if (p3.cur === 'back') p3RenderThumbOf(p3.front); showToast('Front and back swapped', 'ok'); });
+}
+function p3CopyFrontToBack() {
+  edConfirm('Replace everything on the back with a copy of the front?', () => {
+    p3Flush();
+    const doc = canvasJSON(), f = p3PickSide(doc);
+    p3.front = f; p3.back = JSON.parse(JSON.stringify(f));
+    if (p3.cur === 'back') p3LoadSide(p3.back, () => histSave('Copy front to back'));
+    else histSave('Copy front to back');
+  });
+}
+function p3DeleteBack() {
+  if (!p3.back && p3.cur === 'front') return;
+  edConfirm('Delete the back side? (Ctrl+Z brings it back)', () => {
+    p3Flush();
+    const doc = canvasJSON();
+    p3.back = null;
+    if (p3.cur === 'back') { p3.cur = 'front'; p3.frontThumb = ''; p3LoadSide(p3PickSide(doc), () => histSave('Delete back side')); }
+    else { histSave('Delete back side'); p3SidesUI(); }
+  });
+}
+function p3SidesUI() {
+  const el = $p3('p3Sides'); if (!el) return;
+  const two = !!p3.back || p3.cur === 'back';
+  el.innerHTML = `<button class="${p3.cur === 'front' ? 'on' : ''}" onclick="p3Switch('front')" title="Front side">Front</button>` + (two
+    ? `<button id="p3SideBack" class="${p3.cur === 'back' ? 'on' : ''}" onclick="p3Switch('back')" title="Back side">Back</button><button onclick="p3SideMenu(event)" title="Back side options"><i class="bi bi-three-dots"></i></button>`
+    : `<button id="p3SideBack" class="add" onclick="p3AddBackMenu()" title="Add a back side (two-sided card)"><i class="bi bi-plus-lg"></i> Back</button>`);
+}
+
+/* ─────────────────────────── 2. DATA (Excel / CSV / paste) ─────────────────────────── */
+const P3_LIBS = {
+  xlsx: ['https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', () => window.XLSX, 'Excel reader'],
+  zip:  ['https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js', () => window.JSZip, 'ZIP tool'],
+};
+const _p3LibP = {};
+function p3Lib(k) {
+  const [url, get, label] = P3_LIBS[k];
+  if (get()) return Promise.resolve(get());
+  return _p3LibP[k] || (_p3LibP[k] = new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = url; s.async = true;
+    s.onload = () => get() ? res(get()) : rej(new Error('The ' + label + ' did not load'));
+    s.onerror = () => { delete _p3LibP[k]; s.remove(); rej(new Error('Could not load the ' + label + ' — check your internet connection')); };
+    document.head.appendChild(s);
+  }));
+}
+function p3ParseCSV(text) {
+  text = String(text || '').replace(/^﻿/, '');
+  const first = text.split(/\r?\n/, 1)[0] || '';
+  let delim = ',', best = -1;
+  ['\t', ',', ';', '|'].forEach(d => { const n = first.split(d).length - 1; if (n > best) { best = n; delim = d; } });
+  const rows = []; let row = [], f = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"' && f === '') q = true;
+    else if (c === delim) { row.push(f); f = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(f); rows.push(row); row = []; f = ''; }
+    else f += c;
+  }
+  if (f !== '' || row.length) { row.push(f); rows.push(row); }
+  return rows;
+}
+function p3SetData(rows, name) {
+  rows = (rows || []).map(r => (r || []).map(v => v == null ? '' : String(v).replace(/\r/g, '').trim()));
+  rows = rows.filter(r => r.some(v => v !== ''));
+  if (rows.length < 2) { showToast('The sheet needs a heading row and at least one row of data', 'err'); return false; }
+  const n = Math.max(...rows.map(r => r.length)), head = rows[0], seen = {}, cols = [];
+  for (let i = 0; i < n; i++) {
+    const h = (head[i] || '').replace(/\s+/g, ' ').trim() || 'Column ' + (i + 1);
+    let k = h, c = 2; while (seen[k.toLowerCase()]) k = h + ' ' + c++;
+    seen[k.toLowerCase()] = 1; cols.push(k);
+  }
+  const body = rows.slice(1).map(r => { const a = r.slice(0, n); while (a.length < n) a.push(''); return a; });
+  const keep = cols.map((c, i) => !/^Column \d+$/.test(c) || body.some(r => r[i]));
+  p3.data = { name, cols: cols.filter((_, i) => keep[i]), rows: body.map(r => r.filter((_, i) => keep[i])), on: body.map(() => true) };
+  p3.rec = 0;
+  p3AutoMap();
+  p3RenderData(); p3RenderFields(); p3QuickCheck(); p3Preview();
+  showToast(p3.data.rows.length + ' rows loaded from ' + name, 'ok');
+  return true;
+}
+async function p3OpenFile(file) {
+  if (!file) return;
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  if (file.size > 25 * 1024 * 1024) { showToast('File too large (max 25 MB)', 'err'); return; }
+  p3Progress(0, 0, 'Reading ' + file.name + '…');
+  try {
+    if (['xlsx', 'xls', 'xlsm', 'ods'].includes(ext)) {
+      const X = await p3Lib('xlsx');
+      p3.wb = X.read(await file.arrayBuffer(), { type: 'array' }); p3.wbName = file.name;
+      const names = p3.wb.SheetNames;
+      const sel = $p3('p3Sheet');
+      sel.innerHTML = names.map(n => `<option>${escHtml(n)}</option>`).join('');
+      sel.style.display = names.length > 1 ? '' : 'none';
+      // first sheet that actually has data
+      const first = names.find(n => { const r = X.utils.sheet_to_json(p3.wb.Sheets[n], { header: 1, blankrows: false }); return r.length > 1; }) || names[0];
+      sel.value = first; p3UseSheet(first);
+    } else {
+      const buf = await file.arrayBuffer();
+      let txt = new TextDecoder('utf-8').decode(buf);
+      if (txt.includes('�')) txt = new TextDecoder('windows-1252').decode(buf);   // old Excel "CSV (Comma delimited)"
+      p3.wb = null; $p3('p3Sheet').style.display = 'none';
+      p3SetData(p3ParseCSV(txt), file.name);
+    }
+  } catch (e) { showToast('Could not read the file: ' + e.message, 'err'); }
+  finally { p3Progress(-1); }
+}
+function p3UseSheet(name) {
+  const X = window.XLSX; if (!X || !p3.wb || !p3.wb.Sheets[name]) return;
+  const rows = X.utils.sheet_to_json(p3.wb.Sheets[name], { header: 1, raw: false, defval: '', blankrows: false });
+  p3SetData(rows, p3.wbName + (p3.wb.SheetNames.length > 1 ? ' › ' + name : ''));
+}
+function p3TogglePaste() { const b = $p3('p3PasteBox'); b.style.display = b.style.display === 'none' ? '' : 'none'; if (b.style.display === '') $p3('p3PasteTa').focus(); }
+function p3UsePaste() { const t = $p3('p3PasteTa').value; if (!t.trim()) { showToast('Paste the cells first', 'info'); return; } if (p3SetData(p3ParseCSV(t), 'Pasted data')) $p3('p3PasteTa').value = ''; }
+function p3ClearData() { p3.data = null; p3.wb = null; p3RenderData(); p3RenderFields(); p3Preview(); p3SetIssues([], 'Load data to see checks.', true); }
+function p3SampleCsv() {
+  const f = p3DesignFields();
+  const cols = f.text.map(t => t.name);
+  if (f.photos.length && !cols.some(c => /photo/i.test(c))) cols.push('Photo');
+  if (!cols.length) cols.push('Name', 'Class', 'Roll No', 'Photo');
+  const q = v => /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  const ex = c => /photo|image|pic/i.test(c) ? '101.jpg' : /class/i.test(c) ? '5' : /roll|no|id|number/i.test(c) ? '101' : /name/i.test(c) ? 'Rahul Kumar' : '';
+  const csv = '﻿' + [cols.map(q).join(','), cols.map(c => q(ex(c))).join(',')].join('\r\n') + '\r\n';
+  _downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), _fileBase() + '-data.csv');
+  showToast('Sample sheet downloaded — open it in Excel, fill one row per card, then load it here', 'ok');
+}
+function p3SelAll(on) { if (!p3.data) return; const q = ($p3('p3Search').value || '').toLowerCase(); p3.data.rows.forEach((r, i) => { if (!q || r.join(' ').toLowerCase().includes(q)) p3.data.on[i] = on; }); p3RenderData(); p3QuickCheck(); p3LayoutInfo(); }
+
+function p3RenderData() {
+  const has = !!p3.data;
+  $p3('p3NoData').style.display = has ? 'none' : '';
+  $p3('p3HasData').style.display = has ? '' : 'none';
+  $p3('p3OkData').textContent = has ? '✓' : '';
+  if (!has) { $p3('p3HdInfo').textContent = ''; return; }
+  const d = p3.data, used = new Set(Object.values(p3.cfg.map).concat(p3.cfg.photoCol ? [p3.cfg.photoCol] : []));
+  const sel = d.on.filter(Boolean).length;
+  $p3('p3DataInfo').innerHTML = `<b>${d.rows.length}</b> rows · <b>${sel}</b> selected · ${escHtml(d.name)}`;
+  $p3('p3HdInfo').textContent = '— ' + sel + ' cards';
+  const q = ($p3('p3Search').value || '').toLowerCase();
+  const pc = d.cols.indexOf(p3.cfg.photoCol);
+  const MAX = 400;
+  let shown = 0, html = '<thead><tr><th>✓</th><th>#</th>' + d.cols.map(c => `<th class="${used.has(c) ? 'used' : ''}">${escHtml(c)}</th>`).join('') + '</tr></thead><tbody>';
+  for (let i = 0; i < d.rows.length && shown < MAX; i++) {
+    const r = d.rows[i];
+    if (q && !r.join(' ').toLowerCase().includes(q)) continue;
+    shown++;
+    html += `<tr data-i="${i}" class="${d.on[i] ? '' : 'off'}${i === p3.rec ? ' cur' : ''}"><td class="c"><input type="checkbox" ${d.on[i] ? 'checked' : ''}></td><td class="c">${i + 1}</td>` +
+      r.map((v, ci) => `<td contenteditable="plaintext-only" data-c="${ci}" class="${ci === pc && p3.photos.size && !p3PhotoSrc(r) ? 'miss' : ''}" title="${escHtml(v)}">${escHtml(v)}</td>`).join('') + '</tr>';
+  }
+  html += '</tbody>';
+  $p3('p3Table').innerHTML = html + (shown >= MAX ? `<caption style="caption-side:bottom;font-size:.7rem;color:#64748b;padding:.3rem;">Showing the first ${MAX} matching rows — use search to find others. All rows are printed.</caption>` : '');
+}
+function p3RowLabel(i) {
+  const d = p3.data; if (!d || !d.rows[i]) return '';
+  const k = Object.keys(p3.cfg.map).find(k => /name/.test(k)) || Object.keys(p3.cfg.map)[0];
+  const c = k ? d.cols.indexOf(p3.cfg.map[k]) : 0;
+  return (d.rows[i][c >= 0 ? c : 0] || '').slice(0, 40);
+}
+
+/* ─────────────────────────── 3. FIELDS & PHOTOS ─────────────────────────── */
+const P3_TOK = /\{\{\s*([^{}|]+?)\s*(?:\|\s*([\w-]+)\s*)?\}\}/g;
+const p3Key = s => String(s == null ? '' : s).toLowerCase().replace(/[\s_\-.:/()#'’]+/g, '');
+function p3Walk(objs, fn) { (objs || []).forEach(o => { if (!o) return; fn(o); if (Array.isArray(o.objects)) p3Walk(o.objects, fn); }); }
+/** Every merge field used anywhere in the design (both sides). */
+function p3DesignFields() {
+  const doc = p3Doc(), sides = [['front', p3PickSide(doc)]];
+  if (doc._back) sides.push(['back', doc._back]);
+  const text = new Map(), photos = [], codes = [];
+  const addTok = (str, side) => { for (const m of String(str).matchAll(P3_TOK)) { const k = p3Key(m[1]); if (!k) continue; if (!text.has(k)) text.set(k, { key: k, name: m[1].trim(), sides: new Set() }); text.get(k).sides.add(side); } };
+  sides.forEach(([side, s]) => p3Walk(s.objects, o => {
+    if (typeof o.text === 'string') addTok(o.text, side);
+    const d = o.data || {};
+    if (d.qr) { addTok(d.qr.value || '', side); codes.push({ side, kind: 'code' }); }
+    if (d.placeholder === 'photo' || d.placeholder === 'sign' || (o.type === 'image' && d.mergePhoto !== undefined)) photos.push({ side, kind: d.placeholder || 'image', col: d.mergePhoto || '' });
+    if ((d.placeholder === 'qr' || d.placeholder === 'barcode') && d.mergeField) { const k = p3Key(d.mergeField); if (!text.has(k)) text.set(k, { key: k, name: d.mergeField, sides: new Set() }); text.get(k).sides.add(side); }
+  }));
+  return { text: [...text.values()], photos, codes };
+}
+function p3ColIdx(name) { if (!p3.data || !name) return -1; const i = p3.data.cols.indexOf(name); if (i >= 0) return i; const k = p3Key(name); return p3.data.cols.findIndex(c => p3Key(c) === k); }
+function p3ColOfKey(k) {
+  if (!p3.data) return -1;
+  const m = p3.cfg.map[k]; if (m) { const i = p3ColIdx(m); if (i >= 0) return i; }
+  return p3.data.cols.findIndex(c => p3Key(c) === k);
+}
+function p3AutoMap() {
+  if (!p3.data) return;
+  const cols = p3.data.cols, keys = cols.map(p3Key);
+  p3DesignFields().text.forEach(f => {
+    if (p3.cfg.map[f.key] && p3ColIdx(p3.cfg.map[f.key]) >= 0) return;
+    let i = keys.indexOf(f.key);
+    if (i < 0 && f.key.length >= 3) i = keys.findIndex(c => c.length >= 3 && (c.includes(f.key) || f.key.includes(c)));
+    if (i >= 0) p3.cfg.map[f.key] = cols[i];
+  });
+  // photo column: the one whose values match the loaded photo files best, else one named like "photo"
+  if (!p3.cfg.photoCol || p3ColIdx(p3.cfg.photoCol) < 0) {
+    let best = -1, bestN = 0;
+    if (p3.photos.size) cols.forEach((c, ci) => { const n = p3.data.rows.reduce((s, r) => s + (p3.photos.has(p3PhotoKey(r[ci])) ? 1 : 0), 0); if (n > bestN) { bestN = n; best = ci; } });
+    if (best < 0) best = cols.findIndex(c => /photo|image|picture|pic|img|फोटो|चित्र/i.test(c));
+    if (best < 0) best = cols.findIndex(c => /^(adm|admission|roll|sr|student ?id|id)\b/i.test(c));
+    p3.cfg.photoCol = best >= 0 ? cols[best] : '';
+  }
+}
+function p3PhotoKey(v) { v = String(v == null ? '' : v).trim(); if (!v) return ''; v = v.split(/[?#]/)[0]; v = v.split(/[\\/]/).pop(); return v.replace(/\.(jpe?g|png|webp|gif|bmp|heic|jfif|tiff?)$/i, '').trim().toLowerCase(); }
+/** Photo for a row: a loaded file matching the photo column, a link in it, or (no photo column) any cell matching a file name. */
+function p3PhotoSrc(rec, col) {
+  if (!rec) return null;
+  const ci = p3ColIdx(col || p3.cfg.photoCol);
+  if (ci >= 0) {
+    const v = String(rec[ci] || '').trim();
+    if (!v) return null;
+    const f = p3.photos.get(p3PhotoKey(v)); if (f) return f;
+    if (/^(https?:\/\/|data:image\/)/i.test(v)) return v;
+    if (/^\/[^/]/.test(v)) return v;
+    return null;
+  }
+  if (!p3.photos.size) return null;
+  for (const v of rec) { const f = p3.photos.get(p3PhotoKey(v)); if (f) return f; }
+  return null;
+}
+async function p3AddPhotoFiles(list) {
+  let n = 0;
+  for (const f of list) {
+    if (/\.zip$/i.test(f.name)) { n += await p3AddZip(f); continue; }
+    if (!/^image\//.test(f.type) && !/\.(jpe?g|png|webp|gif|bmp|jfif)$/i.test(f.name)) continue;
+    const k = p3PhotoKey(f.name); if (!k) continue;
+    p3.photos.set(k, f); n++;
+  }
+  _p3ImgCache.clear();
+  p3AutoMap(); p3RenderFields(); p3RenderData(); p3QuickCheck(); p3Preview();
+  showToast(n + ' photos added (' + p3.photos.size + ' total)', n ? 'ok' : 'info');
+}
+async function p3AddZip(file) {
+  p3Progress(0, 0, 'Opening ' + file.name + '…');
+  try {
+    const Z = await p3Lib('zip'), zip = await Z.loadAsync(file);
+    const ents = Object.values(zip.files).filter(e => !e.dir && /\.(jpe?g|png|webp|gif|bmp|jfif)$/i.test(e.name) && !/(^|\/)(__MACOSX|\.)/.test(e.name));
+    let n = 0;
+    for (const e of ents) {
+      const blob = await e.async('blob'), name = e.name.split('/').pop();
+      const type = /\.png$/i.test(name) ? 'image/png' : /\.webp$/i.test(name) ? 'image/webp' : /\.gif$/i.test(name) ? 'image/gif' : 'image/jpeg';
+      p3.photos.set(p3PhotoKey(name), new File([blob], name, { type })); n++;
+      if (n % 25 === 0) p3Progress(n, ents.length, 'Unpacking photos… ' + n + ' / ' + ents.length);
+    }
+    return n;
+  } catch (e) { showToast('Could not open the ZIP: ' + e.message, 'err'); return 0; }
+  finally { p3Progress(-1); }
+}
+function p3ClearPhotos() { p3.photos.clear(); _p3ImgCache.clear(); p3RenderFields(); p3RenderData(); p3QuickCheck(); p3Preview(); }
+
+function p3RenderFields() {
+  const f = p3DesignFields(), d = p3.data;
+  const colOpts = sel => '<option value="">— not linked —</option>' + (d ? d.cols.map(c => `<option ${c === sel ? 'selected' : ''}>${escHtml(c)}</option>`).join('') : '');
+  const rec = d && d.rows[p3.rec];
+  let html = '';
+  if (!f.text.length) html = `<div class="pro-note" style="color:#fdba74;">No fields yet. Select a text and pick a column below (or type <span class="p3-tok">{{Name}}</span> into the text).</div>`;
+  else {
+    html = `<div class="p3-map" style="color:#64748b;font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;"><span>In design</span><span>Column in your sheet</span><span>This row</span></div>`;
+    f.text.forEach(t => {
+      const ci = p3ColOfKey(t.key), linked = ci >= 0;
+      html += `<div class="p3-map"><span><span class="p3-tok">{{${escHtml(t.name)}}}</span>${t.sides.has('back') ? ' <small style="color:#64748b;">' + (t.sides.has('front') ? 'both' : 'back') + '</small>' : ''}</span>
+        <select data-k="${escHtml(t.key)}" class="${d && !linked ? 'bad' : ''}">${colOpts(linked ? d.cols[ci] : '')}</select>
+        <span class="smp" title="${linked && rec ? escHtml(rec[ci]) : ''}">${linked && rec ? escHtml(rec[ci] || '(empty)') : d ? '<span style="color:#fb923c;">⚠ pick a column</span>' : '—'}</span></div>`;
+    });
+  }
+  $p3('p3MapList').innerHTML = html;
+  // column chips
+  const cols = d ? d.cols : ['Name', "Father's Name", 'Class', 'Section', 'Roll No', 'Admission No', 'DOB', 'Mobile', 'Address', 'Blood Group'];
+  $p3('p3ColChips').innerHTML = cols.filter(c => c !== p3.cfg.photoCol).map(c => `<button class="p2-btn" data-col="${escHtml(c)}"><i class="bi bi-plus"></i> ${escHtml(c)}</button>`).join('');
+  // photos
+  $p3('p3PhotoCol').innerHTML = '<option value="">— none / match any cell —</option>' + (d ? d.cols.map(c => `<option ${c === p3.cfg.photoCol ? 'selected' : ''}>${escHtml(c)}</option>`).join('') : '');
+  $p3('p3PhotoFocus').value = String(p3.cfg.focus ?? 0.3);
+  const slots = f.photos.length;
+  let info = slots ? `<b>${slots}</b> photo place${slots > 1 ? 's' : ''} in the design` : '<span style="color:#fdba74;">No photo place in the design yet</span> — add <b>Placeholder → Photo</b> or tick <b>Merge photo</b> on a photo';
+  info += ` · <b>${p3.photos.size}</b> photos loaded`;
+  if (d && slots) { const sel = d.rows.filter((r, i) => d.on[i]); const ok = sel.filter(r => p3PhotoSrc(r)).length; info += ` · <b style="color:${ok === sel.length ? '#86efac' : '#fdba74'}">${ok} / ${sel.length}</b> rows have a photo`; }
+  $p3('p3PhotoInfo').innerHTML = info;
+  $p3('p3NamePat').value = p3.cfg.namePat || '';
+  $p3('p3OkFields').textContent = d && f.text.length && f.text.every(t => p3ColOfKey(t.key) >= 0) ? '✓' : '';
+}
+function p3CfgChanged() { markDirty(); }
+/** Put {{Column}} into the selected text (at the cursor while typing), or add it as a new text. */
+function p3InsertField(col) {
+  if (!col) return;
+  const tok = '{{' + col + '}}';
+  const t = canvas.getActiveObjects().filter(isTextObj);
+  if (t.length === 1 && t[0].isEditing) {
+    const o = t[0], s = o.selectionStart, e = o.selectionEnd;
+    o.insertChars(tok, null, s, e); o.selectionStart = o.selectionEnd = s + fabric.util.string.graphemeSplit(tok).length;
+    o.initDimensions(); o.setCoords(); o.hiddenTextarea && (o.hiddenTextarea.value = o.text);
+    canvas.fire('text:changed', { target: o }); canvas.requestRenderAll();
+  } else if (t.length) {
+    t.forEach(o => { o.set('text', tok); o.initDimensions(); o.setCoords(); if (o.data?.autoFit && typeof p2FitText === 'function') p2FitText(o); });
+    canvas.requestRenderAll(); histSave('Link text to ' + col);
+  } else {
+    const o = new fabric.IText(tok, { left: canvasW / 2, top: canvasH / 2, originX: 'center', originY: 'center', fontSize: Math.round(Math.min(canvasW, canvasH) / 14), fontFamily: 'Poppins', fill: '#111827' });
+    histLabel('Add field ' + col); canvas.add(o); canvas.setActiveObject(o);
+  }
+  if (p3.data && !p3.cfg.map[p3Key(col)] && p3ColIdx(col) >= 0) p3.cfg.map[p3Key(col)] = p3.data.cols[p3ColIdx(col)];
+  refreshLayers(); refreshProps();
+  if ($p3('p3MergeOv').classList.contains('open')) { p3RenderFields(); p3Preview(); }
+  showToast('Field ' + tok + ' added — every card gets its own value', 'ok');
+}
+
+/* ─────────────────────────── 4. RENDER ENGINE ───────────────────────────
+   Each side is loaded ONCE into an off-screen canvas; for every row the
+   linked texts / photos / codes are swapped in, rendered, then restored. */
+let _p3Lock = Promise.resolve();
+function p3Q(fn) { const r = _p3Lock.then(fn, fn); _p3Lock = r.catch(() => {}); return r; }
+const _p3Prep = {};
+let _p3Doc = { stamp: null, doc: null };
+/** The design JSON, re-built only when the history step changes (designs with big photos are slow to serialise). */
+function p3Doc() {
+  const st = hist.states[hist.idx], w = canvasW + 'x' + canvasH;
+  if (st && _p3Doc.stamp === st && _p3Doc.w === w && _p3Doc.side === p3.cur) return _p3Doc.doc;
+  const doc = canvasJSON();
+  _p3Doc = { stamp: st, w, side: p3.cur, doc };
+  return doc;
+}
+function p3SideJSON(side) { const doc = p3Doc(); return side === 'back' ? doc._back || null : p3PickSide(doc); }
+async function p3Prepare(sideJson, slot) {
+  slot = slot || 'x';
+  const key = (sideJson.objects || sideJson) ;
+  const old = _p3Prep[slot];
+  if (old && old.src === key && old.w === canvasW && old.h === canvasH) return old;
+  const el = document.createElement('canvas');
+  const sc = new fabric.StaticCanvas(el, { width: canvasW, height: canvasH, enableRetinaScaling: false, renderOnAddRemove: false });
+  await new Promise(res => sc.loadFromJSON(JSON.parse(JSON.stringify(sideJson)), res));
+  const all = [];
+  p3WalkLive(sc.getObjects(), null, (o, parent) => { o.objectCaching = false; all.push([o, parent]); });
+  await ensureFontsFor(sc.getObjects());
+  const binds = [];
+  all.forEach(([o, parent]) => {
+    const d = o.data || {};
+    if (d.grid || d.isSnapGuide || d.printGuide || d.isCropOverlay) { o.visible = false; return; }
+    if (d.placeholder === 'photo' || d.placeholder === 'sign') binds.push({ kind: 'slot', o, parent });
+    else if ((d.placeholder === 'qr' || d.placeholder === 'barcode') && d.mergeField) binds.push({ kind: 'codeslot', o, parent });
+    else if (o.type === 'image' && d.mergePhoto !== undefined) binds.push({ kind: 'img', o, parent });
+    else if (d.qr && /\{\{/.test(d.qr.value || '')) binds.push({ kind: 'qr', o, parent });
+    else if (typeof o.text === 'string' && /\{\{/.test(o.text) && !(parent && (parent.data?.placeholder || parent.data?.qr))) binds.push({ kind: 'text', o, parent });
+  });
+  const prep = { src: key, w: canvasW, h: canvasH, sc, binds };
+  if (old && old !== prep) { try { old.sc.dispose(); } catch (_) {} }
+  _p3Prep[slot] = prep;
+  return prep;
+}
+function p3WalkLive(objs, parent, fn) { objs.forEach(o => { fn(o, parent); if (o.type === 'group' && !(o.data?.placeholder) && !o.data?.qr) p3WalkLive(o.getObjects(), o, fn); }); }
+
+function p3Fmt(v, f) {
+  v = v == null ? '' : String(v);
+  if (!f) return v;
+  f = f.toLowerCase();
+  if (f === 'upper') return v.toLocaleUpperCase();
+  if (f === 'lower') return v.toLocaleLowerCase();
+  if (f === 'title') return v.toLocaleLowerCase().replace(/(^|[\s\-.'(/])(\p{L})/gu, (m, a, b) => a + b.toLocaleUpperCase());
+  if (f === 'first') return v.trim().split(/\s+/)[0] || '';
+  return v;
+}
+function p3Value(rec, name, issues) {
+  const k = p3Key(name), ci = p3ColOfKey(k);
+  if (ci < 0) { issues && issues.push({ t: 'nofield', msg: '{{' + name.trim() + '}} is not linked to a column' }); return ''; }
+  const v = rec[ci] == null ? '' : String(rec[ci]);
+  if (!v.trim() && issues) issues.push({ t: 'empty', msg: p3.data.cols[ci] + ' is empty' });
+  return v;
+}
+function p3Subst(str, rec, issues) { return String(str).replace(P3_TOK, (m, name, f) => p3Fmt(p3Value(rec, name, issues), f)); }
+function p3ReplaceText(o, rec, issues) {
+  const styled = o.styles && Object.keys(o.styles).length && typeof o.insertChars === 'function';
+  if (!styled) { o.set('text', p3Subst(o.text, rec, issues)); o.initDimensions && o.initDimensions(); return; }
+  // keep bold/colour runs: replace tokens from the end; each value takes its token's style
+  const ms = [...o.text.matchAll(P3_TOK)], gs = s => fabric.util.string.graphemeSplit(s).length;
+  for (let i = ms.length - 1; i >= 0; i--) {
+    const m = ms[i], start = gs(o.text.slice(0, m.index)), end = start + gs(m[0]);
+    const val = p3Fmt(p3Value(rec, m[1], issues), m[2]);
+    const st = o.getStyleAtPosition ? Object.assign({}, o.getStyleAtPosition(start)) : {};
+    o.insertChars(val, fabric.util.string.graphemeSplit(val).map(() => Object.assign({}, st)), start, end);
+    o.initDimensions();
+  }
+}
+function _p3Cover(el, bw, bh, focus, contain) {
+  const W = el.width, H = el.height;
+  if (contain) { const s = Math.min(bw / W, bh / H); return { s, cw: W, ch: H, cx: 0, cy: 0 }; }
+  const s = Math.max(bw / W, bh / H), cw = Math.min(W, bw / s), ch = Math.min(H, bh / s);
+  return { s, cw, ch, cx: (W - cw) / 2, cy: (H - ch) * (focus == null ? 0.3 : focus) };
+}
+const _p3ImgCache = new Map();
+function p3LoadPhoto(src) {
+  const key = typeof src === 'string' ? src : 'f:' + src.name + ':' + src.size + ':' + src.lastModified;
+  if (_p3ImgCache.has(key)) return _p3ImgCache.get(key);
+  const p = new Promise(res => {
+    const img = new Image(); img.crossOrigin = 'anonymous';
+    let url = null, direct = false;
+    const done = v => { if (url) URL.revokeObjectURL(url); res(v); };
+    img.onload = () => {
+      const max = 1600, s = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(img.naturalWidth * s)); c.height = Math.max(1, Math.round(img.naturalHeight * s));
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      done(c);
+    };
+    img.onerror = () => { if (typeof src === 'string' && /^https?:/i.test(src) && !direct) { direct = true; img.src = src; return; } done(null); };
+    if (typeof src !== 'string') { url = URL.createObjectURL(src); img.src = url; }
+    else if (/^https?:/i.test(src) && !src.startsWith(location.origin)) img.src = P3_PROXY + encodeURIComponent(src);
+    else img.src = src;
+  });
+  _p3ImgCache.set(key, p);
+  while (_p3ImgCache.size > 80) _p3ImgCache.delete(_p3ImgCache.keys().next().value);
+  return p;
+}
+function _p3Swap(b, sc, neo) {
+  const arr = b.parent ? b.parent._objects : sc._objects, i = arr.indexOf(b.o);
+  if (i < 0) return () => {};
+  arr[i] = neo; neo.group = b.parent || undefined; neo.canvas = sc;
+  return () => { const j = arr.indexOf(neo); if (j >= 0) arr[j] = b.o; };
+}
+function p3CodeImage(cfg) {
+  return proCodeSvg(cfg).then(svg => new Promise(res => fabric.loadSVGFromString(svg, (objs, opts) => res(fabric.util.groupSVGElements(objs, opts)))));
+}
+/** Fill one row into a prepared side. Returns the function that puts the template back. */
+async function p3Apply(prep, rec, issues) {
+  const undo = [], sc = prep.sc;
+  for (const b of prep.binds) {
+    const o = b.o, d = o.data || {};
+    try {
+      if (b.kind === 'text') {
+        const orig = { text: o.text, styles: o.styles ? JSON.parse(JSON.stringify(o.styles)) : o.styles, fontSize: o.fontSize, left: o.left, top: o.top, of: d.autoFit ? d.autoFit.overflow : undefined };
+        undo.push(() => { o.styles = orig.styles; o.set({ text: orig.text, fontSize: orig.fontSize, left: orig.left, top: orig.top }); o.initDimensions && o.initDimensions(); if (d.autoFit) d.autoFit.overflow = orig.of; o.setCoords(); });
+        // single-line text keeps its aligned edge (centre-aligned names stay centred)
+        const ax = o.type === 'textbox' ? null : ({ center: 'center', right: 'right' }[o.textAlign] || 'left');
+        const anchor = ax ? o.getPointByOrigin(ax, 'center') : null;
+        p3ReplaceText(o, rec, issues);
+        if (d.autoFit && typeof p2FitText === 'function') { p2FitText(o); if (d.autoFit.overflow) issues.push({ t: 'long', msg: '“' + o.text.slice(0, 30) + '” is too long even at the smallest size' }); }
+        if (anchor) o.setPositionByOrigin(anchor, ax, 'center');
+        o.setCoords();
+        if (!b.parent) { const r = o.getBoundingRect(true, true); if (r.left < -2 || r.top < -2 || r.left + r.width > canvasW + 2 || r.top + r.height > canvasH + 2) issues.push({ t: 'out', msg: '“' + o.text.slice(0, 30) + '” goes outside the card' }); }
+      } else if (b.kind === 'img' || b.kind === 'slot') {
+        const sign = d.placeholder === 'sign';
+        const src = p3PhotoSrc(rec, d.mergePhoto || (sign ? p3.data?.cols.find(c => /sign/i.test(c)) || '' : ''));
+        const el = src ? await p3LoadPhoto(src) : null;
+        if (!el) {
+          issues.push({ t: 'photo', msg: (sign ? 'Signature' : 'Photo') + (src ? ' could not be loaded' : ' missing') });
+          const v = o.visible; o.visible = false; undo.push(() => { o.visible = v; });
+          continue;
+        }
+        if (b.kind === 'img') {
+          const orig = { el: o.getElement(), w: o.width, h: o.height, cx: o.cropX, cy: o.cropY, sx: o.scaleX, sy: o.scaleY, cp: o.clipPath && !o.clipPath.absolutePositioned ? { sx: o.clipPath.scaleX, sy: o.clipPath.scaleY, l: o.clipPath.left, t: o.clipPath.top } : null };
+          const bw = o.width * Math.abs(o.scaleX), bh = o.height * Math.abs(o.scaleY), f = _p3Cover(el, bw, bh, p3.cfg.focus);
+          o.setElement(el);
+          o.set({ width: f.cw, height: f.ch, cropX: f.cx, cropY: f.cy, scaleX: f.s, scaleY: f.s });
+          if (orig.cp) o.clipPath.set({ scaleX: orig.cp.sx * orig.sx / f.s, scaleY: orig.cp.sy * orig.sy / f.s, left: orig.cp.l * orig.sx / f.s, top: orig.cp.t * orig.sy / f.s });
+          if (o.filters && o.filters.length) o.applyFilters();
+          undo.push(() => { o.setElement(orig.el); o.set({ width: orig.w, height: orig.h, cropX: orig.cx, cropY: orig.cy, scaleX: orig.sx, scaleY: orig.sy }); if (orig.cp) o.clipPath.set({ scaleX: orig.cp.sx, scaleY: orig.cp.sy, left: orig.cp.l, top: orig.cp.t }); if (o.filters && o.filters.length) o.applyFilters(); });
+        } else {
+          const bw = o.width * o.scaleX, bh = o.height * o.scaleY, f = _p3Cover(el, bw, bh, p3.cfg.focus, sign);
+          const c = o.getCenterPoint();
+          const img = new fabric.Image(el, { originX: 'center', originY: 'center', left: c.x, top: c.y, angle: o.angle, width: f.cw, height: f.ch, cropX: f.cx, cropY: f.cy, scaleX: f.s, scaleY: f.s, opacity: o.opacity, objectCaching: false });
+          const r = o._objects && o._objects[0];
+          if (!sign && r && r.rx) img.clipPath = new fabric.Rect({ originX: 'center', originY: 'center', width: f.cw, height: f.ch, rx: r.rx * o.scaleX / f.s, ry: (r.ry || r.rx) * o.scaleY / f.s });
+          undo.push(_p3Swap(b, sc, img));
+        }
+      } else if (b.kind === 'qr' || b.kind === 'codeslot') {
+        const cfg = b.kind === 'qr' ? Object.assign({}, d.qr, { value: p3Subst(d.qr.value, rec, issues) })
+          : { type: d.placeholder === 'qr' ? 'qr' : 'CODE128', value: p3Value(rec, d.mergeField, issues), fg: '#000000', bg: '#ffffff', ecc: 'M', showText: true };
+        if (!String(cfg.value).trim()) { const v = o.visible; o.visible = false; undo.push(() => { o.visible = v; }); continue; }
+        let g;
+        try { g = await p3CodeImage(cfg); } catch (e) { issues.push({ t: 'code', msg: 'Code: ' + e.message }); continue; }
+        const bw = o.width * Math.abs(o.scaleX), bh = o.height * Math.abs(o.scaleY), c = o.getCenterPoint();
+        const s = Math.min(bw / g.width, bh / g.height);
+        g.set({ originX: 'center', originY: 'center', left: c.x, top: c.y, angle: o.angle, scaleX: s, scaleY: s, objectCaching: false });
+        undo.push(_p3Swap(b, sc, g));
+      }
+    } catch (e) { issues.push({ t: 'err', msg: 'Could not fill a layer: ' + e.message }); }
+    if (b.parent) b.parent.dirty = true;
+  }
+  return () => { for (let i = undo.length - 1; i >= 0; i--) { try { undo[i](); } catch (_) {} } prep.binds.forEach(b => { if (b.parent) b.parent.dirty = true; }); };
+}
+/** Render one side for one row → canvas element (pixels = canvasW × mult). rec null = the design as is. */
+async function p3RenderSide(side, rec, mult, issues) {
+  const json = p3SideJSON(side); if (!json) return null;
+  const prep = await p3Prepare(json, side);
+  const restore = rec ? await p3Apply(prep, rec, issues || []) : () => {};
+  try { prep.sc.renderAll(); return prep.sc.toCanvasElement(mult); }
+  finally { restore(); }
+}
+
+/* ─────────────────────────── 5. PREVIEW & CHECKS ─────────────────────────── */
+let _p3PvT = 0, _p3PvGen = 0;
+function p3Preview() { clearTimeout(_p3PvT); _p3PvT = setTimeout(p3PreviewNow, 60); }
+function p3PreviewNow() {
+  if (!$p3('p3MergeOv').classList.contains('open')) return;
+  if (p3.tab === 'print') { p3SheetPreview(); return; }
+  const gen = ++_p3PvGen, d = p3.data, rec = d ? d.rows[p3.rec] : null, hasBack = !!p3SideJSON('back');
+  $p3('p3RecLbl').textContent = d ? 'Row ' + (p3.rec + 1) + ' of ' + d.rows.length + (p3RowLabel(p3.rec) ? ' · ' + p3RowLabel(p3.rec) : '') : 'Design (no data yet)';
+  $p3('p3RecNav').style.visibility = d ? '' : 'hidden';
+  $p3('p3PvCanvasBtn').style.display = d ? '' : 'none';
+  ['p3PvLblB', 'p3PvB'].forEach(id => $p3(id).style.display = hasBack ? '' : 'none');
+  $p3('p3PvLblF').style.display = hasBack ? '' : 'none';
+  p3Q(async () => {
+    if (gen !== _p3PvGen) return;
+    const issues = [];
+    const mult = Math.min(2, 600 / canvasW);
+    for (const side of hasBack ? ['front', 'back'] : ['front']) {
+      const c = await p3RenderSide(side, rec, mult, issues);
+      if (gen !== _p3PvGen || !c) return;
+      const cv = $p3(side === 'front' ? 'p3PvF' : 'p3PvB');
+      cv.width = c.width; cv.height = c.height;
+      const x = cv.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, cv.width, cv.height); x.drawImage(c, 0, 0);
+    }
+    if (d) p3ShowRowIssues(issues);
+  }).catch(e => console.warn('preview', e));
+}
+function p3Step(n) { if (!p3.data) return; const N = p3.data.rows.length; p3.rec = (p3.rec + n + N) % N; p3RenderData(); p3RenderFields(); p3Preview(); const tr = $p3('p3Table').querySelector('tr.cur'); tr && tr.scrollIntoView({ block: 'nearest' }); }
+let _p3Issues = [], _p3Global = [];
+/** global = a list about all rows (quick check / check all) — it stays on screen while you browse rows. */
+function p3SetIssues(list, okMsg, global) {
+  if (global) _p3Global = list;
+  _p3Issues = list;
+  $p3('p3Issues').innerHTML = list.length ? list.slice(0, 300).map((it, i) => `<div class="p3-issue" data-i="${i}"><i class="bi bi-exclamation-triangle"></i><span>${it.row != null ? '<b>Row ' + (it.row + 1) + '</b> ' + escHtml(p3RowLabel(it.row)) + ': ' : ''}${escHtml(it.msg)}</span></div>`).join('') + (list.length > 300 ? `<div class="p3-issue ok">…and ${list.length - 300} more</div>` : '')
+    : `<div class="p3-issue ok"><i class="bi bi-check-circle"></i> ${escHtml(okMsg || 'No problems found')}</div>`;
+}
+function p3ShowRowIssues(issues) {
+  const seen = new Set(), list = issues.filter(i => !seen.has(i.msg) && seen.add(i.msg)).map(i => Object.assign({ row: p3.rec }, i));
+  if (_p3Global.length) return;   // the all-rows list stays on screen
+  p3SetIssues(list, 'This row looks fine');
+}
+/** Instant checks that need no rendering: unlinked fields, empty cells, missing photos. */
+function p3QuickCheck() {
+  if (!p3.data) { p3SetIssues([], 'Load data to see checks.', true); return; }
+  const f = p3DesignFields(), d = p3.data, out = [];
+  f.text.forEach(t => { if (p3ColOfKey(t.key) < 0) out.push({ msg: '{{' + t.name + '}} is not linked to a column — see step 2' }); });
+  const needPhoto = f.photos.some(p => p.kind !== 'sign');
+  d.rows.forEach((r, i) => {
+    if (!d.on[i]) return;
+    f.text.forEach(t => { const ci = p3ColOfKey(t.key); if (ci >= 0 && !String(r[ci] || '').trim()) out.push({ row: i, msg: d.cols[ci] + ' is empty' }); });
+    if (needPhoto && (p3.photos.size || p3.cfg.photoCol) && !p3PhotoSrc(r)) out.push({ row: i, msg: 'photo missing' + (p3.cfg.photoCol && r[p3ColIdx(p3.cfg.photoCol)] ? ' (' + r[p3ColIdx(p3.cfg.photoCol)] + ')' : '') });
+  });
+  p3SetIssues(out, d.on.filter(Boolean).length + ' rows ready — use “Check all rows” to also test text length', true);
+}
+async function p3CheckAll() {
+  if (!p3.data) { showToast('Load your data first', 'info'); return; }
+  if (p3.busy) return;
+  const d = p3.data, idx = d.rows.map((_, i) => i).filter(i => d.on[i]), sides = p3SideJSON('back') ? ['front', 'back'] : ['front'];
+  p3.busy = true; p3.cancel = false; p3RunUI(true);
+  const out = [];
+  try {
+    await p3Q(async () => {
+      for (let n = 0; n < idx.length && !p3.cancel; n++) {
+        const i = idx[n], issues = [];
+        for (const side of sides) { const prep = await p3Prepare(p3SideJSON(side), side); const restore = await p3Apply(prep, d.rows[i], issues); restore(); }
+        const seen = new Set(); issues.forEach(it => { if (!seen.has(it.msg)) { seen.add(it.msg); out.push({ row: i, msg: it.msg }); } });
+        if (n % 5 === 0) { p3Progress(n + 1, idx.length, 'Checking row ' + (n + 1) + ' of ' + idx.length + '…'); await new Promise(r => setTimeout(r)); }
+      }
+    });
+    p3SetIssues(out, 'All ' + idx.length + ' rows look fine', true);
+    showToast(out.length ? out.length + ' problems found — click one to see that card' : 'All rows passed', out.length ? 'info' : 'ok');
+  } finally { p3.busy = false; p3RunUI(false); p3Progress(-1); }
+}
+
+/* ─────────────────────────── 6. PRINT LAYOUT ─────────────────────────── */
+function p3DesignMm() {
+  const dpi = _ncCurrentDpi || 96, ar = canvasW / canvasH, cr = 85.6 / 54;
+  let w = canvasW / dpi * 25.4, h = canvasH / dpi * 25.4;
+  const explicit = !!(_designMeta && _designMeta.dpi) || dpi !== 96;
+  // classic 856×540 px card templates have no real DPI — treat them as CR80 ID cards
+  if (!explicit || w > 150 || h > 150) {
+    if (Math.abs(ar - cr) < 0.05) { w = 85.6; h = 54; } else if (Math.abs(1 / ar - cr) < 0.05) { w = 54; h = 85.6; }
+  }
+  return { w: Math.round(w * 10) / 10, h: Math.round(h * 10) / 10 };
+}
+const P3_PRINT_IDS = { paper: 'p3Paper', orient: 'p3Orient', pw: 'p3PW', ph: 'p3PH', cw: 'p3CW', ch: 'p3CH', margin: 'p3Margin', gap: 'p3Gap', dpi: 'p3Dpi', back: 'p3Back', sx: 'p3SX', sy: 'p3SY', marks: 'p3Marks', lines: 'p3Lines', center: 'p3Center', src: 'p3Src', copies: 'p3Copies' };
+function p3ReadPrint() {
+  const o = {};
+  Object.entries(P3_PRINT_IDS).forEach(([k, id]) => { const el = $p3(id); o[k] = el.type === 'checkbox' ? el.checked : el.tagName === 'SELECT' ? el.value : +el.value; });
+  return o;
+}
+function p3WritePrint() {
+  const def = p3DesignMm(), pr = Object.assign({ paper: '210x297', orient: 'auto', pw: 210, ph: 297, cw: def.w, ch: def.h, margin: 8, gap: 4, dpi: '300', back: 'long', sx: 0, sy: 0, marks: true, lines: false, center: true, src: 'data', copies: 10 }, p3.cfg.print);
+  Object.entries(P3_PRINT_IDS).forEach(([k, id]) => { const el = $p3(id); if (el.type === 'checkbox') el.checked = !!pr[k]; else el.value = pr[k]; });
+}
+function p3Layout(pr) {
+  pr = pr || p3ReadPrint();
+  let PW, PH;
+  if (pr.paper === 'custom') { PW = Math.max(40, pr.pw || 210); PH = Math.max(40, pr.ph || 297); }
+  else [PW, PH] = pr.paper.split('x').map(Number);
+  const cw = Math.max(5, pr.cw || 85.6), ch = Math.max(5, pr.ch || 54), m = Math.max(0, pr.margin || 0), g = Math.max(0, pr.gap || 0);
+  const pair = pr.back === 'pair' && p3HasBack();
+  const fit = (W, H) => { let cols = Math.max(0, Math.floor((W - 2 * m + g + 1e-6) / (cw + g))); const rows = Math.max(0, Math.floor((H - 2 * m + g + 1e-6) / (ch + g))); if (pair) cols -= cols % 2; return { W, H, cols, rows, per: cols * rows }; };
+  const P = fit(Math.min(PW, PH), Math.max(PW, PH)), L = fit(Math.max(PW, PH), Math.min(PW, PH));
+  const pick = pr.orient === 'p' ? P : pr.orient === 'l' ? L : (L.per > P.per ? L : P);
+  const gw = pick.cols * cw + Math.max(0, pick.cols - 1) * g, gh = pick.rows * ch + Math.max(0, pick.rows - 1) * g;
+  const x0 = pr.center ? (pick.W - gw) / 2 : m, y0 = pr.center ? (pick.H - gh) / 2 : m;
+  return Object.assign(pick, { cw, ch, g, m, x0, y0, gw, gh, pair, landscape: pick.W > pick.H, pr });
+}
+function p3HasBack() { return !!(p3.back || p3.cur === 'back'); }
+/** The cards to print, in order: [{ rec, row }] (rec null = plain copy). */
+function p3Items(pr) {
+  pr = pr || p3ReadPrint();
+  if (pr.src === 'copies' || !p3.data) return Array.from({ length: Math.max(1, Math.min(5000, pr.copies || 1)) }, () => ({ rec: null, row: -1 }));
+  return p3.data.rows.map((r, i) => ({ rec: r, row: i })).filter(x => p3.data.on[x.row]);
+}
+/** Pages: [{ back:bool, cells:[{x,y,item,side}] }] — back pages are mirrored so they line up when printed two-sided. */
+function p3Pages(L, items) {
+  const pr = L.pr, hasBack = p3HasBack(), mode = hasBack ? pr.back : 'none', pages = [];
+  if (!L.per) return pages;
+  const pos = k => { const c = k % L.cols, r = Math.floor(k / L.cols); return { x: L.x0 + c * (L.cw + L.g), y: L.y0 + r * (L.ch + L.g) }; };
+  if (mode === 'pair') {
+    const perRec = L.per / 2;
+    for (let s = 0; s < items.length; s += perRec) {
+      const cells = [];
+      items.slice(s, s + perRec).forEach((it, i) => { cells.push(Object.assign(pos(i * 2), { item: it, side: 'front' }), Object.assign(pos(i * 2 + 1), { item: it, side: 'back' })); });
+      pages.push({ back: false, cells });
+    }
+    return pages;
+  }
+  const mirrorX = (pr.back === 'long') !== L.landscape;   // long-edge flip on portrait → mirror left/right
+  for (let s = 0; s < items.length; s += L.per) {
+    const chunk = items.slice(s, s + L.per);
+    if (mode !== 'backonly') pages.push({ back: false, cells: chunk.map((it, i) => Object.assign(pos(i), { item: it, side: 'front' })) });
+    if (mode === 'long' || mode === 'short' || mode === 'backonly') {
+      pages.push({ back: true, cells: chunk.map((it, i) => {
+        const p = pos(i);
+        if (mode !== 'backonly') { if (mirrorX) p.x = L.W - p.x - L.cw; else p.y = L.H - p.y - L.ch; p.x += pr.sx || 0; p.y += pr.sy || 0; }
+        return Object.assign(p, { item: it, side: 'back', ccw: mode !== 'backonly' && mirrorX });
+      }) });
+    }
+  }
+  return pages;
+}
+function p3LayoutInfo() {
+  if (!$p3('p3MergeOv').classList.contains('open')) return;
+  const pr = p3ReadPrint(), L = p3Layout(pr), items = p3Items(pr), pages = p3Pages(L, items), hb = p3HasBack();
+  $p3('p3CustomF').style.display = pr.paper === 'custom' ? '' : 'none';
+  $p3('p3CopiesF').style.display = pr.src === 'copies' || !p3.data ? '' : 'none';
+  $p3('p3Src').disabled = !p3.data; if (!p3.data) $p3('p3Src').value = 'copies';
+  $p3('p3BackF').style.display = hb ? '' : 'none';
+  $p3('p3ShiftF').style.display = hb && (pr.back === 'long' || pr.back === 'short') ? '' : 'none';
+  if (!L.per) { $p3('p3LayoutInfo').innerHTML = '<span style="color:#f87171;">The card does not fit on this paper — reduce the margin or card size.</span>'; return; }
+  const per = L.pair ? L.per / 2 : L.per, sheets = Math.ceil(items.length / per);
+  const used = Math.round(per * L.cw * L.ch / (L.W * L.H) * 100);
+  $p3('p3LayoutInfo').innerHTML = `<b>${L.cols} × ${L.rows}</b> = <b>${per}</b> cards per sheet${L.pair ? ' (front + back pairs)' : ''} · ${L.landscape ? 'landscape' : 'portrait'} · <b>${items.length}</b> cards → <b>${pages.length}</b> page${pages.length === 1 ? '' : 's'}${hb && (pr.back === 'long' || pr.back === 'short') ? ' (' + sheets + ' sheets, print two-sided)' : ''} · ${used}% of the paper used`;
+}
+function p3FillPage() { const L = p3Layout(); if (L.per) { $p3('p3Copies').value = L.pair ? L.per / 2 : L.per; p3PrintChanged(); } }
+function p3PrintChanged() { p3.cfg.print = p3ReadPrint(); p3CfgChanged(); p3.sheetPage = 0; p3LayoutInfo(); p3Preview(); }
+let _p3SheetGen = 0;
+function p3SheetPreview() {
+  const gen = ++_p3SheetGen, pr = p3ReadPrint(), L = p3Layout(pr), items = p3Items(pr), pages = p3Pages(L, items);
+  const cv = $p3('p3SheetCv'), maxW = 300, sc = maxW / L.W;
+  cv.width = Math.round(L.W * sc * 2); cv.height = Math.round(L.H * sc * 2); cv.style.width = Math.round(L.W * sc) + 'px';
+  const x = cv.getContext('2d'), k = cv.width / L.W;
+  x.fillStyle = '#fff'; x.fillRect(0, 0, cv.width, cv.height);
+  p3.sheetPage = Math.max(0, Math.min(p3.sheetPage, pages.length - 1));
+  $p3('p3SheetLbl').textContent = pages.length ? 'Page ' + (p3.sheetPage + 1) + ' of ' + pages.length + (pages[p3.sheetPage].back ? ' (back)' : '') : 'Nothing to print';
+  const page = pages[p3.sheetPage]; if (!page) return;
+  x.strokeStyle = '#cbd5e1'; x.lineWidth = 1; x.setLineDash([4, 3]); x.strokeRect(L.m * k, L.m * k, (L.W - 2 * L.m) * k, (L.H - 2 * L.m) * k); x.setLineDash([]);
+  p3DrawMarks(x, k, L, page);
+  page.cells.forEach(c => { x.fillStyle = '#e2e8f0'; x.fillRect(c.x * k, c.y * k, L.cw * k, L.ch * k); });
+  p3Q(async () => {
+    const thumbs = new Map();
+    for (const c of page.cells) {
+      if (gen !== _p3SheetGen) return;
+      const key = c.item.row + ':' + c.side;
+      let img = thumbs.get(key);
+      if (!img) { img = await p3RenderSide(c.side, c.item.rec, Math.max(L.cw, L.ch) * k / Math.max(canvasW, canvasH), []); thumbs.set(key, img); }
+      if (gen !== _p3SheetGen || !img) return;
+      p3DrawCard(x, img, c.x * k, c.y * k, L.cw * k, L.ch * k, c.ccw);
+    }
+    if (L.pr.lines) page.cells.forEach(c => { x.strokeStyle = '#94a3b8'; x.lineWidth = 0.5; x.strokeRect(c.x * k, c.y * k, L.cw * k, L.ch * k); });
+  }).catch(e => console.warn('sheet preview', e));
+}
+function p3SheetStep(n) { p3.sheetPage += n; p3SheetPreview(); }
+/** Draw a rendered card into a slot; turns it 90° when the slot is the other orientation. */
+function p3DrawCard(x, img, X, Y, W, H, ccw) {
+  const rot = (img.width >= img.height) !== (W >= H) && Math.abs(img.width - img.height) > 1;
+  x.save(); x.fillStyle = '#fff'; x.fillRect(X, Y, W, H);
+  if (rot && ccw) { x.translate(X, Y + H); x.rotate(-Math.PI / 2); x.drawImage(img, 0, 0, H, W); }
+  else if (rot) { x.translate(X + W, Y); x.rotate(Math.PI / 2); x.drawImage(img, 0, 0, H, W); }
+  else x.drawImage(img, X, Y, W, H);
+  x.restore();
+}
+/** Crop marks in the margins around the card grid (never over the cards). */
+function p3MarkLines(L, page) {
+  if (!L.pr.marks || !page.cells.length) return [];
+  const xs = new Set(), ys = new Set();
+  page.cells.forEach(c => { xs.add(+c.x.toFixed(3)); xs.add(+(c.x + L.cw).toFixed(3)); ys.add(+c.y.toFixed(3)); ys.add(+(c.y + L.ch).toFixed(3)); });
+  const minX = Math.min(...page.cells.map(c => c.x)), maxX = Math.max(...page.cells.map(c => c.x + L.cw));
+  const minY = Math.min(...page.cells.map(c => c.y)), maxY = Math.max(...page.cells.map(c => c.y + L.ch));
+  const off = 1.5, len = 4, out = [];
+  xs.forEach(X => { if (minY - off > 0) out.push([X, Math.max(0, minY - off - len), X, minY - off]); if (maxY + off < L.H) out.push([X, maxY + off, X, Math.min(L.H, maxY + off + len)]); });
+  ys.forEach(Y => { if (minX - off > 0) out.push([Math.max(0, minX - off - len), Y, minX - off, Y]); if (maxX + off < L.W) out.push([maxX + off, Y, Math.min(L.W, maxX + off + len), Y]); });
+  return out;
+}
+function p3DrawMarks(x, k, L, page) {
+  x.strokeStyle = '#000'; x.lineWidth = Math.max(0.5, 0.2 * k);
+  p3MarkLines(L, page).forEach(([a, b, c, d]) => { x.beginPath(); x.moveTo(a * k, b * k); x.lineTo(c * k, d * k); x.stroke(); });
+}
+
+/* ─────────────────────────── 7. OUTPUT: PDF / PRINT / ZIP ─────────────────────────── */
+function p3Progress(n, total, txt) {
+  const bar = $p3('p3Prog'), t = $p3('p3ProgTxt');
+  if (n < 0) { bar.style.display = 'none'; t.textContent = ''; return; }
+  bar.style.display = total ? '' : 'none'; bar.firstElementChild.style.width = total ? Math.round(n / total * 100) + '%' : '0';
+  t.textContent = txt || '';
+}
+function p3RunUI(on) { document.querySelectorAll('#p3MergeOv .p3-run').forEach(b => b.disabled = on); $p3('p3Stop').style.display = on ? '' : 'none'; }
+function p3Blob(c, type, q) { return new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('The browser could not encode the image (card too large?)')), type, q)); }
+function p3FileName(it, used) {
+  const pat = (p3.cfg.namePat || '').trim();
+  let n = it.rec && pat ? p3Subst(pat, it.rec) : it.rec ? p3RowLabel(it.row) : '';
+  n = n.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || (_fileBase() + '-' + String(it.row >= 0 ? it.row + 1 : used.size + 1).padStart(3, '0'));
+  let k = n, i = 2; while (used.has(k.toLowerCase())) k = n + ' (' + i++ + ')';
+  used.add(k.toLowerCase()); return k;
+}
+async function p3Run(kind) {
+  if (p3.busy) return;
+  const pr = p3ReadPrint(); p3.cfg.print = pr;
+  if (pr.src === 'data' && p3.data && !p3.data.on.some(Boolean)) { showToast('No rows are ticked', 'info'); return; }
+  const f = p3DesignFields();
+  if (pr.src === 'data' && p3.data && f.text.some(t => p3ColOfKey(t.key) < 0)) {
+    const miss = f.text.filter(t => p3ColOfKey(t.key) < 0).map(t => '{{' + t.name + '}}').join(', ');
+    if (!await new Promise(res => edConfirm('These fields are not linked to a column and will print empty: ' + miss + '. Continue anyway?', () => res(true), () => res(false)))) { p3Tab('fields'); return; }
+  }
+  const win = kind === 'print' ? window.open('', '_blank') : null;     // must open inside the click, before any await
+  if (kind === 'print' && !win) { showToast('Pop-up blocked — allow pop-ups to print', 'err'); return; }
+  if (win) win.document.write('<!DOCTYPE html><title>Preparing…</title><body style="font:16px system-ui;padding:2rem;color:#334155">Preparing cards for printing… keep the editor tab open.</body>');
+  p3.busy = true; p3.cancel = false; p3RunUI(true);
+  const t0 = Date.now();
+  try {
+    if (kind === 'zip') await p3MakeZip(pr);
+    else await p3MakeSheets(kind, pr, win);
+    if (!p3.cancel) markDirty();
+  } catch (e) {
+    console.error(e);
+    if (win) win.close();
+    showToast('Failed: ' + (/tainted|insecure/i.test(e.message) ? 'a photo from another website blocks exporting — upload it from your device' : e.message), 'err');
+  } finally {
+    p3.busy = false; p3RunUI(false);
+    p3Progress(-1);
+    if (p3.cancel) { showToast('Stopped', 'info'); if (win) win.close(); }
+    else if (Date.now() - t0 > 4000) $p3('p3ProgTxt').textContent = 'Done in ' + Math.round((Date.now() - t0) / 1000) + ' s';
+  }
+}
+/** Render every card needed by a page list, one page at a time (keeps memory low). */
+async function p3MakeSheets(kind, pr, win) {
+  const L = p3Layout(pr), items = p3Items(pr), pages = p3Pages(L, items);
+  if (!pages.length) throw new Error('The card does not fit on this paper');
+  const dpi = +pr.dpi || 300, pxPerMm = dpi / 25.4;
+  const multFor = () => Math.max(L.cw, L.ch) * pxPerMm / Math.max(canvasW, canvasH);
+  const copies = !items.some(it => it.rec);
+  const cache = new Map();    // "row:side" → { blob, w, h, url }
+  const total = pages.reduce((s, p) => s + p.cells.length, 0);
+  let done = 0, doc = null, html = [];
+  if (kind === 'pdf') { const { jsPDF } = window.jspdf || window; if (!jsPDF) throw new Error('PDF library not loaded — check your internet connection'); doc = new jsPDF({ unit: 'mm', format: [L.W, L.H], orientation: L.landscape ? 'l' : 'p', compress: true }); }
+  for (let pi = 0; pi < pages.length; pi++) {
+    const page = pages[pi];
+    if (kind === 'pdf' && pi > 0) doc.addPage([L.W, L.H], L.landscape ? 'l' : 'p');
+    const imgs = [];
+    for (const c of page.cells) {
+      if (p3.cancel) return;
+      const key = (copies ? 'c' : c.item.row) + ':' + c.side;
+      let r = cache.get(key);
+      if (!r) {
+        const cv = await p3Q(() => p3RenderSide(c.side, c.item.rec, multFor(), []));
+        if (!cv) continue;
+        // white under transparent areas, card turned to the slot orientation
+        const rot = (cv.width >= cv.height) !== (L.cw >= L.ch) && Math.abs(cv.width - cv.height) > 1;
+        const out = document.createElement('canvas'); out.width = rot ? cv.height : cv.width; out.height = rot ? cv.width : cv.height;
+        const x = out.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, out.width, out.height);
+        if (rot && c.ccw) { x.translate(0, out.height); x.rotate(-Math.PI / 2); } else if (rot) { x.translate(out.width, 0); x.rotate(Math.PI / 2); }
+        x.drawImage(cv, 0, 0);
+        const blob = await p3Blob(out, 'image/jpeg', 0.93);
+        r = { blob, w: out.width, h: out.height };
+        if (kind === 'pdf') r.bytes = new Uint8Array(await blob.arrayBuffer());
+        else r.url = URL.createObjectURL(blob);
+        cache.set(key, r);
+      }
+      imgs.push({ c, r, key });
+      done++;
+      p3Progress(done, total, 'Page ' + (pi + 1) + ' of ' + pages.length + ' · card ' + done + ' of ' + total);
+      if (done % 3 === 0) await new Promise(res => setTimeout(res));
+    }
+    if (kind === 'pdf') {
+      imgs.forEach(({ c, r, key }) => doc.addImage(r.bytes, 'JPEG', c.x, c.y, L.cw, L.ch, 'k' + key, 'NONE'));
+      doc.setDrawColor(0); doc.setLineWidth(0.15);
+      p3MarkLines(L, page).forEach(([a, b, cc, d]) => doc.line(a, b, cc, d));
+      if (pr.lines) { doc.setDrawColor(150); doc.setLineWidth(0.1); page.cells.forEach(c => doc.rect(c.x, c.y, L.cw, L.ch)); }
+    } else {
+      const marks = p3MarkLines(L, page).map(([a, b, cc, d]) => `<line x1="${a}" y1="${b}" x2="${cc}" y2="${d}"/>`).join('');
+      const lines = pr.lines ? page.cells.map(c => `<rect x="${c.x}" y="${c.y}" width="${L.cw}" height="${L.ch}" fill="none" stroke="#999" stroke-width="0.1"/>`).join('') : '';
+      html.push(`<div class="pg">${imgs.map(({ c, r }) => `<img src="${r.url}" style="left:${c.x}mm;top:${c.y}mm;width:${L.cw}mm;height:${L.ch}mm">`).join('')}<svg viewBox="0 0 ${L.W} ${L.H}" stroke="#000" stroke-width="0.15">${marks}${lines}</svg></div>`);
+    }
+    // free cards no later page needs
+    const later = new Set(pages.slice(pi + 1).flatMap(p => p.cells.map(c => (copies ? 'c' : c.item.row) + ':' + c.side)));
+    if (kind === 'pdf') [...cache.keys()].forEach(k => { if (!later.has(k)) cache.delete(k); });
+  }
+  if (kind === 'pdf') {
+    p3Progress(total, total, 'Saving PDF…');
+    await new Promise(res => setTimeout(res, 30));
+    doc.save(_fileBase() + (items.some(it => it.rec) ? '-' + items.length + '-cards' : '') + '.pdf');
+    showToast('PDF ready — ' + pages.length + ' page' + (pages.length === 1 ? '' : 's') + '. Print it at 100% / “Actual size”.', 'ok');
+  } else {
+    win.document.open();
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escHtml(_designName())} — print</title><style>
+@page{size:${L.W}mm ${L.H}mm;margin:0}*{margin:0;padding:0;box-sizing:border-box}html,body{background:#888}
+.pg{position:relative;width:${L.W}mm;height:${L.H}mm;overflow:hidden;background:#fff;margin:0 auto 8px;page-break-after:always;break-after:page}
+.pg:last-child{page-break-after:auto;break-after:auto}.pg img{position:absolute;display:block}.pg svg{position:absolute;inset:0;width:100%;height:100%}
+@media print{html,body{background:#fff}.pg{margin:0}}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+</style></head><body>${html.join('')}<script>
+var imgs=[].slice.call(document.images),left=imgs.length;function go(){setTimeout(function(){window.focus();window.print();},300);}
+if(!left)go();imgs.forEach(function(i){if(i.complete){if(!--left)go();}else{i.onload=i.onerror=function(){if(!--left)go();};}});
+<\/script></body></html>`);
+    win.document.close();
+    showToast('Print window opened — choose the right paper size and Scale 100% / Actual size' + (p3HasBack() && (pr.back === 'long' || pr.back === 'short') ? ', two-sided (' + (pr.back === 'long' ? 'long' : 'short') + ' edge)' : ''), 'ok');
+  }
+}
+async function p3MakeZip(pr) {
+  const Z = await p3Lib('zip'), zip = new Z();
+  const items = p3Items(pr), sides = p3HasBack() && pr.back !== 'none' ? (pr.back === 'backonly' ? ['back'] : ['front', 'back']) : ['front'];
+  const list = items.some(it => it.rec) ? items : items.slice(0, 1);
+  const dpi = +pr.dpi || 300, L = p3Layout(pr), mult = Math.max(L.cw, L.ch) * dpi / 25.4 / Math.max(canvasW, canvasH);
+  const used = new Set(), total = list.length * sides.length;
+  let n = 0;
+  for (const it of list) {
+    const name = p3FileName(it, used);
+    for (const side of sides) {
+      if (p3.cancel) return;
+      const cv = await p3Q(() => p3RenderSide(side, it.rec, mult, []));
+      if (cv) zip.file(name + (sides.length > 1 ? (side === 'front' ? ' - front' : ' - back') : '') + '.png', await p3Blob(cv, 'image/png'));
+      n++; p3Progress(n, total, 'Card ' + n + ' of ' + total);
+      if (n % 2 === 0) await new Promise(r => setTimeout(r));
+    }
+  }
+  p3Progress(total, total, 'Packing ZIP…');
+  const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+  _downloadBlob(blob, _fileBase() + '-cards.zip');
+  showToast(n + ' PNG files saved in the ZIP (' + dpi + ' DPI)', 'ok');
+}
+
+/* ─────────────────────────── 8. DIALOG ─────────────────────────── */
+function p3Open(tab) {
+  if (typeof proCloseMenu === 'function') proCloseMenu();
+  p3PvOff();
+  const a = canvas.getActiveObject(); if (a && a.isEditing) a.exitEditing();
+  if (!hist.locked) histSave();
+  p3WritePrint();
+  p3AutoMap();
+  $p3('p3MergeOv').classList.add('open');
+  p3RenderData(); p3RenderFields(); p3QuickCheck();
+  p3Tab(tab || (p3.data ? 'fields' : 'data'));
+}
+function p3OpenPrint() { p3Open('print'); }
+function p3Close() { if (p3.busy) { showToast('Still working — press Stop first', 'info'); return; } $p3('p3MergeOv').classList.remove('open'); }
+function p3Tab(t) {
+  p3.tab = t;
+  document.querySelectorAll('#p3Tabs .p3-tab').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  document.querySelectorAll('#p3MergeOv .p3-pane').forEach(p => p.classList.toggle('on', p.dataset.p === t));
+  $p3('p3RecPrev').style.display = t === 'print' ? 'none' : '';
+  $p3('p3SheetPrev').style.display = t === 'print' ? '' : 'none';
+  if (t === 'fields') p3RenderFields();
+  if (t === 'print') p3LayoutInfo();
+  p3Preview();
+}
+
+/* ── on-canvas preview of a row ── */
+async function p3PreviewOnCanvas() { if (!p3.data) return; $p3('p3MergeOv').classList.remove('open'); p3.pv = true; p3PvDraw(); }
+let _p3PvDrawGen = 0;
+function p3PvDraw() {
+  if (!p3.pv || !p3.data) return;
+  const gen = ++_p3PvDrawGen, z = canvas.getZoom() || 1, dpr = window.devicePixelRatio || 1;
+  $p3('p3PbLbl').textContent = (p3.rec + 1) + ' / ' + p3.data.rows.length + (p3RowLabel(p3.rec) ? ' · ' + p3RowLabel(p3.rec) : '') + (p3HasBack() ? ' · ' + (p3.cur === 'back' ? 'back' : 'front') : '');
+  const bar = $p3('p3PrevBar'); bar.classList.add('on');
+  p3PvPos();
+  p3Q(() => p3RenderSide(p3.cur, p3.data.rows[p3.rec], Math.min(3, z * dpr), [])).then(c => {
+    if (gen !== _p3PvDrawGen || !p3.pv || !c) return;
+    const w = document.createElement('canvas'); w.width = c.width; w.height = c.height;
+    const x = w.getContext('2d'); x.fillStyle = canvas.backgroundColor || '#fff'; x.fillRect(0, 0, w.width, w.height); x.drawImage(c, 0, 0);
+    const img = $p3('p3PrevImg'); img.src = w.toDataURL('image/png'); img.style.display = 'block'; p3PvPos();
+  }).catch(() => {});
+}
+function p3PvPos() {
+  if (!p3.pv) return;
+  const r = canvas.lowerCanvasEl.getBoundingClientRect(), img = $p3('p3PrevImg'), bar = $p3('p3PrevBar');
+  Object.assign(img.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+  const area = $p3('canvasArea').getBoundingClientRect();
+  bar.style.left = Math.max(8, area.left + area.width / 2 - bar.offsetWidth / 2) + 'px';
+  bar.style.top = (area.top + 10) + 'px';
+}
+function p3PvStep(n) { if (!p3.data) return; const N = p3.data.rows.length; p3.rec = (p3.rec + n + N) % N; p3PvDraw(); }
+function p3PvOff() { if (!p3.pv) return; p3.pv = false; $p3('p3PrevBar').classList.remove('on'); $p3('p3PrevImg').style.display = 'none'; }
+
+/* ── object panel: link a text / photo / code to the data ── */
+function p3RenderBind() {
+  const sec = $p3('p3BindSec'); if (!sec) return;
+  const a = canvas.getActiveObject();
+  const cols = p3.data ? p3.data.cols : [];
+  const opts = (sel, none) => `<option value="">${none}</option>` + cols.map(c => `<option ${c === sel ? 'selected' : ''}>${escHtml(c)}</option>`).join('') + (sel && !cols.includes(sel) ? `<option selected>${escHtml(sel)}</option>` : '');
+  let h = '';
+  if (a && isTextObj(a)) {
+    const toks = [...String(a.text).matchAll(P3_TOK)].map(m => m[1].trim());
+    const list = cols.length ? cols : ['Name', "Father's Name", 'Class', 'Section', 'Roll No', 'Admission No', 'DOB', 'Mobile', 'Address', 'Blood Group'];
+    h = `<div class="p2-title"><i class="bi bi-people" style="color:#818cf8;"></i> Mail merge field</div>
+      <div class="p2-row"><select id="p3FieldSel" style="flex:1;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:.25rem .35rem;font-size:.76rem;"><option value="">${a.isEditing ? 'Insert field at cursor…' : 'Replace text with field…'}</option>${list.map(c => `<option>${escHtml(c)}</option>`).join('')}<option value="__other">Other…</option></select></div>
+      <div class="pro-note" style="margin:0;">${toks.length ? 'Linked: ' + toks.map(t => '<span class="p3-tok">{{' + escHtml(t) + '}}</span>').join(' ') + ' — each card gets its own value.' : 'Link this text to a column so every card gets its own name, class…'}</div>`;
+  } else if (a && (a.type === 'image' || a.data?.placeholder)) {
+    const ph = a.data?.placeholder;
+    if (ph === 'qr' || ph === 'barcode') {
+      h = `<div class="p2-title"><i class="bi bi-people" style="color:#818cf8;"></i> Mail merge</div><div class="p2-row"><label>${ph === 'qr' ? 'QR' : 'Barcode'} value</label><select style="flex:1;" onchange="p3BindSet('mergeField', this.value)">${opts(a.data.mergeField || '', '— not linked —')}</select></div><div class="pro-note" style="margin:0;">Each card gets a ${ph === 'qr' ? 'QR code' : 'barcode'} of this column.</div>`;
+    } else if (ph === 'photo' || ph === 'sign') {
+      h = `<div class="p2-title"><i class="bi bi-people" style="color:#818cf8;"></i> Mail merge ${ph === 'sign' ? 'signature' : 'photo'}</div><div class="p2-row"><label>Column</label><select style="flex:1;" onchange="p3BindSet('mergePhoto', this.value)">${opts(a.data.mergePhoto || '', ph === 'sign' ? 'Auto (a “sign” column)' : 'Photo column (step 2)')}</select></div><div class="pro-note" style="margin:0;">Each card's photo is placed here, cropped to fill the box.</div>`;
+    } else if (a.type === 'image' && !a.data?.isBg) {
+      const on = a.data?.mergePhoto !== undefined;
+      h = `<div class="p2-title"><i class="bi bi-people" style="color:#818cf8;"></i> Mail merge</div><label class="p2-row" style="cursor:pointer;color:#e2e8f0;"><input type="checkbox" ${on ? 'checked' : ''} onchange="p3BindSet('mergePhoto', this.checked ? '' : undefined)"> Merge photo — replace with each row's photo</label>${on ? `<div class="p2-row"><label>Column</label><select style="flex:1;" onchange="p3BindSet('mergePhoto', this.value)">${opts(a.data.mergePhoto || '', 'Photo column (step 2)')}</select></div>` : ''}`;
+    }
+  }
+  sec.style.display = h ? '' : 'none';
+  sec.innerHTML = h;
+  const fs = $p3('p3FieldSel');
+  if (fs) {
+    fs.addEventListener('mousedown', () => { const o = canvas.getActiveObject(); p3._sel = o && o.isEditing ? [o.selectionStart, o.selectionEnd] : null; });
+    fs.onchange = () => {
+      let v = fs.value; fs.value = '';
+      if (v === '__other') { v = (prompt('Column name (exactly as in your Excel heading):', '') || '').trim(); }
+      if (!v) return;
+      const o = canvas.getActiveObject();
+      if (o && p3._sel && !o.isEditing) { o.enterEditing(); o.selectionStart = p3._sel[0]; o.selectionEnd = p3._sel[1]; }
+      p3InsertField(v);
+    };
+  }
+}
+function p3BindSet(key, val) {
+  const a = canvas.getActiveObject(); if (!a) return;
+  const d = Object.assign({}, a.data);
+  if (val === undefined) delete d[key]; else d[key] = val;
+  a.data = d; histSave(val === undefined ? 'Unlink from data' : 'Link to data'); p3RenderBind();
+}
+
+/* ─────────────────────────── 9. WIRING ─────────────────────────── */
+(function p3Init() {
+  // status bar: Front / Back
+  const st = $p3('proStatus');
+  if (st) { const s = document.createElement('span'); s.id = 'p3Sides'; st.insertBefore(s, st.firstChild); const sep = document.createElement('span'); sep.className = 'sep'; s.after(sep); }
+  p3SidesUI();
+  // toolbar buttons after Print
+  const pb = document.querySelector('.ed-top-right .ed-btn[onclick="printCanvas()"]');
+  if (pb) {
+    const mk = (icon, title, fn, label) => { const b = document.createElement('button'); b.className = 'ed-btn pro-top-btn'; b.title = title; b.innerHTML = '<i class="bi ' + icon + '"></i>' + (label || ''); b.onclick = fn; return b; };
+    pb.after(mk('bi-people-fill', 'Mail merge — one card per row of Excel data (Ctrl+Shift+M)', () => p3Open(), ' <span class="hide-m" style="font-size:.74rem;">Merge</span>'), mk('bi-grid-3x3-gap-fill', 'Print sheet — many cards on A4 / A3 with crop marks (Ctrl+Shift+P)', p3OpenPrint));
+  }
+  // object panel: data-link section
+  const pObj = $p3('pObj');
+  if (pObj) { const s = document.createElement('div'); s.className = 'p2-sec'; s.id = 'p3BindSec'; s.style.display = 'none'; pObj.insertBefore(s, pObj.firstChild); }
+  // dialog events
+  $p3('p3Tabs').addEventListener('click', e => { const b = e.target.closest('.p3-tab'); if (b) p3Tab(b.dataset.t); });
+  $p3('p3File').addEventListener('change', e => { p3OpenFile(e.target.files[0]); e.target.value = ''; });
+  ['p3Photos', 'p3PhotoDir', 'p3PhotoZip'].forEach(id => $p3(id).addEventListener('change', e => { const l = [...e.target.files]; e.target.value = ''; p3AddPhotoFiles(l); }));
+  $p3('p3Sheet').addEventListener('change', e => p3UseSheet(e.target.value));
+  $p3('p3Search').addEventListener('input', () => p3RenderData());
+  const drop = $p3('p3Drop');
+  ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); e.stopPropagation(); drop.classList.add('hot'); }));
+  ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); e.stopPropagation(); drop.classList.remove('hot'); }));
+  drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) p3OpenFile(f); });
+  // files dropped anywhere on the dialog: sheets → data, images/zip → photos
+  $p3('p3MergeOv').addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); });
+  $p3('p3MergeOv').addEventListener('drop', e => {
+    e.preventDefault(); e.stopPropagation();
+    const fs = [...(e.dataTransfer.files || [])]; if (!fs.length) return;
+    const sheet = fs.find(f => /\.(xlsx|xls|xlsm|ods|csv|tsv|txt)$/i.test(f.name));
+    if (sheet) p3OpenFile(sheet);
+    const pics = fs.filter(f => f !== sheet); if (pics.length) p3AddPhotoFiles(pics);
+  });
+  $p3('p3Table').addEventListener('click', e => {
+    const tr = e.target.closest('tr[data-i]'); if (!tr) return;
+    const i = +tr.dataset.i;
+    if (e.target.closest('td.c')) { p3.data.on[i] = !p3.data.on[i]; tr.classList.toggle('off', !p3.data.on[i]); tr.querySelector('input').checked = p3.data.on[i]; const sel = p3.data.on.filter(Boolean).length; $p3('p3DataInfo').innerHTML = `<b>${p3.data.rows.length}</b> rows · <b>${sel}</b> selected · ${escHtml(p3.data.name)}`; $p3('p3HdInfo').textContent = '— ' + sel + ' cards'; p3QuickCheck(); return; }
+    if (i !== p3.rec) { p3.rec = i; $p3('p3Table').querySelectorAll('tr.cur').forEach(x => x.classList.remove('cur')); tr.classList.add('cur'); p3Preview(); }
+  });
+  $p3('p3Table').addEventListener('focusout', e => {
+    const td = e.target.closest('td[data-c]'); if (!td) return;
+    const i = +td.parentElement.dataset.i, c = +td.dataset.c, v = td.textContent.replace(/\s+/g, ' ').trim();
+    if (p3.data.rows[i][c] !== v) { p3.data.rows[i][c] = v; td.title = v; p3QuickCheck(); p3Preview(); }
+  });
+  $p3('p3Table').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.closest('td[data-c]')) { e.preventDefault(); e.target.blur(); } });
+  $p3('p3MapList').addEventListener('change', e => { const s = e.target.closest('select[data-k]'); if (!s) return; if (s.value) p3.cfg.map[s.dataset.k] = s.value; else delete p3.cfg.map[s.dataset.k]; p3CfgChanged(); p3RenderFields(); p3RenderData(); p3QuickCheck(); p3Preview(); });
+  $p3('p3ColChips').addEventListener('click', e => { const b = e.target.closest('[data-col]'); if (b) p3InsertField(b.dataset.col); });
+  $p3('p3PhotoCol').addEventListener('change', e => { p3.cfg.photoCol = e.target.value; p3CfgChanged(); p3RenderFields(); p3RenderData(); p3QuickCheck(); p3Preview(); });
+  $p3('p3PhotoFocus').addEventListener('change', e => { p3.cfg.focus = +e.target.value; p3CfgChanged(); p3Preview(); });
+  $p3('p3NamePat').addEventListener('change', e => { p3.cfg.namePat = e.target.value.trim(); p3CfgChanged(); });
+  $p3('p3Issues').addEventListener('click', e => { const el = e.target.closest('.p3-issue[data-i]'); if (!el) return; const it = _p3Issues[+el.dataset.i]; if (it && it.row != null && p3.data) { p3.rec = it.row; if (p3.tab === 'print') p3Tab('data'); p3RenderData(); p3RenderFields(); p3Preview(); const tr = $p3('p3Table').querySelector('tr.cur'); tr && tr.scrollIntoView({ block: 'nearest' }); } });
+  Object.values(P3_PRINT_IDS).forEach(id => { const el = $p3(id); el.addEventListener(el.tagName === 'SELECT' || el.type === 'checkbox' ? 'change' : 'input', () => { clearTimeout(p3._pt); p3._pt = setTimeout(p3PrintChanged, 150); }); });
+  $p3('p3MergeOv').querySelector('[data-p="print"] .pro-chips').addEventListener('click', e => {
+    const c = e.target.closest('[data-cs]'); if (!c) return;
+    const w = $p3('p3CW'), h = $p3('p3CH');
+    if (c.dataset.cs === 'design') { const d = p3DesignMm(); w.value = d.w; h.value = d.h; }
+    else if (c.dataset.cs === 'cr80') { const port = canvasH > canvasW; w.value = port ? 54 : 85.6; h.value = port ? 85.6 : 54; }
+    else { const t = w.value; w.value = h.value; h.value = t; }
+    p3PrintChanged();
+  });
+  // keep the canvas preview aligned
+  const sz = setZoom; setZoom = function () { const r = sz.apply(this, arguments); if (p3.pv) p3PvDraw(); return r; };
+  window.addEventListener('resize', p3PvPos);
+  $p3('canvasArea').addEventListener('scroll', p3PvPos, { passive: true });
+  canvas.on('mouse:down', () => { if (p3.pv) p3PvOff(); });
+  // refresh our panel with the editor's
+  const rp = refreshProps;
+  refreshProps = function () { const r = rp.apply(this, arguments); try { p3RenderBind(); } catch (e) { console.warn(e); } return r; };
+  canvas.on('selection:created', p3RenderBind); canvas.on('selection:updated', p3RenderBind); canvas.on('selection:cleared', p3RenderBind);
+  canvas.on('text:editing:entered', p3RenderBind); canvas.on('text:editing:exited', p3RenderBind);
+  // context menu + command search
+  const om = proOpenMenu;
+  proOpenMenu = function (x, y, items) {
+    if (items.some(it => it && it.label === 'Select all') && !items.some(it => it && it.p3)) {
+      const extra = [Object.assign(proMenuItem('bi-people-fill', 'Mail merge…', 'Ctrl+Shift+M', () => p3Open()), { p3: 1 }), proMenuItem('bi-grid-3x3-gap-fill', 'Print sheet (A4)…', 'Ctrl+Shift+P', p3OpenPrint),
+        p3HasBack() ? proMenuItem('bi-arrow-left-right', p3.cur === 'front' ? 'Show back side' : 'Show front side', '', () => p3Switch(p3.cur === 'front' ? 'back' : 'front')) : proMenuItem('bi-plus-square', 'Add back side', '', p3AddBackMenu)];
+      items = items.concat(['-'], extra);
+    }
+    return om.call(this, x, y, items);
+  };
+  PRO_CMDS.push(
+    { group: 'File', icon: 'bi-people-fill', label: 'Mail merge (Excel / CSV → one card per row)', keys: 'Ctrl+Shift+M', run: () => p3Open() },
+    { group: 'File', icon: 'bi-grid-3x3-gap-fill', label: 'Print sheet — many cards on A4 / A3 (crop marks, two-sided)', keys: 'Ctrl+Shift+P', run: p3OpenPrint },
+    { group: 'File', icon: 'bi-file-zip', label: 'Export every card as PNG (ZIP)', keys: '', run: () => p3Open('print') },
+    { group: 'View', icon: 'bi-front', label: 'Show front side', keys: '', run: () => p3Switch('front') },
+    { group: 'View', icon: 'bi-back', label: 'Show back side', keys: '', run: () => p3Switch('back') },
+    { group: 'Edit', icon: 'bi-plus-square', label: 'Add back side (two-sided card)', keys: '', run: p3AddBackMenu },
+    { group: 'Edit', icon: 'bi-arrow-left-right', label: 'Swap front and back', keys: '', run: p3SwapSides },
+    { group: 'Edit', icon: 'bi-trash', label: 'Delete back side', keys: '', run: p3DeleteBack },
+    { group: 'Insert', icon: 'bi-braces', label: 'Add mail-merge field (e.g. {{Name}})', keys: '', run: () => p3Open('fields') },
+  );
+})();
+window.addEventListener('keydown', e => {
+  const ov = $p3('p3MergeOv').classList.contains('open');
+  if (ov) {
+    // the dialog owns the keyboard — editor shortcuts (Delete, Ctrl+Z…) must not touch the design behind it
+    if (e.key === 'Escape') { e.preventDefault(); p3Close(); }
+    else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'm') { e.preventDefault(); p3Close(); }
+    e.stopPropagation(); return;
+  }
+  if (p3.pv) {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); p3PvOff(); return; }
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); e.stopImmediatePropagation(); p3PvStep(e.key === 'ArrowRight' ? 1 : -1); return; }
+  }
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey) {
+    const k = e.key.toLowerCase();
+    if (k === 'm') { e.preventDefault(); e.stopImmediatePropagation(); p3Open(); }
+    else if (k === 'p') { e.preventDefault(); e.stopImmediatePropagation(); p3OpenPrint(); }
+  }
+}, true);
 </script>
 
 </body>
