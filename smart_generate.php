@@ -1340,6 +1340,22 @@ $_sa = BASE_URL . '/api/usage_stats.php';
         </div>
       </div>
 
+      <!-- Print Quality -->
+      <div class="sc" style="margin-bottom:.6rem;">
+        <div class="sc-h"><i class="bi bi-stars" style="color:#f59e0b;"></i> Print Quality
+          <span id="pqEst" style="margin-left:auto;font-size:.66rem;font-weight:600;color:var(--gm);"></span>
+        </div>
+        <div class="sc-b" style="padding:.5rem .6rem;">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.3rem;" id="pqGrid">
+            <div class="szpill" data-pq="standard" onclick="setPrintQ('standard');markDirty()" title="300 DPI · JPEG 92% — smallest file, fine for on-screen / draft">Standard<small>300 DPI</small></div>
+            <div class="szpill" data-pq="high" onclick="setPrintQ('high');markDirty()" title="450 DPI · JPEG 95%">High<small>450 DPI</small></div>
+            <div class="szpill on" data-pq="best" onclick="setPrintQ('best');markDirty()" title="600 DPI · JPEG 97% — sharp text, QR & barcode on any printer (recommended)">Best ★<small>600 DPI</small></div>
+            <div class="szpill" data-pq="lossless" onclick="setPrintQ('lossless');markDirty()" title="600 DPI · PNG lossless — zero compression marks, largest file (PVC / professional printing)">Lossless<small>600 · PNG</small></div>
+          </div>
+          <div id="pqNote" style="font-size:.66rem;color:var(--gm);margin-top:.4rem;line-height:1.5;"></div>
+        </div>
+      </div>
+
       <!-- Output Format -->
       <div class="sc" style="margin-bottom:.6rem;">
         <div class="sc-h"><i class="bi bi-file-earmark-arrow-down"></i> Download Format</div>
@@ -1366,10 +1382,10 @@ $_sa = BASE_URL . '/api/usage_stats.php';
               <div class="fmt-sub" style="font-size:.65rem;">ZIP of PDFs</div>
             </button>
           </div>
-          <!-- Image quality (hidden for PDF formats) -->
+          <!-- JPEG quality — set by the Print Quality preset, fine-tune here -->
           <div id="qualityRow" style="margin-bottom:.4rem;">
-            <label class="glbl">Image Quality <span id="qualityV" style="color:var(--p);font-weight:700;">92%</span></label>
-            <input type="range" id="imgQuality" min="60" max="100" value="92" step="2" style="width:100%;accent-color:var(--p);" oninput="document.getElementById('qualityV').textContent=this.value+'%';SA.gen.quality=this.value/100;markDirty();">
+            <label class="glbl">JPEG Quality <span id="qualityV" style="color:var(--p);font-weight:700;">97%</span></label>
+            <input type="range" id="imgQuality" min="60" max="100" value="97" step="1" style="width:100%;accent-color:var(--p);" oninput="document.getElementById('qualityV').textContent=this.value+'%';SA.gen.quality=this.value/100;_pqUpdateInfo();markDirty();">
           </div>
           <!-- Options -->
           <div style="display:flex;gap:.8rem;flex-wrap:wrap;">
@@ -1473,6 +1489,10 @@ $_sa = BASE_URL . '/api/usage_stats.php';
 (function(){
   var _orig = fabric.Image.prototype.render;
   fabric.Image.prototype.render = function(ctx){
+    // High-quality resampling when photos / templates are scaled for print
+    // (browser default is "low" = jagged/soft edges). QR & barcode images set
+    // imageSmoothing:false instead, so their modules stay pin-sharp.
+    if(this.imageSmoothing!==false){ try{ ctx.imageSmoothingQuality='high'; }catch(e){} }
     _orig.call(this,ctx);
     var bw=+(this.photoBorderW)||0, shape=this.photoShape||'rect';
     if(!this.eleType||this.eleType!=='photo'||bw<=0||shape==='rect') return;
@@ -1522,7 +1542,7 @@ const SA = {
   history:[], histIdx:-1,
   generating: false,
   outputBlob: null, outputType: '',
-  gen: { paper:'A4', orientation:'portrait', mTop:0,mBot:0,mLeft:0,mRight:0, gapX:0,gapY:0, format:'pdf', cardScale:1.0, cropMarks:false, quality:0.92 },
+  gen: { paper:'A4', orientation:'portrait', mTop:0,mBot:0,mLeft:0,mRight:0, gapX:0,gapY:0, format:'pdf', cardScale:1.0, cropMarks:false, quality:0.97, printQ:'best' },
   photoNum: new Map(),   // numeric photo index: '#5' → url (5.jpg / 05.jpg / 005.jpg all match roll 5)
   photoCount: 0,
   profileId: '',         // currently loaded School Profile
@@ -1636,6 +1656,7 @@ function goStep(n){
     // Auto layout only when the card/paper actually changed — re-running it on
     // every visit silently overrode the user's own orientation choice (and a
     // restored School Profile's saved layout).
+    _pqUpdateInfo();
     const key=_autoKey();
     if(SA.gen._autoKey!==key){ SA.gen._autoKey=key; autoLayout(); }
     else updateGenLayout();
@@ -2886,13 +2907,22 @@ function addQREl(){
 function _qrDataURL(val,px){
   px=Math.max(64,Math.round(px||512));
   try{
-    const tmp=document.createElement('div');
     const lvl=QRCode.CorrectLevel[SA.project.qrLevel||'M']??QRCode.CorrectLevel.M;
-    new QRCode(tmp,{text:String(val||'-'),width:px,height:px,colorDark:'#000000',colorLight:'#ffffff',correctLevel:lvl});
+    const opt={text:String(val||'-'),colorDark:'#000000',colorLight:'#ffffff',correctLevel:lvl};
+    // Pass 1: learn the module count, so pass 2 can draw every module as a
+    // WHOLE number of pixels — no blurry/uneven edges when printed.
+    const t1=document.createElement('div');
+    const q1=new QRCode(t1,{...opt,width:64,height:64});
+    const n=q1?._oQRCode?.getModuleCount?.()||0;
+    const quiet=3;                                   // quiet-zone modules each side
+    const mod=n?Math.max(2,Math.floor(px/(n+quiet*2))):0;
+    const inner=n?n*mod:px;
+    const tmp=document.createElement('div');
+    new QRCode(tmp,{...opt,width:inner,height:inner});
     const c=tmp.querySelector('canvas');
     if(!c) return null;
-    const pad=Math.round(px*0.07);
-    const out=document.createElement('canvas'); out.width=out.height=px+pad*2;
+    const pad=n?quiet*mod:Math.round(px*0.07);
+    const out=document.createElement('canvas'); out.width=out.height=inner+pad*2;
     const ctx=out.getContext('2d');
     ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,out.width,out.height);
     ctx.imageSmoothingEnabled=false;
@@ -3282,7 +3312,7 @@ function setFmt(fmt,el){
   if(el) el.classList.add('on');
   // Show quality slider for image-based formats
   const qRow=document.getElementById('qualityRow');
-  if(qRow) qRow.style.display=''; // card JPEG quality applies to every format
+  if(qRow) qRow.style.display=(PRINT_Q[SA.gen.printQ]||{}).png?'none':''; // JPEG quality applies to every format (hidden for lossless PNG)
 }
 function syncMargins(v){
   const val=parseFloat(v)||0;
@@ -3625,14 +3655,68 @@ function drawLayoutPreview(pw,ph,startX,startY,mL,mT,gX,gY,cW,cH,cols,rows,cutMM
    synchronously), so a card was exported before its photo/QR was placed and
    late callbacks then drew onto an already-disposed canvas. */
 const _genWarn={bar:0,photo:0,qr:0};
+/* Print quality presets. The card is rendered (text, QR, barcode, photo)
+   directly at this DPI — earlier every card was a 300 DPI / JPEG 92% image,
+   which looked fine on screen but soft on paper. */
+const PRINT_Q={
+  standard:{dpi:300,q:0.92,png:false,note:'300 DPI · JPEG 92% — smallest file. Good for drafts / on-screen.'},
+  high:    {dpi:450,q:0.95,png:false,note:'450 DPI · JPEG 95% — sharper text, ~2× file size of Standard.'},
+  best:    {dpi:600,q:0.97,png:false,note:'600 DPI · JPEG 97% — crisp small text, QR & barcode on inkjet / laser / PVC printers. Recommended.'},
+  lossless:{dpi:600,q:1,png:true,note:'600 DPI · PNG (lossless) — no compression at all; very large file. For professional / PVC card printers.'},
+};
+const MAX_CARD_PX=16e6;   // per-card canvas limit that works on every browser (iPhone Safari ≈16.7 MP)
+function _exportSpec(){
+  const pq=PRINT_Q[SA.gen.printQ]||PRINT_Q.best;
+  const sc=SA.gen.cardScale||1;
+  const w=(SA.project.cardW||3.375)*sc, h=(SA.project.cardH||2.125)*sc;
+  // never below the DPI chosen in Step 3, never above the browser's canvas limit
+  let dpi=Math.max(pq.dpi,SA.project.dpi||300);
+  const maxDpi=Math.floor(Math.sqrt(MAX_CARD_PX/(w*h)));
+  const capped=dpi>maxDpi; if(capped) dpi=maxDpi;
+  const pxW=Math.round(w*dpi);
+  return {dpi,capped,png:pq.png,q:pq.png?1:(SA.gen.quality||pq.q),pxW,pxH:Math.round(h*dpi),mult:pxW/(SA.dispW||600)};
+}
+function _imgKind(url){ return /^data:image\/png/.test(url)?'PNG':'JPEG'; }
+function _imgExt(url){ return _imgKind(url)==='PNG'?'png':'jpg'; }
+function setPrintQ(k){
+  if(!PRINT_Q[k]) k='best';
+  SA.gen.printQ=k;
+  document.querySelectorAll('#pqGrid [data-pq]').forEach(x=>x.classList.toggle('on',x.dataset.pq===k));
+  const pq=PRINT_Q[k];
+  if(!pq.png){
+    SA.gen.quality=pq.q;
+    const qi=document.getElementById('imgQuality'); if(qi) qi.value=Math.round(pq.q*100);
+    const qv=document.getElementById('qualityV'); if(qv) qv.textContent=Math.round(pq.q*100)+'%';
+  }
+  const qr=document.getElementById('qualityRow'); if(qr) qr.style.display=pq.png?'none':'';
+  _pqUpdateInfo();
+}
+function _pqUpdateInfo(){
+  const pq=PRINT_Q[SA.gen.printQ]||PRINT_Q.best, ex=_exportSpec();
+  const n=SA.excel.rows.length||1;
+  // rough bytes-per-pixel of the card images (measured on typical ID cards)
+  const q=ex.q, bpp=ex.png?1.6:(q>=0.99?1.0:q>=0.97?0.6:q>=0.95?0.45:q>=0.9?0.32:0.22);
+  const sides=(SA.project.sides==='double'&&SA.project.backJSON)?2:1;
+  const mb=ex.pxW*ex.pxH*bpp*n*sides/1048576;
+  const est=document.getElementById('pqEst');
+  if(est) est.textContent=`${ex.pxW}×${ex.pxH}px/card · ≈${mb<10?mb.toFixed(1):Math.round(mb)} MB for ${n} card${n>1?'s':''}`;
+  const note=document.getElementById('pqNote');
+  if(note){
+    let t=pq.note;
+    if(ex.capped) t+=` <b style="color:#d97706;">Large card — limited to ${ex.dpi} DPI (browser limit).</b>`;
+    const tpl=SA._frontTemplateImg;
+    if(tpl&&SA.project.cardW){
+      const tdpi=Math.round(tpl.naturalWidth/SA.project.cardW);
+      if(tdpi<ex.dpi*0.7) t+=` <br><span style="color:#b45309;">⚠ Your template image is only ~${tdpi} DPI (${tpl.naturalWidth}×${tpl.naturalHeight}px). Text, QR, barcode &amp; photos will print at ${ex.dpi} DPI, but the template's own artwork can only be as sharp as the image — for best results export the template at ${Math.round(SA.project.cardW*ex.dpi)}×${Math.round(SA.project.cardH*ex.dpi)}px.</span>`;
+    }
+    note.innerHTML=t;
+  }
+}
 async function renderCardSM(rowIdx,side){
   side=side||'front';
   const row=SA.excel.rows[rowIdx]||{};
-  const sc=SA.gen.cardScale||1.0;
-  const dpi=SA.project.dpi||300;
-  const cW=SA.project.cardW||3.375;
-  const expW=Math.round(cW*dpi*sc);
-  const mult=expW/SA.dispW;
+  const ex=_exportSpec();
+  const mult=ex.mult;
   const json=SA.project[side+'JSON'];
   const autoFit=document.getElementById('optAutoFit')?.checked!==false;
   const off=new fabric.StaticCanvas(null,{width:SA.dispW,height:SA.dispH,enableRetinaScaling:false,renderOnAddRemove:false});
@@ -3644,13 +3728,15 @@ async function renderCardSM(rowIdx,side){
     off.getObjects().forEach(obj=>{
       if(obj.eleType==='field'&&obj.fieldName) _setFieldText(obj,String(rowVal(row,obj.fieldName,rowIdx)),autoFit);
     });
-    await renderSpecialEls(off,row,rowIdx);
+    await renderSpecialEls(off,row,rowIdx,mult);
     if(SA.project.watermark){
       const W=SA.dispW,H=SA.dispH;
       off.add(new fabric.Text(SA.project.watermark,{fontFamily:'Arial',fontWeight:'bold',fontSize:Math.round(Math.min(W,H)*0.13),fill:'rgba(0,0,0,0.13)',originX:'center',originY:'center',left:W/2,top:H/2,angle:-Math.atan2(H,W)*180/Math.PI}));
     }
     off.renderAll();
-    return off.toDataURL({format:'jpeg',quality:SA.gen.quality||0.92,multiplier:mult});
+    return ex.png
+      ? off.toDataURL({format:'png',multiplier:mult})
+      : off.toDataURL({format:'jpeg',quality:ex.q,multiplier:mult});
   } finally { try{ off.dispose(); }catch(e){} }
 }
 /* Swap a placeholder for the real image at the SAME layer position (remove +
@@ -3669,7 +3755,8 @@ function _containIn(obj,img){
   const s=Math.min(bw/iw,bh/ih);
   img.set({left:obj.left+(bw-iw*s)/2,top:obj.top+(bh-ih*s)/2,scaleX:s,scaleY:s,opacity:obj.opacity});
 }
-async function renderSpecialEls(canvas,row,rowIdx){
+async function renderSpecialEls(canvas,row,rowIdx,mult){
+  mult=mult||1;
   const objs=[...canvas.getObjects()];
   await Promise.all(objs.map(async obj=>{
     if(obj.eleType==='photo'){
@@ -3682,17 +3769,18 @@ async function renderSpecialEls(canvas,row,rowIdx){
       if(!el){ canvas.remove(obj); return; }       // no sign → no purple placeholder box
       const img=new fabric.Image(el); _containIn(obj,img); _swapIn(canvas,obj,img);
     } else if(obj.eleType==='qr'){
-      const src=_qrDataURL(qrValue(row),Math.min(1024,Math.max(256,Math.round(Math.min(obj.getScaledWidth(),obj.getScaledHeight())*(SA.project.dpi||300)/96))));
+      // QR drawn at the exact print-pixel size of its box
+      const src=_qrDataURL(qrValue(row),Math.min(2400,Math.round(Math.min(obj.getScaledWidth(),obj.getScaledHeight())*mult)));
       const el=src?await _loadImg(src):null;
       if(!el){ canvas.remove(obj); _genWarn.qr++; return; }
-      const img=new fabric.Image(el); _containIn(obj,img); _swapIn(canvas,obj,img);
+      const img=new fabric.Image(el,{imageSmoothing:false}); _containIn(obj,img); _swapIn(canvas,obj,img);
     } else if(obj.eleType==='barcode'){
       const bf=SA.project.barcodeField;
       const bv=String(bf?rowVal(row,bf):(Object.values(row)[0]??'')).trim();
-      const src=bv?_barDataURL(bv,SA.project.barcodeType||'CODE128',obj.getScaledHeight(),obj.getScaledWidth()):null;
+      const src=bv?_barDataURL(bv,SA.project.barcodeType||'CODE128',obj.getScaledHeight()*mult,obj.getScaledWidth()*mult):null;
       const el=src?await _loadImg(src):null;
       if(!el){ canvas.remove(obj); _genWarn.bar++; return; }
-      const img=new fabric.Image(el); _containIn(obj,img); _swapIn(canvas,obj,img);
+      const img=new fabric.Image(el,{imageSmoothing:false}); _containIn(obj,img); _swapIn(canvas,obj,img);
     }
   }));
 }
@@ -3701,12 +3789,13 @@ async function renderSpecialEls(canvas,row,rowIdx){
    out as a tiny strip in the middle of the box). */
 function _barDataURL(val,fmt,boxH,boxW){
   try{
-    const H=Math.max(40,Math.round(boxH*4*0.72)), W=Math.max(80,Math.round((boxW||boxH*3)*4));
+    // boxH/boxW are the box size in final print pixels → bars are whole pixels at 1:1
+    const H=Math.max(30,Math.round(boxH*0.72)), W=Math.max(60,Math.round(boxW||boxH*3));
     const opt={format:fmt,height:H,fontSize:Math.round(H*0.32),textMargin:Math.round(H*0.04),margin:Math.round(H*0.06),lineColor:'#000',background:'rgba(0,0,0,0)',displayValue:true};
     const probe=document.createElement('canvas');
     JsBarcode(probe,val,{...opt,width:1,margin:0,displayValue:false});
     const modules=Math.max(1,probe.width);
-    const bar=Math.max(1,Math.min(12,Math.floor((W-2*opt.margin)/modules)));
+    const bar=Math.max(1,Math.min(40,Math.floor((W-2*opt.margin)/modules)));
     const c=document.createElement('canvas');
     JsBarcode(c,val,{...opt,width:bar});
     return c.toDataURL('image/png');
@@ -3777,11 +3866,8 @@ async function startGeneration(){
   // export silently upgrades to at least 300 regardless of what was picked
   // earlier. PNG/ZIP outputs are left at the user's chosen DPI since those
   // are as likely to be used on-screen as printed.
-  const _fmtForDpi=SA.gen.format||'pdf';
-  if((_fmtForDpi==='pdf'||_fmtForDpi==='pdfzip')&&(SA.project.dpi||300)<300){
-    SA.project.dpi=300;
-    toast('Print quality: using 300 DPI for the PDF output','info');
-  }
+  const _ex=_exportSpec();
+  if(_ex.capped) toast(`Large card: rendering at ${_ex.dpi} DPI (browser canvas limit)`,'info');
   // Respect "first card only" test mode
   const firstOnly=document.getElementById('firstOnly')?.checked;
   const totalCards=firstOnly?Math.min(1,SA.excel.rows.length||1):Math.max(SA.excel.rows.length,1);
@@ -3892,7 +3978,7 @@ async function buildPDFSheets(cardURLs,backURLs){
         const x=(startX+cc*(cW+gX))*IN2MM;
         const y=(startY+r*(cH+gY))*IN2MM;
         const W=cW*IN2MM, H=cH*IN2MM;
-        pdf.addImage(urls[i],'JPEG',x,y,W,H,undefined,'FAST');
+        pdf.addImage(urls[i],_imgKind(urls[i]),x,y,W,H,undefined,'FAST');
         pageCards.push({x,y,W,H,r,c:cc});
         i++;
       }
@@ -3963,10 +4049,10 @@ async function buildZIPOutput(cardURLs,backURLs){
     const b64=url.includes(',')? url.split(',')[1] : url;
     // Suffix "_front" only when a back side actually exists — a single-sided
     // card's files keep their plain original name.
-    zip.file(`${String(i+1).padStart(4,'0')}_${name}${hasBack?'_front':''}.jpg`,b64,{base64:true});
+    zip.file(`${String(i+1).padStart(4,'0')}_${name}${hasBack?'_front':''}.${_imgExt(url)}`,b64,{base64:true});
     if(hasBack&&backURLs[i]){
       const bb64=backURLs[i].includes(',')? backURLs[i].split(',')[1] : backURLs[i];
-      zip.file(`${String(i+1).padStart(4,'0')}_${name}_back.jpg`,bb64,{base64:true});
+      zip.file(`${String(i+1).padStart(4,'0')}_${name}_back.${_imgExt(backURLs[i])}`,bb64,{base64:true});
     }
   });
   const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
@@ -3975,7 +4061,9 @@ async function buildZIPOutput(cardURLs,backURLs){
 async function buildImageSheets(cardURLs,backURLs){
   // Render multi-card sheets as PNG images, zipped
   const {pKey,or,pw,ph,mT,mB,mL,mR,gX,gY,sc,center,mirrorBack}=_getLayoutParams();
-  const IN2PX=Math.min(300,SA.project.dpi||300); // was 96 dpi → blurry when printed
+  // As close to the card DPI as the browser's canvas limit allows for a full sheet
+  // (was 96 dpi → blurry when printed)
+  const IN2PX=Math.max(150,Math.min(_exportSpec().dpi,Math.floor(Math.sqrt(MAX_CARD_PX/(pw*ph)))));
   const cW=(SA.project.cardW||3.375)*sc, cH=(SA.project.cardH||2.125)*sc;
   const cols=SA.gen.cols||Math.max(1,Math.floor((pw-mL-mR+gX)/(cW+gX)));
   const rows=SA.gen.rows||Math.max(1,Math.floor((ph-mT-mB+gY)/(cH+gY)));
@@ -3991,6 +4079,7 @@ async function buildImageSheets(cardURLs,backURLs){
     const cvs=document.createElement('canvas');
     cvs.width=Math.round(pw*IN2PX); cvs.height=Math.round(ph*IN2PX);
     const ctx=cvs.getContext('2d');
+    ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
     ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,cvs.width,cvs.height);
     const loads=[]; let i=startIdx;
     for(let r=0;r<rows&&i<urls.length;r++){
@@ -4042,10 +4131,10 @@ async function buildPDFZip(cardURLs,backURLs){
     const row=SA.excel.rows[i]||{};
     const name=_safeName(row[_nameKey()],'card_'+(i+1)).substring(0,40);
     const pdf=new jsPDF({orientation:or,unit:'mm',format:[eW*IN2MM,eH*IN2MM]});
-    pdf.addImage(cardURLs[i],'JPEG',0,0,eW*IN2MM,eH*IN2MM,undefined,'FAST');
+    pdf.addImage(cardURLs[i],_imgKind(cardURLs[i]),0,0,eW*IN2MM,eH*IN2MM,undefined,'FAST');
     if(hasBack&&backURLs[i]){
       pdf.addPage([eW*IN2MM,eH*IN2MM],or);
-      pdf.addImage(backURLs[i],'JPEG',0,0,eW*IN2MM,eH*IN2MM,undefined,'FAST');
+      pdf.addImage(backURLs[i],_imgKind(backURLs[i]),0,0,eW*IN2MM,eH*IN2MM,undefined,'FAST');
     }
     const b64=pdf.output('datauristring').split(',')[1];
     zip.file(`${String(i+1).padStart(4,'0')}_${name}.pdf`,b64,{base64:true});
@@ -4090,7 +4179,7 @@ function showDownload(url,name,fmt,cardURLs){
       <button onclick="_downloadIndividualZIP()" style="padding:.38rem .85rem;border-radius:8px;background:#fff;border:1.5px solid #6366f1;color:#6366f1;font-size:.78rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:.35rem;">
         <i class="bi bi-file-earmark-zip"></i> Download All Individual Cards (ZIP)
       </button>
-      <span style="font-size:.7rem;color:#9ca3af;">1 card = 1 JPG file · ${cardURLs.length} files</span>`;
+      <span style="font-size:.7rem;color:#9ca3af;">1 card = 1 ${_imgExt(cardURLs[0]).toUpperCase()} file · ${cardURLs.length} files</span>`;
     area.appendChild(zipRow);
   }
   // Thumbnail grid — all cards, clickable lightbox
@@ -4201,7 +4290,7 @@ function lbDownloadSingle(){
   const nk=_nameKey();
   const safeName=_safeName(nk?row[nk]:'','card').substring(0,30);
   const a=document.createElement('a');
-  a.href=u; a.download=`card_${String(i+1).padStart(3,'0')}_${safeName}.jpg`;
+  a.href=u; a.download=`card_${String(i+1).padStart(3,'0')}_${safeName}.${_imgExt(u)}`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 async function _downloadIndividualZIP(){
@@ -4259,6 +4348,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   const pvFit=document.getElementById('pvBtnFit');
   if(pvFit) pvFit.style.opacity='1';
 
+  setPrintQ(SA.gen.printQ||'best');
   // Gen layout controls — HTML uses cardScale (range), mTop/mBot/mLeft/mRight, gapX/gapY
   updateGenLayout();
   ['genPaper','mTop','mBot','mLeft','mRight','gapX','gapY'].forEach(id=>document.getElementById(id)?.addEventListener('change',updateGenLayout));
@@ -4787,7 +4877,8 @@ function collectProfile(){
       cutZoneMM:Math.max(0,_num('cutZoneMM',3)),
       cardScale:_num('cardScale',100),
       format:SA.gen.format||'pdf',
-      quality:_num('imgQuality',92),
+      quality:_num('imgQuality',97),
+      printQ:SA.gen.printQ||'best',
       center:document.getElementById('optCenter')?.checked!==false,
       cutLines:document.getElementById('optCutLines')?.checked!==false,
       mirrorBack:document.getElementById('optMirrorBack')?.checked!==false,
@@ -4858,7 +4949,8 @@ async function applyProfile(p){
   document.getElementById('mAll').value=mA; syncMargins(mA);
   _setCutZone(Number.isFinite(+g.cutZoneMM)?+g.cutZoneMM:3);
   const cs=+g.cardScale||100; document.getElementById('cardScale').value=cs; document.getElementById('cardScaleV').textContent=cs+'%'; SA.gen.cardScale=cs/100;
-  const q=+g.quality||92; document.getElementById('imgQuality').value=q; document.getElementById('qualityV').textContent=q+'%'; SA.gen.quality=q/100;
+  setPrintQ(PRINT_Q[g.printQ]?g.printQ:'best');
+  if(!PRINT_Q[SA.gen.printQ].png&&+g.quality){ const q=+g.quality; document.getElementById('imgQuality').value=q; document.getElementById('qualityV').textContent=q+'%'; SA.gen.quality=q/100; _pqUpdateInfo(); }
   const fmt=['pdf','png','zip','pdfzip'].includes(g.format)?g.format:'pdf'; setFmt(fmt,document.getElementById('fmt-'+fmt));
   document.getElementById('optCenter').checked=g.center!==false;
   document.getElementById('optCutLines').checked=g.cutLines!==false;
