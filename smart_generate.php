@@ -352,6 +352,25 @@ $_sa = BASE_URL . '/api/usage_stats.php';
 .sec-title{font-size:.72rem;font-weight:800;color:var(--gt);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem;display:flex;align-items:center;gap:.35rem;}
 .sec-title i{color:var(--p);}
 .info-chip{display:inline-flex;align-items:center;gap:.3rem;padding:.22rem .55rem;background:var(--pL);color:var(--p);border-radius:10px;font-size:.68rem;font-weight:700;}
+.toast-warn{background:#d97706;}
+
+/* ── School Profile bar (save / restore full setup) ── */
+.prof-bar{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;background:#fff;border:1px solid var(--g);border-left:4px solid #059669;border-radius:var(--r);padding:.55rem .8rem;margin-bottom:1rem;box-shadow:0 1px 4px rgba(0,0,0,.04);}
+.prof-lbl{font-size:.78rem;font-weight:800;color:var(--gt);display:flex;align-items:center;gap:.35rem;white-space:nowrap;}
+.prof-lbl i{color:#059669;font-size:1rem;}
+.prof-sel{flex:1;min-width:180px;max-width:380px;font-size:.8rem;padding:.38rem .55rem;font-weight:600;}
+.prof-del:hover{border-color:var(--err)!important;color:var(--err)!important;}
+.prof-status{font-size:.68rem;color:var(--gm);font-weight:600;margin-left:auto;white-space:nowrap;}
+.prof-status.dirty{color:var(--warn);}
+@media(max-width:640px){.prof-bar .btn span.lbl-t{display:none}.prof-sel{max-width:none;min-width:0;flex-basis:100%;order:2}.prof-status{flex-basis:100%;order:3;margin-left:0}}
+#profNameOv{position:fixed;inset:0;z-index:9900;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;padding:1rem;}
+#profNameOv.show{display:flex;}
+.pn-box{background:#fff;border-radius:14px;width:100%;max-width:420px;padding:1.1rem 1.15rem;box-shadow:0 24px 60px rgba(0,0,0,.3);}
+.pn-box h6{font-size:.95rem;font-weight:800;margin:0 0 .65rem;color:var(--gt);display:flex;align-items:center;gap:.4rem;}
+.pn-box h6 i{color:#059669;}
+.pn-hint{font-size:.7rem;color:var(--gm);line-height:1.6;margin:.5rem 0 .8rem;}
+.pn-acts{display:flex;gap:.5rem;justify-content:flex-end;}
+@media(max-width:900px){body.des-step4-mob .prof-bar{display:none;}}
 </style>
 
 <!-- ── Quick Print Banner ── -->
@@ -464,7 +483,7 @@ $_sa = BASE_URL . '/api/usage_stats.php';
         <div class="pt-sec">
           <div class="pt-sh"><i class="bi bi-copy"></i> Copies Per Page</div>
           <div style="display:flex;align-items:center;gap:.5rem;">
-            <input type="range" id="ptCopies" min="1" max="50" value="0" step="1" style="flex:1;accent-color:#6366f1;" oninput="ptOnCopiesChange(this.value)">
+            <input type="range" id="ptCopies" min="0" max="50" value="0" step="1" style="flex:1;accent-color:#6366f1;" oninput="ptOnCopiesChange(this.value)">
             <span id="ptCopiesVal" style="font-size:.78rem;font-weight:800;color:#6366f1;min-width:60px;text-align:right;">Auto-fill</span>
           </div>
           <div style="font-size:.63rem;color:#94a3b8;margin-top:.18rem;">0 = auto-fill page · or set exact number of cards per sheet</div>
@@ -511,6 +530,37 @@ $_sa = BASE_URL . '/api/usage_stats.php';
   <div class="sw-item" id="swi5">
     <div class="sw-num" id="swn5">5</div>
     <span class="sw-lbl">Generate</span>
+  </div>
+</div>
+
+<!-- ── School Profile: save / restore the whole setup per school ── -->
+<div class="prof-bar" id="profBar">
+  <div class="prof-lbl"><i class="bi bi-building-check"></i> School Profile</div>
+  <select id="profSel" class="gsel prof-sel" onchange="onProfileSelect(this.value)" title="Select a saved school — its full setup loads instantly">
+    <option value="">— Select saved school —</option>
+  </select>
+  <button class="btn btn-ok btn-sm" onclick="saveProfile(false)" title="Save current setup (Ctrl+S)"><i class="bi bi-save"></i> <span class="lbl-t">Save</span></button>
+  <button class="btn btn-s btn-sm" onclick="saveProfile(true)" title="Save as a new school profile"><i class="bi bi-plus-square"></i> <span class="lbl-t">Save as New</span></button>
+  <button class="btn-ico" onclick="exportProfile()" title="Backup selected profile (.json) — move it to another computer"><i class="bi bi-download"></i></button>
+  <button class="btn-ico" onclick="document.getElementById('profImpInp').click()" title="Import profile backup (.json)"><i class="bi bi-upload"></i></button>
+  <button class="btn-ico prof-del" onclick="deleteProfile()" title="Delete selected profile"><i class="bi bi-trash"></i></button>
+  <input type="file" id="profImpInp" accept=".json,application/json" class="hidden" onchange="importProfile(this)">
+  <span id="profStatus" class="prof-status">Save once — next time just select the school</span>
+</div>
+
+<!-- Profile name dialog -->
+<div id="profNameOv" onclick="if(event.target===this)_profNameDone(null)">
+  <div class="pn-box">
+    <h6><i class="bi bi-building-add"></i> <span id="profNameTitle">Save School Profile</span></h6>
+    <input class="ginp" id="profNameInp" maxlength="80" placeholder="e.g. ABC Public School — Session 2026-27" autocomplete="off">
+    <div class="pn-hint">
+      <b>Saved:</b> column roles (QR / Barcode / Photo / Sign), card size, DPI, sides, template images, full card design, common signature, paper / layout / print settings.<br>
+      <b>Not saved:</b> Excel data &amp; student photos (they change every batch).
+    </div>
+    <div class="pn-acts">
+      <button class="btn btn-s btn-sm" onclick="_profNameDone(null)">Cancel</button>
+      <button class="btn btn-ok btn-sm" onclick="_profNameDone(document.getElementById('profNameInp').value)"><i class="bi bi-save"></i> Save</button>
+    </div>
   </div>
 </div>
 
@@ -600,7 +650,7 @@ $_sa = BASE_URL . '/api/usage_stats.php';
           <span style="font-size:.68rem;font-weight:400;color:var(--gm);margin-left:auto;">Click roles to assign · QR = multiple OK · Barcode = one only</span>
         </div>
         <div class="sc-b">
-          <div id="autoDetectNotice" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:7px;padding:.4rem .65rem;font-size:.74rem;color:#166534;font-weight:600;margin-bottom:.55rem;display:flex;align-items:center;gap:.4rem;">
+          <div id="autoDetectNotice" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:7px;padding:.4rem .65rem;font-size:.74rem;color:#166534;font-weight:600;margin-bottom:.55rem;align-items:center;gap:.4rem;">
             <i class="bi bi-magic"></i>
             <span id="autoDetectText"></span>
           </div>
@@ -619,7 +669,7 @@ $_sa = BASE_URL . '/api/usage_stats.php';
           </div>
           <div style="margin-top:.55rem;">
             <label class="glbl">QR Error Correction</label>
-            <select class="gsel" id="qrLevel" style="font-size:.78rem;">
+            <select class="gsel" id="qrLevel" style="font-size:.78rem;" onchange="SA.project.qrLevel=this.value;refreshQRPreview();markDirty()">
               <option value="M">M — Medium (15% recovery)</option>
               <option value="L">L — Low (7% recovery)</option>
               <option value="Q">Q — High (25% recovery)</option>
@@ -638,7 +688,7 @@ $_sa = BASE_URL . '/api/usage_stats.php';
           </div>
           <div style="margin-top:.55rem;">
             <label class="glbl">Barcode Format</label>
-            <select class="gsel" id="barcodeType" style="font-size:.78rem;" onchange="refreshBarPreview()">
+            <select class="gsel" id="barcodeType" style="font-size:.78rem;" onchange="refreshBarPreview();markDirty()">
               <option value="CODE128">CODE128 (alphanumeric)</option>
               <option value="EAN13">EAN-13 (13 digits)</option>
               <option value="EAN8">EAN-8 (8 digits)</option>
@@ -654,11 +704,13 @@ $_sa = BASE_URL . '/api/usage_stats.php';
         <div class="sc-b">
           <div style="margin-bottom:.55rem;">
             <label class="glbl">Watermark Text (optional)</label>
-            <input class="ginp" id="watermarkText" placeholder="e.g. CONFIDENTIAL" style="font-size:.78rem;">
+            <input class="ginp" id="watermarkText" placeholder="e.g. CONFIDENTIAL" maxlength="40" style="font-size:.78rem;" oninput="SA.project.watermark=this.value.trim();markDirty()">
+            <div style="font-size:.64rem;color:var(--gm);margin-top:.2rem;">Printed faintly &amp; diagonally across every card</div>
           </div>
           <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.78rem;font-weight:600;color:var(--gt);">
-            <input type="checkbox" id="serialEnabled"> Auto Serial Number column
+            <input type="checkbox" id="serialEnabled" onchange="SA.project.serialEnabled=this.checked;if(SA.canvas)buildFieldsList();markDirty()"> Auto Serial Number column
           </label>
+          <div style="font-size:.64rem;color:var(--gm);margin-top:.2rem;padding-left:1.4rem;">Adds a <b>[S.No]</b> field (1, 2, 3…) in the Designer</div>
         </div>
       </div>
     </div>
@@ -962,6 +1014,7 @@ $_sa = BASE_URL . '/api/usage_stats.php';
       <button class="btn-ico" onclick="toggleGrid()" title="Toggle snap grid" id="gridBtn"><i class="bi bi-grid-3x3"></i></button>
       <button class="btn-ico" onclick="undoC()" title="Undo (Ctrl+Z)"><i class="bi bi-arrow-counterclockwise"></i></button>
       <button class="btn-ico" onclick="redoC()" title="Redo (Ctrl+Y)"><i class="bi bi-arrow-clockwise"></i></button>
+      <button class="btn-ico" onclick="saveProfile(false)" title="Save to School Profile (Ctrl+S)" style="color:#059669;"><i class="bi bi-save"></i></button>
       <span style="flex:1;min-width:.25rem;"></span>
       <button class="btn btn-ok btn-sm" onclick="step4Next()" style="white-space:nowrap;">Generate <i class="bi bi-arrow-right"></i></button>
     </div>
@@ -1075,6 +1128,11 @@ $_sa = BASE_URL . '/api/usage_stats.php';
               <span class="rp-lbl">Color</span>
               <input type="color" class="rp-clr" id="pFill" oninput="ap('fill',this.value)">
               <input class="rp-inp" id="pFillH" maxlength="7" placeholder="#000000" oninput="syncFillHex()">
+            </div>
+            <div class="rp-row" id="fitModeRow">
+              <span class="rp-lbl" title="What happens when a value is longer than the box">Long</span>
+              <button class="rp-btn" id="pFitShrink" onclick="setFitMode('shrink')" title="Shrink font so long names stay inside the box (recommended)" style="flex:1;font-size:.64rem;">Shrink to fit</button>
+              <button class="rp-btn" id="pFitWrap" onclick="setFitMode('wrap')" title="Wrap to next lines (good for address)" style="flex:1;font-size:.64rem;">Wrap lines</button>
             </div>
             <div class="rp-row" id="staticTextRow">
               <span class="rp-lbl">Text</span>
@@ -1229,6 +1287,8 @@ $_sa = BASE_URL . '/api/usage_stats.php';
                 <option value="A3">A3 (297×420 mm)</option>
                 <option value="A5">A5 (148×210 mm)</option>
                 <option value="Letter">Letter (8.5×11")</option>
+                <option value="4x6">4×6" Photo</option>
+                <option value="5x7">5×7" Photo</option>
               </select>
             </div>
             <div>
@@ -1263,10 +1323,13 @@ $_sa = BASE_URL . '/api/usage_stats.php';
           <!-- Center + crop marks checkboxes -->
           <div style="display:flex;gap:.8rem;margin-bottom:.45rem;flex-wrap:wrap;">
             <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.76rem;font-weight:600;color:var(--gt);">
-              <input type="checkbox" id="optCenter" checked> Center on page
+              <input type="checkbox" id="optCenter" checked onchange="updateGenLayout()"> Center on page
             </label>
             <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.76rem;font-weight:600;color:var(--gt);">
-              <input type="checkbox" id="optCutLines" checked> Cut guide lines
+              <input type="checkbox" id="optCutLines" checked onchange="updateGenLayout()"> Cut guide lines
+            </label>
+            <label id="optMirrorWrap" style="display:none;align-items:center;gap:.4rem;cursor:pointer;font-size:.76rem;font-weight:600;color:var(--gt);" title="Back side columns are mirrored so each back lands exactly behind its own front when printed duplex (flip on long edge)">
+              <input type="checkbox" id="optMirrorBack" checked> Mirror back for duplex
             </label>
           </div>
           <!-- Hidden individual margin/gap inputs (kept for JS compatibility) -->
@@ -1282,37 +1345,39 @@ $_sa = BASE_URL . '/api/usage_stats.php';
         <div class="sc-h"><i class="bi bi-file-earmark-arrow-down"></i> Download Format</div>
         <div class="sc-b" style="padding:.5rem .6rem;">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:.35rem;margin-bottom:.5rem;">
-            <button class="fmt-btn on" id="fmt-pdf" onclick="setFmt('pdf',this)" style="flex-direction:column;align-items:center;padding:.5rem .3rem;text-align:center;">
+            <button class="fmt-btn on" id="fmt-pdf" onclick="setFmt('pdf',this);markDirty()" style="flex-direction:column;align-items:center;padding:.5rem .3rem;text-align:center;">
               <i class="bi bi-file-earmark-pdf-fill" style="font-size:1.4rem;color:#dc2626;display:block;margin-bottom:.2rem;"></i>
               <div class="fmt-label" style="font-size:.75rem;">PDF Sheets</div>
               <div class="fmt-sub" style="font-size:.65rem;">Print-ready</div>
             </button>
-            <button class="fmt-btn" id="fmt-png" onclick="setFmt('png',this)" style="flex-direction:column;align-items:center;padding:.5rem .3rem;text-align:center;">
+            <button class="fmt-btn" id="fmt-png" onclick="setFmt('png',this);markDirty()" style="flex-direction:column;align-items:center;padding:.5rem .3rem;text-align:center;">
               <i class="bi bi-file-earmark-image" style="font-size:1.4rem;color:#7c3aed;display:block;margin-bottom:.2rem;"></i>
               <div class="fmt-label" style="font-size:.75rem;">PNG Sheets</div>
               <div class="fmt-sub" style="font-size:.65rem;">Image pages</div>
             </button>
-            <button class="fmt-btn" id="fmt-zip" onclick="setFmt('zip',this)" style="flex-direction:column;align-items:center;padding:.5rem .3rem;text-align:center;">
+            <button class="fmt-btn" id="fmt-zip" onclick="setFmt('zip',this);markDirty()" style="flex-direction:column;align-items:center;padding:.5rem .3rem;text-align:center;">
               <i class="bi bi-file-earmark-zip" style="font-size:1.4rem;color:#059669;display:block;margin-bottom:.2rem;"></i>
               <div class="fmt-label" style="font-size:.75rem;">Card ZIP</div>
               <div class="fmt-sub" style="font-size:.65rem;">1 card = 1 file</div>
             </button>
-            <button class="fmt-btn" id="fmt-pdfzip" onclick="setFmt('pdfzip',this)" style="flex-direction:column;align-items:center;padding:.5rem .3rem;text-align:center;">
+            <button class="fmt-btn" id="fmt-pdfzip" onclick="setFmt('pdfzip',this);markDirty()" style="flex-direction:column;align-items:center;padding:.5rem .3rem;text-align:center;">
               <i class="bi bi-journals" style="font-size:1.4rem;color:#0369a1;display:block;margin-bottom:.2rem;"></i>
               <div class="fmt-label" style="font-size:.75rem;">PDF per Card</div>
               <div class="fmt-sub" style="font-size:.65rem;">ZIP of PDFs</div>
             </button>
           </div>
           <!-- Image quality (hidden for PDF formats) -->
-          <div id="qualityRow" style="display:none;margin-bottom:.4rem;">
+          <div id="qualityRow" style="margin-bottom:.4rem;">
             <label class="glbl">Image Quality <span id="qualityV" style="color:var(--p);font-weight:700;">92%</span></label>
-            <input type="range" id="imgQuality" min="60" max="100" value="92" step="2" style="width:100%;accent-color:var(--p);" oninput="document.getElementById('qualityV').textContent=this.value+'%';SA.gen.quality=this.value/100;">
+            <input type="range" id="imgQuality" min="60" max="100" value="92" step="2" style="width:100%;accent-color:var(--p);" oninput="document.getElementById('qualityV').textContent=this.value+'%';SA.gen.quality=this.value/100;markDirty();">
           </div>
           <!-- Options -->
           <div style="display:flex;gap:.8rem;flex-wrap:wrap;">
-            <input type="hidden" id="optCropMarks" value="1"><!-- crop marks always on when cut zone > 0 -->
-            <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.76rem;font-weight:600;color:#f59e0b;">
+                        <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.76rem;font-weight:600;color:#f59e0b;">
               <input type="checkbox" id="firstOnly"> Test mode (1st card only)
+            </label>
+            <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.76rem;font-weight:600;color:var(--gt);" title="Long names automatically shrink to stay inside their box (per-field option in Designer → Long)">
+              <input type="checkbox" id="optAutoFit" checked> Auto-fit long text
             </label>
           </div>
         </div>
@@ -1323,6 +1388,7 @@ $_sa = BASE_URL . '/api/usage_stats.php';
       <button class="btn btn-v" id="genBtn" style="width:100%;font-size:.95rem;padding:.65rem;" onclick="startGeneration()">
         <i class="bi bi-lightning-charge-fill"></i> Generate &amp; Download
       </button>
+      <button class="btn btn-s" style="width:100%;margin-top:.4rem;color:#059669;border-color:#a7f3d0;" onclick="saveProfile(false)"><i class="bi bi-save"></i> Save these settings to School Profile</button>
       <div id="genProgressArea" class="hidden" style="margin-top:.6rem;">
         <div style="font-size:.78rem;color:var(--gm);margin-bottom:.3rem;" id="genProgressTxt">Preparing…</div>
         <div class="gen-progress-wrap"><div class="gen-progress-bar" id="genProgressBar" style="width:0%"></div></div>
@@ -1435,7 +1501,7 @@ const SA = {
   project: {
     cardW:2.125, cardH:3.375, dpi:300, bgColor:'#ffffff', sides:'single',
     photoCol:'', signCol:'',
-    qrFields:[], barcodeField:'', barcodeType:'CODE128',
+    qrFields:[], barcodeField:'', barcodeType:'CODE128', qrLevel:'M',
     watermark:'', serialEnabled:false,
     frontJSON:null, backJSON:null,
     frontBgURL:null, backBgURL:null,
@@ -1456,8 +1522,88 @@ const SA = {
   history:[], histIdx:-1,
   generating: false,
   outputBlob: null, outputType: '',
-  gen: { paper:'A4', orientation:'portrait', mTop:0,mBot:0,mLeft:0,mRight:0, gapX:0,gapY:0, format:'pdf', cardScale:1.0, cropMarks:false },
+  gen: { paper:'A4', orientation:'portrait', mTop:0,mBot:0,mLeft:0,mRight:0, gapX:0,gapY:0, format:'pdf', cardScale:1.0, cropMarks:false, quality:0.92 },
+  photoNum: new Map(),   // numeric photo index: '#5' → url (5.jpg / 05.jpg / 005.jpg all match roll 5)
+  photoCount: 0,
+  profileId: '',         // currently loaded School Profile
+  _dirty: false,         // unsaved designer changes
 };
+
+/* Extra Fabric properties that must survive toJSON/loadFromJSON */
+const JSON_PROPS=['eleType','fieldName','photoShape','photoBorderW','photoBorderColor','fitMode'];
+const SERIAL_FIELD='S.No';
+
+/* ══════════════════════════════════════
+   SMALL HELPERS
+══════════════════════════════════════ */
+function esc(v){ return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function _num(id,def){ const v=parseFloat(document.getElementById(id)?.value); return Number.isFinite(v)?v:def; }
+function _normKey(s){ return String(s??'').trim().toLowerCase().replace(/\s+/g,' '); }
+/* Header lookup tolerant to case / extra spaces — a saved design made with
+   "Student Name" still fills when the new Excel says "student name ". */
+let _hdrCache={src:null,map:null};
+function _hdrMap(){
+  if(_hdrCache.src!==SA.excel.headers){
+    const m=new Map(); SA.excel.headers.forEach(h=>{ const k=_normKey(h); if(!m.has(k)) m.set(k,h); });
+    _hdrCache={src:SA.excel.headers,map:m};
+  }
+  return _hdrCache.map;
+}
+function rowVal(row,name,rowIdx){
+  if(!row||!name) return '';
+  if(Object.prototype.hasOwnProperty.call(row,name)) return row[name]??'';
+  if(name===SERIAL_FIELD&&rowIdx!=null) return rowIdx+1;
+  const k=_hdrMap().get(_normKey(name));
+  return k!==undefined?(row[k]??''):'';
+}
+function qrValue(row){
+  const f=SA.project.qrFields.filter(Boolean);
+  if(f.length) return f.map(n=>String(rowVal(row,n))).join('\n').trim()||'-';
+  return String(Object.values(row||{})[0]??'').trim()||'-';
+}
+/* Load an image element (null on failure). Cache only small/shared images
+   (templates, signatures) — never every student photo (memory). */
+const _imgCache=new Map();
+function _loadImg(url,cache){
+  if(!url) return Promise.resolve(null);
+  if(cache&&_imgCache.has(url)) return _imgCache.get(url);
+  const p=new Promise(res=>{
+    const im=new Image();
+    if(!/^data:|^blob:/.test(url)) im.crossOrigin='anonymous';
+    im.onload=()=>res(im.naturalWidth?im:null);
+    im.onerror=()=>res(null);
+    im.src=url;
+  });
+  if(cache) _imgCache.set(url,p);
+  return p;
+}
+function _readFileAsDataURL(f){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(r.error); r.readAsDataURL(f); }); }
+/* Downscale huge camera photos (4000px+) — 1200px is still > 600 DPI for a
+   photo box on an ID card, and it makes generation far faster & lighter. */
+async function _shrinkDataURL(url,maxPx,type){
+  const img=await _loadImg(url);
+  if(!img) return null;
+  const w=img.naturalWidth,h=img.naturalHeight,s=Math.min(1,maxPx/Math.max(w,h));
+  if(s>=1) return url;
+  const c=document.createElement('canvas'); c.width=Math.round(w*s); c.height=Math.round(h*s);
+  const ctx=c.getContext('2d'); ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
+  if(type==='image/jpeg'){ ctx.fillStyle='#fff'; ctx.fillRect(0,0,c.width,c.height); }
+  ctx.drawImage(img,0,0,c.width,c.height);
+  return c.toDataURL(type,0.93);
+}
+async function _mapLimit(arr,n,fn){
+  let i=0; const out=new Array(arr.length);
+  await Promise.all(Array.from({length:Math.min(n,arr.length)},async()=>{ while(i<arr.length){ const k=i++; out[k]=await fn(arr[k],k); } }));
+  return out;
+}
+/* Photo / sign file-name key: "Photos/05.JPG" → "05", "A.K. Sharma.jpg" → "a.k. sharma"
+   (only real image extensions are stripped, so names with dots stay intact). */
+function _fileKey(v){
+  let s=String(v??'').trim().toLowerCase();
+  s=s.split(/[\\/]/).pop();
+  return s.replace(/\.(jpe?g|jfif|png|webp|gif|bmp|heic|heif|avif|tiff?)$/i,'').trim();
+}
+function markDirty(){ SA._dirty=true; _profStatus(); }
 
 /* ══════════════════════════════════════
    WIZARD NAVIGATION
@@ -1481,14 +1627,22 @@ function goStep(n){
   // to stay visible behind the Add/Properties sheets. Same fix already
   // applied on school/school_icard.php's Designer.
   document.body.classList.toggle('des-step4-mob', n===4);
-  if(n===4) setTimeout(initDesignerIfNeeded,80);
+  if(n===4) setTimeout(()=>{ if(!initDesignerIfNeeded()) refreshDesignerBg(); },80);
   if(n===5) setTimeout(()=>{
-    syncMargins(document.getElementById('mAll')?.value||'0.2');
-    applyCutZone(document.getElementById('cutZoneMM')?.value||'3');
-    autoLayout();
+    syncMargins(_num('mAll',0.2));
+    applyCutZone(_num('cutZoneMM',3));
+    const mw=document.getElementById('optMirrorWrap');
+    if(mw) mw.style.display=SA.project.sides==='double'?'flex':'none';
+    // Auto layout only when the card/paper actually changed — re-running it on
+    // every visit silently overrode the user's own orientation choice (and a
+    // restored School Profile's saved layout).
+    const key=_autoKey();
+    if(SA.gen._autoKey!==key){ SA.gen._autoKey=key; autoLayout(); }
+    else updateGenLayout();
   },80);
   window.scrollTo(0,0);
 }
+function _autoKey(){ return [(+SA.project.cardW).toFixed(3),(+SA.project.cardH).toFixed(3),document.getElementById('genPaper')?.value||'A4'].join('|'); }
 
 function validateStep(n){
   if(n===1){
@@ -1511,9 +1665,22 @@ function step3Next(){
   goStep(4);
 }
 function step4Next(){
-  if(SA.canvas) SA.project[SA.curSide+'JSON']=SA.canvas.toJSON(['eleType','fieldName','photoShape','photoBorderW','photoBorderColor']);
+  snapCurrentSide();
   goStep(5);
 }
+/* Snapshot of the designer canvas WITHOUT the background image — the template
+   is stored once per side (frontBgURL/backBgURL) and re-applied on load, so the
+   JSON stays small (profiles/undo) and an old template can never override a
+   newly chosen one. Live-preview values are cleared first so one student's
+   data never gets baked into the template. */
+function snapCanvas(){
+  if(!SA.canvas) return null;
+  if(SA.previewMode) togglePreviewMode();
+  const j=SA.canvas.toJSON(JSON_PROPS);
+  delete j.backgroundImage;
+  return j;
+}
+function snapCurrentSide(){ if(SA.canvas) SA.project[SA.curSide+'JSON']=snapCanvas(); }
 
 /* ══════════════════════════════════════
    DRAG-AND-DROP ZONE HELPERS
@@ -1537,54 +1704,87 @@ function dzDrop(e,type){
 ══════════════════════════════════════ */
 function loadExcel(file){
   if(!file) return;
+  // CSV is read as UTF-8 text (Hindi / special characters survive) and with
+  // raw:true so roll numbers like "007" or long mobile numbers are not turned
+  // into 7 / 9.87E+09.
+  const isCSV=/\.csv$/i.test(file.name)||file.type==='text/csv';
   const reader=new FileReader();
   reader.onload=e=>{
     try{
-      const wb=XLSX.read(e.target.result,{type:'array'});
+      const wb=isCSV?XLSX.read(e.target.result,{type:'string',raw:true,dateNF:'dd/mm/yyyy'}):XLSX.read(e.target.result,{type:'array',dateNF:'dd/mm/yyyy'});
       const ws=wb.Sheets[wb.SheetNames[0]];
-      const json=XLSX.utils.sheet_to_json(ws,{defval:''});
-      if(!json.length){toast('Excel is empty','warn');return;}
-      SA.excel.headers=Object.keys(json[0]);
-      SA.excel.rows=json;
+      // raw:false → values as text (dates "12/05/2014", not 41771); Excel's
+      // locale "short date" format is shown Indian-style dd/mm/yyyy (dateNF)
+      const json=XLSX.utils.sheet_to_json(ws,{defval:'',raw:false});
+      if(!json.length){toast('Excel is empty — first row must be the column headings','warn');return;}
+      // Clean headers (trim) and drop blank helper columns ("__EMPTY") that hold no data
+      const rawHeaders=Object.keys(json[0]);
+      const keep=rawHeaders.filter(h=>!/^__EMPTY/.test(h)||json.some(r=>String(r[h]).trim()!==''));
+      const headers=[]; const hMap={};
+      keep.forEach(h=>{ let n=String(h).trim()||'Column'; let k=n,i=2; while(headers.includes(k)) k=n+'_'+(i++); headers.push(k); hMap[h]=k; });
+      const rows=json.map(r=>{ const o={}; keep.forEach(h=>{ o[hMap[h]]=String(r[h]??'').trim(); }); return o; })
+                     .filter(o=>headers.some(h=>o[h]!==''));
+      if(!rows.length){toast('Excel has headings but no data rows','warn');return;}
+      SA.excel.headers=headers;
+      SA.excel.rows=rows;
+      SA.dcPhotos=null;           // a manually loaded sheet replaces Data Collection records
+      SA.previewRow=0;
       autoDetectColTypes();
+      sanitizeRoles();
       const dz=document.getElementById('dzExcel');
       dz.classList.add('filled'); dz.classList.remove('drag');
-      document.getElementById('excelOk').textContent=`✓ ${file.name} — ${json.length} rows · ${SA.excel.headers.length} columns`;
+      document.getElementById('excelOk').textContent=`✓ ${file.name} — ${rows.length} rows · ${headers.length} columns`;
       buildExcelPreview();
       updateStep1Status();
-      toast(`Excel loaded: ${json.length} rows`,'ok');
+      if(SA.canvas){ buildFieldsList(); _updateRowLabel(); }
+      toast(`Excel loaded: ${rows.length} rows`,'ok');
+      setTimeout(checkProfileFields,400);
     } catch(err){ toast('Failed to read Excel: '+err.message,'error'); }
+    finally{ const inp=document.getElementById('inpExcel'); if(inp) inp.value=''; }
   };
-  reader.readAsArrayBuffer(file);
+  if(isCSV) reader.readAsText(file,'UTF-8'); else reader.readAsArrayBuffer(file);
 }
 
 function autoDetectColTypes(){
   const ct={};
   const NAME_KW=/name|naam|student|pupil/i;
   const CLASS_KW=/class|grade|std|standard/i;
-  const ROLL_KW=/roll|id|no|number|sr|serial/i;
-  const PHOTO_KW=/photo|image|pic|img|file/i;
+  const ROLL_KW=/roll|\bid\b|\bno\b|number|\bsr\b|serial|adm/i;
+  const PHOTO_KW=/photo|image|\bpic|\bimg|file/i;
   const SIGN_KW=/sign|signature/i;
+  // Photo / Sign are checked FIRST — "Student Photo" used to be caught by the
+  // name rule ("student") and the photo column was never auto-detected.
   SA.excel.headers.forEach(h=>{
-    if(NAME_KW.test(h)) ct[h]='name';
+    if(SIGN_KW.test(h)){ ct[h]='sign'; if(!SA.project.signCol) SA.project.signCol=h; }
+    else if(PHOTO_KW.test(h)){ ct[h]='photo'; if(!SA.project.photoCol) SA.project.photoCol=h; }
+    else if(NAME_KW.test(h)) ct[h]='name';
     else if(CLASS_KW.test(h)) ct[h]='class';
     else if(ROLL_KW.test(h)) ct[h]='roll';
-    else if(PHOTO_KW.test(h)){ ct[h]='photo'; if(!SA.project.photoCol) SA.project.photoCol=h; }
-    else if(SIGN_KW.test(h)){ ct[h]='sign'; if(!SA.project.signCol) SA.project.signCol=h; }
     else ct[h]='';
   });
   SA.excel.colTypes=ct;
+}
+
+/* Column roles that point to columns not present in the current sheet are
+   re-mapped case-insensitively (profile made with "Roll No", new sheet says
+   "roll no") or dropped. */
+function sanitizeRoles(){
+  if(!SA.excel.headers.length) return;
+  const m=_hdrMap(), fix=c=>c?(m.get(_normKey(c))||''):'';
+  SA.project.qrFields=[...new Set(SA.project.qrFields.map(fix).filter(Boolean))];
+  SA.project.barcodeField=fix(SA.project.barcodeField);
+  SA.project.photoCol=fix(SA.project.photoCol);
+  SA.project.signCol=fix(SA.project.signCol);
 }
 
 function buildExcelPreview(){
   const area=document.getElementById('excelPreviewArea');
   const tbl=document.getElementById('excelPreviewTbl');
   const chip=document.getElementById('excelInfoChip');
-  chip.textContent=`${SA.excel.rows.length} rows · ${SA.excel.headers.length} columns`;
-  let html='<thead><tr>'+SA.excel.headers.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>';
-  const preview=SA.excel.rows.slice(0,5);
-  preview.forEach(row=>{
-    html+='<tr>'+SA.excel.headers.map(h=>`<td>${row[h]||''}</td>`).join('')+'</tr>';
+  chip.textContent=`${SA.excel.rows.length} rows · ${SA.excel.headers.length} columns`+(SA.excel.rows.length>5?' · showing first 5':'');
+  let html='<thead><tr>'+SA.excel.headers.map(h=>`<th>${esc(h)}</th>`).join('')+'</tr></thead><tbody>';
+  SA.excel.rows.slice(0,5).forEach(row=>{
+    html+='<tr>'+SA.excel.headers.map(h=>`<td title="${esc(row[h])}">${esc(row[h])}</td>`).join('')+'</tr>';
   });
   html+='</tbody>';
   tbl.innerHTML=html;
@@ -1594,63 +1794,65 @@ function buildExcelPreview(){
 /* ══════════════════════════════════════
    STEP 1 — PHOTOS
 ══════════════════════════════════════ */
-function loadPhotos(files){
-  const arr=Array.from(files).filter(f=>f.type.startsWith('image/'));
-  if(!arr.length) return;
-  SA.photos.clear();
+function _indexImage(map,numMap,name,url){
+  const k=_fileKey(name);
+  if(!k) return;
+  map.set(k,url);
+  if(numMap&&/^\d+$/.test(k)) numMap.set('#'+parseInt(k,10),url);
+}
+async function loadPhotos(files){
+  const arr=Array.from(files).filter(f=>f.type.startsWith('image/')||/\.(jpe?g|png|webp|gif|bmp|jfif)$/i.test(f.name));
+  document.getElementById('inpPhotos').value='';
+  if(!arr.length){ toast('No image files found','warn'); return; }
+  SA.photos.clear(); SA.photoNum.clear(); SA.photoCount=0;
   SA.dcPhotos=null; // a manually chosen photo folder replaces the Data Collection photos
-  let done=0;
-  arr.forEach(f=>{
-    const reader=new FileReader();
-    reader.onload=e=>{
-      const nm=f.name.toLowerCase();
-      SA.photos.set(nm, e.target.result);
-      SA.photos.set(nm.replace(/\.[^.]+$/,''), e.target.result);
-      done++;
-      if(done===arr.length){
-        const dz=document.getElementById('dzPhotos');
-        dz.classList.add('filled');
-        document.getElementById('photosOk').textContent=`✓ ${arr.length} photos loaded`;
-        buildPhotoStrip(arr);
-        updateStep1Status();
-        // Show match result after status update
-        const m=_countPhotoMatches();
-        if(m) toast(m.matched===m.total?`All ${m.total} photos matched!`:`${m.matched}/${m.total} photos matched — check filenames`,(m.matched===m.total)?'ok':'warn');
-        else toast(`${arr.length} photos loaded`,'ok');
-      }
-    };
-    reader.readAsDataURL(f);
+  const ok=document.getElementById('photosOk');
+  const dz=document.getElementById('dzPhotos');
+  dz.classList.add('filled');
+  let done=0, failed=0;
+  await _mapLimit(arr,6,async f=>{
+    try{
+      const raw=await _readFileAsDataURL(f);
+      const url=await _shrinkDataURL(raw,1200,'image/jpeg');
+      if(url){ _indexImage(SA.photos,SA.photoNum,f.name,url); SA.photoCount++; } else failed++;
+    }catch(e){ failed++; }
+    done++;
+    if(done%10===0||done===arr.length) ok.textContent=`Loading photos… ${done}/${arr.length}`;
   });
+  ok.textContent=`✓ ${SA.photoCount} photos loaded`+(failed?` · ${failed} unreadable`:'');
+  buildPhotoStrip(arr);
+  updateStep1Status();
+  const m=_countPhotoMatches();
+  if(m) toast(m.matched===m.total?`All ${m.total} photos matched!`:`${m.matched}/${m.total} photos matched — check filenames`,(m.matched===m.total)?'ok':'warn');
+  else toast(`${SA.photoCount} photos loaded`,'ok');
 }
 
+let _stripURLs=[];
 function buildPhotoStrip(arr){
   const strip=document.getElementById('photoStrip');
   strip.classList.remove('hidden');
-  const show=arr.slice(0,6);
-  strip.innerHTML=show.map(f=>`<img class="photo-thumb" src="${URL.createObjectURL(f)}" alt="">`).join('');
+  _stripURLs.forEach(u=>URL.revokeObjectURL(u));
+  _stripURLs=arr.slice(0,6).map(f=>URL.createObjectURL(f));
+  strip.innerHTML=_stripURLs.map((u,i)=>`<img class="photo-thumb" src="${u}" alt="" title="${esc(arr[i].name)}">`).join('');
   if(arr.length>6) strip.innerHTML+=`<div class="photo-more">+${arr.length-6}</div>`;
 }
 
-function loadSigns(files){
+async function loadSigns(files){
   const arr=Array.from(files).filter(f=>f.type.startsWith('image/'));
+  document.getElementById('inpSigns').value='';
   if(!arr.length) return;
   SA.signs.clear(); SA.singleSign=null;
-  let done=0;
-  arr.forEach(f=>{
-    const reader=new FileReader();
-    reader.onload=e=>{
-      if(arr.length===1) SA.singleSign=e.target.result;
-      SA.signs.set(f.name.toLowerCase().replace(/\.[^.]+$/,''), e.target.result);
-      done++;
-      if(done===arr.length){
-        document.getElementById('dzSigns').classList.add('filled');
-        document.getElementById('signsOk').textContent=`✓ ${arr.length} signature${arr.length>1?'s':''} loaded`;
-        updateStep1Status();
-        toast(`${arr.length} signature${arr.length>1?'s':''} loaded`,'ok');
-      }
-    };
-    reader.readAsDataURL(f);
+  // PNG kept (transparent background of a scanned signature must survive)
+  await _mapLimit(arr,4,async f=>{
+    try{
+      const url=await _shrinkDataURL(await _readFileAsDataURL(f),1000,'image/png');
+      if(url){ _indexImage(SA.signs,null,f.name,url); if(arr.length===1) SA.singleSign=url; }
+    }catch(e){}
   });
+  document.getElementById('dzSigns').classList.add('filled');
+  document.getElementById('signsOk').textContent=arr.length===1?'✓ 1 common signature — printed on every card':`✓ ${SA.signs.size} signatures loaded`;
+  updateStep1Status();
+  toast(arr.length===1?'Common signature loaded (all cards)':`${SA.signs.size} signatures loaded`,'ok');
 }
 
 function _countPhotoMatches(){
@@ -1667,23 +1869,29 @@ function _countPhotoMatches(){
 
 function updateStep1Status(){
   const el=document.getElementById('step1Status');
-  const rows=SA.excel.rows.length, photos=SA.photos.size/2|0, signs=SA.signs.size;
+  const rows=SA.excel.rows.length, photos=SA.dcPhotos?SA.dcPhotos.size:SA.photoCount, signs=SA.signs.size;
+  const signLbl=signs>1?signs+' loaded':(SA.singleSign?(signs?'1 common signature':'1 common (from School Profile)'):'optional — skip if not needed');
   const items=[
     {ok:rows>0, label:`Excel: ${rows>0?rows+' rows':'not loaded'}`},
     {ok:photos>0, label:`Photos: ${photos>0?photos+' loaded':'not loaded'}`},
-    {ok:true, label:`Signatures: ${signs>0?signs+' loaded':'optional — skip if not needed'}`},
+    {ok:true, label:`Signatures: ${signLbl}`},
   ];
   // Photo match count — show only when both Excel and photos are loaded
   const match=_countPhotoMatches();
   if(match!==null){
-    const pct=Math.round(match.matched/match.total*100);
     const allMatch=match.matched===match.total;
     const noneMatch=match.matched===0;
+    let missing='';
+    if(!allMatch&&!noneMatch&&!SA.dcPhotos){
+      const k=SA.project.photoCol||SA.excel.headers[0];
+      const miss=SA.excel.rows.filter(r=>!resolveRowPhoto(r)).slice(0,5).map(r=>esc(r[k])).filter(Boolean);
+      if(miss.length) missing=`<br><span style="font-size:.7rem;color:#92400e;">Missing: ${miss.join(', ')}${match.total-match.matched>5?' …':''}</span>`;
+    }
     items.push({
       ok:match.matched>0,
       label:allMatch?`Photo match: All ${match.total} students matched!`:
-            noneMatch?`Photo match: 0 matched — photo file names must equal the values of column "${SA.project.photoCol||SA.excel.headers[0]}" (e.g. No 5 → 5.jpg)`:
-            `Photo match: ${match.matched}/${match.total} matched (${match.total-match.matched} missing)`,
+            noneMatch?`Photo match: 0 matched — photo file names must equal the values of column "${esc(SA.project.photoCol||SA.excel.headers[0])}" (e.g. No 5 → 5.jpg)`:
+            `Photo match: ${match.matched}/${match.total} matched (${match.total-match.matched} missing)${missing}`,
       warn:!allMatch
     });
   }
@@ -1705,23 +1913,26 @@ const ROLES=[
 ];
 
 function buildColGrid(){
+  sanitizeRoles();
   const grid=document.getElementById('colGrid');
   const sampleRow=SA.excel.rows[0]||{};
-  grid.innerHTML=SA.excel.headers.map(h=>{
-    const sample=String(sampleRow[h]||'').slice(0,24);
+  // Index-based ids/handlers: header text is never put inside an HTML
+  // attribute or JS string, so headings with quotes / < > / spaces work.
+  grid.innerHTML=SA.excel.headers.map((h,i)=>{
+    const sample=String(sampleRow[h]??'').slice(0,24);
     const ct=SA.excel.colTypes[h]||'';
     const autoLabel=ct?`<span style="font-size:.6rem;font-weight:700;color:var(--p);margin-left:.3rem;">${ct}</span>`:'';
-    return `<div class="col-card" id="cc_${CSS.escape(h)}" data-col="${h}">
-      <div class="col-name">${h}${autoLabel}</div>
-      <div class="col-sample">${sample||'—'}</div>
+    return `<div class="col-card" id="cc_${i}">
+      <div class="col-name" title="${esc(h)}">${esc(h)}${autoLabel}</div>
+      <div class="col-sample" title="${esc(sample)}">${esc(sample)||'—'}</div>
       <div class="col-roles">
-        ${ROLES.map(r=>`<button class="role-btn ${isRoleOn(h,r)?r.cls:''}" id="rb_${r.key}_${CSS.escape(h)}" onclick="toggleRole('${h.replace(/'/g,"\\'")}','${r.key}')">${r.label}</button>`).join('')}
+        ${ROLES.map(r=>`<button class="role-btn" id="rb_${r.key}_${i}" onclick="toggleRole(${i},'${r.key}')">${r.label}</button>`).join('')}
       </div>
     </div>`;
   }).join('');
-  // Auto-assign photo/sign based on detection
-  if(SA.project.photoCol) forceRole(SA.project.photoCol,'photo');
-  if(SA.project.signCol) forceRole(SA.project.signCol,'sign');
+  refreshColGrid();
+  refreshQRPreview();
+  refreshBarPreview();
   // Show auto-detect notice
   const noticed=[];
   if(SA.project.photoCol) noticed.push(`Photo → "${SA.project.photoCol}"`);
@@ -1730,7 +1941,7 @@ function buildColGrid(){
   const noticeText=document.getElementById('autoDetectText');
   if(noticeEl&&noticeText){
     if(noticed.length){
-      noticeText.textContent='Auto-detected: '+noticed.join(' · ')+' — verify and change if needed';
+      noticeText.textContent=(SA.profileId?'From profile / detected: ':'Auto-detected: ')+noticed.join(' · ')+' — verify and change if needed';
       noticeEl.style.display='flex';
     } else {
       noticeEl.style.display='none';
@@ -1746,7 +1957,9 @@ function isRoleOn(col,role){
   return false;
 }
 
-function toggleRole(col,roleKey){
+function toggleRole(colIdx,roleKey){
+  const col=SA.excel.headers[colIdx];
+  if(col===undefined) return;
   if(roleKey==='qr'){
     const idx=SA.project.qrFields.indexOf(col);
     if(idx>-1) SA.project.qrFields.splice(idx,1);
@@ -1756,31 +1969,25 @@ function toggleRole(col,roleKey){
     SA.project.barcodeType = document.getElementById('barcodeType').value;
   } else if(roleKey==='photo'){
     SA.project.photoCol = SA.project.photoCol===col?'':col;
+    updateStep1Status();
   } else if(roleKey==='sign'){
     SA.project.signCol = SA.project.signCol===col?'':col;
   }
   refreshColGrid();
   refreshQRPreview();
   refreshBarPreview();
-}
-
-function forceRole(col, roleKey){
-  if(roleKey==='photo'&&!SA.project.photoCol) SA.project.photoCol=col;
-  if(roleKey==='sign'&&!SA.project.signCol) SA.project.signCol=col;
-  refreshColGrid();
+  markDirty();
 }
 
 function refreshColGrid(){
-  SA.excel.headers.forEach(h=>{
-    const card=document.getElementById('cc_'+CSS.escape(h));
+  SA.excel.headers.forEach((h,i)=>{
+    const card=document.getElementById('cc_'+i);
     if(!card) return;
     const assigned=SA.project.qrFields.includes(h)||SA.project.barcodeField===h||SA.project.photoCol===h||SA.project.signCol===h;
     card.classList.toggle('assigned',assigned);
     ROLES.forEach(r=>{
-      const btn=document.getElementById('rb_'+r.key+'_'+CSS.escape(h));
-      if(!btn) return;
-      const on=isRoleOn(h,r);
-      btn.className='role-btn '+(on?r.cls:'');
+      const btn=document.getElementById('rb_'+r.key+'_'+i);
+      if(btn) btn.className='role-btn '+(isRoleOn(h,r)?r.cls:'');
     });
   });
 }
@@ -1788,22 +1995,22 @@ function refreshColGrid(){
 function refreshQRPreview(){
   const box=document.getElementById('qrPrevBox');
   if(!SA.project.qrFields.length){ box.innerHTML='<i class="bi bi-qr-code" style="font-size:2rem;color:#d1d5db;"></i><span style="font-size:.7rem;color:var(--gm);">Assign QR fields to see preview</span>'; return; }
-  const row=SA.excel.rows[0]||{};
-  const text=SA.project.qrFields.map(f=>row[f]||'').join(' ').trim()||'Sample QR';
-  box.innerHTML='<div id="qrPrevDiv"></div><span style="font-size:.68rem;color:var(--gm);">'+SA.project.qrFields.join(' + ')+'</span>';
-  try{new QRCode(document.getElementById('qrPrevDiv'),{text,width:90,height:90,correctLevel:QRCode.CorrectLevel[document.getElementById('qrLevel').value||'M']});}catch(e){}
+  const text=qrValue(SA.excel.rows[0]||{});
+  const url=_qrDataURL(text,180);
+  box.innerHTML=(url?`<img src="${url}" alt="QR" style="width:96px;height:96px;image-rendering:pixelated;">`:'<span style="font-size:.7rem;color:var(--err);">Too much data for one QR — remove a field</span>')
+    +'<span style="font-size:.68rem;color:var(--gm);text-align:center;">'+esc(SA.project.qrFields.join(' + '))+'</span>';
 }
 
 function refreshBarPreview(){
-  const box=document.getElementById('barPrevBox');
   const none=document.getElementById('barPrevNone');
   const cvs=document.getElementById('barcodePreviewCanvas');
   SA.project.barcodeType=document.getElementById('barcodeType').value;
-  if(!SA.project.barcodeField){ none.style.display=''; cvs.style.display='none'; return; }
+  if(!SA.project.barcodeField){ none.textContent='Assign Barcode field to see preview'; none.style.display=''; cvs.style.display='none'; return; }
   const row=SA.excel.rows[0]||{};
-  const val=String(row[SA.project.barcodeField]||'123456789');
+  const val=String(rowVal(row,SA.project.barcodeField)||'123456789');
   none.style.display='none'; cvs.style.display='';
-  try{ JsBarcode(cvs,val,{format:SA.project.barcodeType,width:1.5,height:40,fontSize:10,lineColor:'#000',background:'#fff',margin:4,displayValue:true}); }catch(e){none.style.display='';cvs.style.display='none';}
+  try{ JsBarcode(cvs,val,{format:SA.project.barcodeType,width:1.5,height:40,fontSize:10,lineColor:'#000',background:'#fff',margin:4,displayValue:true}); }
+  catch(e){ none.textContent=`"${val}" is not valid for ${SA.project.barcodeType} — use CODE128 for letters / any length`; none.style.display=''; cvs.style.display='none'; }
 }
 
 /* ══════════════════════════════════════
@@ -1839,6 +2046,7 @@ function loadTemplate(file){
       document.getElementById('templateOk').textContent=`✓ ${file.name}`;
       // If designer already init'd, resize it
       if(SA.canvas) resizeCanvas(finalW,finalH);
+      markDirty();
       toast(`Template loaded — Size: ${finalW.toFixed(2)}" × ${finalH.toFixed(2)}"`,'ok');
     };
     img.src=url;
@@ -1858,8 +2066,10 @@ function skipTemplate(e){
   document.getElementById('tplPreviewArea').classList.add('hidden');
   document.getElementById('inpTemplate').value='';
   document.getElementById('tplDzTitle').textContent='Drop card template image here';
-  _pvTplURL=''; updateSzPreview();
+  _pvTplURL=''; updateSzPreview(); updateCardThumbs();
   const b=document.getElementById('dpiQualityBadge'); if(b) b.style.display='none';
+  if(SA.canvas&&SA.curSide===(isBack?'back':'front')) refreshDesignerBg();
+  markDirty();
   toast('Using plain background — you can set the color below','info');
 }
 
@@ -1909,14 +2119,20 @@ function highlightPreset(w,h){
     c.classList.toggle('on',match);
     if(match) found=true;
   });
-  // If no exact match, fall back to cross-orientation match
-  if(!found){
-    document.querySelectorAll('.sz-card').forEach(c=>{
-      const cw=+c.dataset.w,ch=+c.dataset.h;
-      const cross=Math.abs(ch-w)<0.05&&Math.abs(cw-h)<0.05;
-      if(cross) c.classList.add('on');
-    });
+  // No preset matches → mark "Custom" and fill its inputs (cross-orientation
+  // highlighting was misleading: it showed Portrait while the card is Landscape).
+  if(!found&&w&&h){
+    document.querySelector('.sz-card[data-w="0"]')?.classList.add('on');
+    const cw=document.getElementById('customW'), chh=document.getElementById('customH');
+    if(cw) cw.value=(+w).toFixed(3); if(chh) chh.value=(+h).toFixed(3);
   }
+  _sizeChip(w,h);
+}
+function _sizeChip(w,h){
+  const chip=document.getElementById('selectedSizeChip');
+  if(!chip||!w||!h) return;
+  chip.textContent=`${(+w).toFixed(2)}" × ${(+h).toFixed(2)}" · ${(w*2.54).toFixed(1)}×${(h*2.54).toFixed(1)} cm`;
+  chip.style.display='inline-flex';
 }
 
 function selectSize(el){
@@ -1927,22 +2143,23 @@ function selectSize(el){
   if(!w&&!h){ customRow.classList.remove('hidden'); return; }
   customRow.classList.add('hidden');
   SA.project.cardW=w; SA.project.cardH=h;
-  const chip=document.getElementById('selectedSizeChip');
-  chip.textContent=`${w.toFixed(2)}" × ${h.toFixed(2)}"`;
-  chip.style.display='inline-flex';
+  _sizeChip(w,h);
   updateSzPreview(true); // true = reset image to fit on new size
   showDpiQuality();
   if(SA.canvas) resizeCanvas(w,h);
+  markDirty();
 }
 
 function applyCustomSize(){
   const w=parseFloat(document.getElementById('customW').value);
   const h=parseFloat(document.getElementById('customH').value);
-  if(!w||!h) return;
+  if(!(w>=0.5&&h>=0.5&&w<=48&&h<=48)){ toast('Enter width & height between 0.5 and 48 inches','warn'); return; }
   SA.project.cardW=w; SA.project.cardH=h;
+  _sizeChip(w,h);
   updateSzPreview(true);
   showDpiQuality();
   if(SA.canvas) resizeCanvas(w,h);
+  markDirty();
   toast(`Custom size: ${w.toFixed(2)}" × ${h.toFixed(2)}"`,'ok');
 }
 function updateCustomSzPreview(){ updateSzPreview(); }
@@ -2196,26 +2413,13 @@ function setDPI(el){
   el.classList.add('on');
   const newDPI=+el.dataset.dpi;
   SA.project.dpi=newDPI;
-  // If template image loaded, check if image matches current card at new DPI
-  // If not enough pixels, recalculate card size so image fills it exactly
-  if(SA._templateImg&&SA.project.cardW){
-    const px=SA._templateImg.naturalWidth, py=SA._templateImg.naturalHeight;
-    const needW=Math.round(SA.project.cardW*newDPI), needH=Math.round(SA.project.cardH*newDPI);
-    const ratio=Math.min(px/needW,py/needH);
-    if(ratio<0.80){
-      // Image doesn't have enough pixels — recalculate card size from image at new DPI
-      const newW=px/newDPI, newH=py/newDPI;
-      SA.project.cardW=newW; SA.project.cardH=newH;
-      highlightPreset(newW,newH);
-      const chip=document.getElementById('selectedSizeChip');
-      chip.textContent=`${newW.toFixed(2)}" × ${newH.toFixed(2)}"`;
-      chip.style.display='inline-flex';
-      toast(`Size adjusted to ${newW.toFixed(2)}" × ${newH.toFixed(2)}" to fit image at ${newDPI} DPI`,'warn');
-    }
-    showDpiQuality();
-  }
+  // DPI is only print sharpness — it must NEVER change the physical card size.
+  // (Earlier, picking 600 DPI with a 300-DPI template silently halved the card
+  // to ~2.7 cm wide.) A low-resolution template just gets a quality warning.
+  if(SA._templateImg) showDpiQuality();
   updateSzPreview();
   updateSzBar();
+  markDirty();
 }
 
 function setSides(v,el){
@@ -2239,8 +2443,11 @@ function setSides(v,el){
   } else {
     if(s3Tabs) s3Tabs.style.display='none';
     if(badge) badge.style.display='none';
+    if(SA.project.activeSide3==='back') switchCardSide3('front');
     SA.project.activeSide3='front';
+    if(SA.canvas&&SA.curSide==='back') switchSide('front');
   }
+  markDirty();
 }
 
 function _updateS3TabButtons(side){
@@ -2332,37 +2539,56 @@ function syncBgHex(){
    STEP 4 — DESIGNER (Fabric.js)
 ══════════════════════════════════════ */
 let _desInited=false;
-function initDesignerIfNeeded(){ if(!SA.canvas||!SA.canvas.getElement()) initDesigner(); }
+/* Returns true when a fresh designer was created (it then loads its own
+   background), false when the existing one was kept. */
+function initDesignerIfNeeded(){ if(!SA.canvas||!SA.canvas.getElement()){ initDesigner(); return true; } return false; }
+
+/* Load a side's saved JSON into the live designer, then apply that side's
+   template + background colour. The template is applied AFTER the objects —
+   loadFromJSON() clears the canvas (background included), so doing both in
+   parallel (as before) was a race where the template sometimes vanished. */
+function loadCanvasState(json,side,done){
+  const cv=SA.canvas; if(!cv) return;
+  const fin=()=>{
+    if(cv!==SA.canvas) return;
+    cv.setBackgroundColor(SA.project.bgColor||'#ffffff');
+    refreshDesignerBg(side).then(()=>{ buildLayerList(); if(done) done(); });
+  };
+  if(json) cv.loadFromJSON(json,fin);
+  else { cv.clear(); fin(); }
+}
+async function refreshDesignerBg(side){
+  const cv=SA.canvas; if(!cv) return;
+  side=side||SA.curSide;
+  const url=SA.project[side+'BgURL'];
+  const el=url?await _loadImg(url,true):null;
+  if(cv!==SA.canvas||side!==SA.curSide) return;
+  if(el) cv.setBackgroundImage(new fabric.Image(el),null,{left:0,top:0,originX:'left',originY:'top',scaleX:cv.getWidth()/el.naturalWidth,scaleY:cv.getHeight()/el.naturalHeight});
+  else cv.setBackgroundImage(null);
+  cv.setBackgroundColor(SA.project.bgColor||'#ffffff');
+  cv.requestRenderAll();
+}
 
 function initDesigner(){
   const {cardW,cardH,bgColor}=SA.project;
   const ratio=cardH/cardW;
   SA.dispW=600; SA.dispH=Math.round(600*ratio);
+  SA.curSide='front';
+  if(SA.previewMode){ SA.previewMode=false; document.getElementById('prevModeBtn')?.classList.remove('on'); }
+  if(SA.canvas){ try{ SA.canvas.dispose(); }catch(e){} SA.canvas=null; }
   const el=document.getElementById('desCanvas');
   el.width=SA.dispW; el.height=SA.dispH;
-  if(SA.canvas) SA.canvas.dispose();
   SA.canvas=new fabric.Canvas('desCanvas',{
     width:SA.dispW, height:SA.dispH,
     backgroundColor:bgColor,
     preserveObjectStacking:true, selection:true,
   });
-
-  // Load template as locked background
-  if(SA.project.frontBgURL){
-    fabric.Image.fromURL(SA.project.frontBgURL,img=>{
-      SA.canvas.setBackgroundImage(img,SA.canvas.renderAll.bind(SA.canvas),{
-        scaleX:SA.dispW/img.width, scaleY:SA.dispH/img.height
-      });
-    });
-  }
-
-  // Restore saved JSON
-  if(SA.project.frontJSON){
-    SA.canvas.loadFromJSON(SA.project.frontJSON,()=>SA.canvas.renderAll(),(o,obj)=>{
-      obj.eleType=o.eleType; obj.fieldName=o.fieldName;
-      if(o.photoShape){obj.photoShape=o.photoShape;obj.photoBorderW=o.photoBorderW;obj.photoBorderColor=o.photoBorderColor;}
-    });
-  }
+  SA.history=[]; SA.histIdx=-1;
+  // Restore saved design + template; history starts from the RESTORED state
+  // (before, the first undo step was an empty card → one Ctrl+Z wiped everything).
+  loadCanvasState(SA.project.frontJSON,'front',()=>{ saveHist(true); });
+  document.getElementById('sideTabs').style.display=SA.project.sides==='double'?'flex':'none';
+  _updateRowLabel();
 
   updateSzBar();
   buildFieldsList();
@@ -2374,6 +2600,7 @@ function initDesigner(){
   SA.canvas.on('object:modified',e=>{saveHist();updateProp(e.target);buildLayerList();});
   SA.canvas.on('object:added',()=>{buildLayerList();});
   SA.canvas.on('object:removed',()=>{buildLayerList();});
+  SA.canvas.on('text:editing:exited',e=>{saveHist();updateProp(e.target);});
 
   // Textbox: convert scale to dimensions so font never stretches
   SA.canvas.on('object:scaling',e=>{
@@ -2394,7 +2621,6 @@ function initDesigner(){
     }
   });
 
-  saveHist();
   _desInited=true;
   // Set initial side tab active state
   const tf=document.getElementById('tabFront'), tb=document.getElementById('tabBack');
@@ -2527,16 +2753,28 @@ function resizeCanvas(newW,newH){
     // frontBgURL regardless of which side was actually open, so resizing
     // the card while designing the BACK silently replaced its background
     // with the front's (or blanked it if front had none).
-    const curBgURL=SA.project[SA.curSide+'BgURL'];
-    if(curBgURL){
-      fabric.Image.fromURL(curBgURL,img=>{
-        SA.canvas.setBackgroundImage(img,SA.canvas.renderAll.bind(SA.canvas),{scaleX:newDW/img.width,scaleY:newDH/img.height});
-      });
-    } else { SA.canvas.renderAll(); }
+    SA.dispW=newDW; SA.dispH=newDH;
+    refreshDesignerBg();
+    // The side that is NOT on screen must be rescaled too, otherwise on a
+    // double-sided card its elements stay laid out for the old card size.
+    const other=SA.curSide==='front'?'back':'front';
+    if(SA.project[other+'JSON']) SA.project[other+'JSON']=_scaleJSON(SA.project[other+'JSON'],scX,scY);
+    saveHist();
   }
   SA.dispW=newDW; SA.dispH=newDH;
   updateSzBar();
   desAutoFitZoom();
+}
+
+function _scaleJSON(json,scX,scY){
+  if(!json||(scX===1&&scY===1)) return json;
+  const j=JSON.parse(JSON.stringify(json));
+  (j.objects||[]).forEach(o=>{
+    o.left=(o.left||0)*scX; o.top=(o.top||0)*scY;
+    if(o.type==='textbox'){ o.width=Math.max(30,(o.width||100)*scX); o.fontSize=Math.max(6,Math.round((o.fontSize||20)*scY)); o.scaleX=1; o.scaleY=1; }
+    else { o.scaleX=(o.scaleX||1)*scX; o.scaleY=(o.scaleY||1)*scY; }
+  });
+  return j;
 }
 
 function updateSzBar(){
@@ -2561,8 +2799,9 @@ function resizeFromUI(){
 /* ── Background ── */
 function setBg(){ const i=document.getElementById('bgInp'); i.value=''; i.click(); }
 function clearBg(){
-  SA.canvas.setBackgroundImage(null,()=>{});
+  SA.canvas.setBackgroundImage(null);
   SA.canvas.setBackgroundColor(SA.project.bgColor,SA.canvas.renderAll.bind(SA.canvas));
+  markDirty();
   // Double-sided bug: this always cleared frontBgURL regardless of which
   // side was actually open — clearing the BACK side's background while
   // designing it silently wiped the FRONT side's background instead (and
@@ -2585,10 +2824,8 @@ function applyBgImg(inp){
     probe.onload=()=>{
       const {finalW,finalH}=autoDetectSz(probe.naturalWidth,probe.naturalHeight);
       resizeCanvas(finalW,finalH);
-      fabric.Image.fromURL(url,bgImg=>{
-        SA.canvas.setBackgroundImage(bgImg,SA.canvas.renderAll.bind(SA.canvas),{scaleX:SA.dispW/bgImg.width,scaleY:SA.dispH/bgImg.height});
-        saveHist();
-      });
+      refreshDesignerBg();
+      markDirty();
     };
     probe.src=url;
   };
@@ -2635,36 +2872,39 @@ function addBarcodeEl(){
 function addQREl(){
   const x=Math.max(0,(SA.dispW||600)-110), y=30, sz=80;
   // Render a real QR code immediately using first row data
-  const row0=SA.excel.rows[0]||{};
-  const qv=SA.project.qrFields.length?SA.project.qrFields.map(f=>String(row0[f]||'')).join('\n').trim()||'SAMPLE QR':String(Object.values(row0)[0]||'SAMPLE QR');
+  const qv=SA.excel.rows.length?qrValue(SA.excel.rows[0]):'SAMPLE QR';
   _makeQRImg(qv,sz,img=>{
-    img.set({left:x,top:y,eleType:'qr',_qrVal:qv});
+    img.set({left:x,top:y,eleType:'qr'});
     SA.canvas.add(img); SA.canvas.setActiveObject(img); SA.canvas.renderAll(); saveHist();
   });
 }
-/* Render a QR code into a fabric.Image of given size, call cb(img) */
-function _makeQRImg(val,sz,cb){
+/* QR code → PNG data URL, rendered synchronously (qrcode.js draws its canvas
+   immediately — the old 180 ms wait per card made 500 cards take 90 s+),
+   with a white quiet-zone border so phones scan it reliably even on dark /
+   coloured card templates. Uses the error-correction level chosen in Step 2
+   (it was always "M" before). Returns null when the data is too long. */
+function _qrDataURL(val,px){
+  px=Math.max(64,Math.round(px||512));
   try{
     const tmp=document.createElement('div');
-    tmp.style.cssText='position:fixed;left:-9999px;top:-9999px;width:'+sz+'px;height:'+sz+'px;';
-    document.body.appendChild(tmp);
-    new QRCode(tmp,{text:String(val||'QR'),width:sz*2,height:sz*2,correctLevel:QRCode.CorrectLevel.M});
-    setTimeout(()=>{
-      const el=tmp.querySelector('canvas')||tmp.querySelector('img');
-      const src=el?(el.tagName==='CANVAS'?el.toDataURL():el.src):null;
-      document.body.removeChild(tmp);
-      if(!src){
-        cb(new fabric.Rect({width:sz,height:sz,fill:'#ecfdf5',stroke:'#059669',strokeWidth:2,eleType:'qr'}));
-        return;
-      }
-      fabric.Image.fromURL(src,img=>{
-        img.set({scaleX:sz/img.width,scaleY:sz/img.height});
-        cb(img);
-      });
-    },180);
-  }catch(e){
-    cb(new fabric.Rect({width:sz,height:sz,fill:'#ecfdf5',stroke:'#059669',strokeWidth:2,eleType:'qr'}));
-  }
+    const lvl=QRCode.CorrectLevel[SA.project.qrLevel||'M']??QRCode.CorrectLevel.M;
+    new QRCode(tmp,{text:String(val||'-'),width:px,height:px,colorDark:'#000000',colorLight:'#ffffff',correctLevel:lvl});
+    const c=tmp.querySelector('canvas');
+    if(!c) return null;
+    const pad=Math.round(px*0.07);
+    const out=document.createElement('canvas'); out.width=out.height=px+pad*2;
+    const ctx=out.getContext('2d');
+    ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,out.width,out.height);
+    ctx.imageSmoothingEnabled=false;
+    ctx.drawImage(c,pad,pad);
+    return out.toDataURL('image/png');
+  }catch(e){ return null; }
+}
+/* Render a QR code into a fabric.Image of given size, call cb(img) */
+function _makeQRImg(val,sz,cb){
+  const src=_qrDataURL(val,512);
+  if(!src){ cb(new fabric.Rect({width:sz,height:sz,fill:'#ecfdf5',stroke:'#059669',strokeWidth:2,eleType:'qr'})); return; }
+  fabric.Image.fromURL(src,img=>{ img.set({scaleX:sz/img.width,scaleY:sz/img.height}); cb(img); });
 }
 function addRect(){
   const obj=new fabric.Rect({left:80,top:80,width:150,height:60,fill:'transparent',stroke:'#374151',strokeWidth:2,rx:4,eleType:'shape'});
@@ -2680,30 +2920,32 @@ function addFieldEl(name,dropX,dropY){
     left:dropX!==undefined?Math.max(0,dropX-80):50,
     top:dropY!==undefined?Math.max(0,dropY-12):60+n*24,
     width:180,fontFamily:'Arial',fontSize:20,fill:'#1a56db',
-    eleType:'field',fieldName:name,editable:false,padding:0,strokeWidth:0,
+    eleType:'field',fieldName:name,fitMode:'shrink',editable:false,padding:0,strokeWidth:0,
   });
   SA.canvas.add(obj); SA.canvas.setActiveObject(obj); SA.canvas.renderAll(); saveHist();
   buildLayerList();
 }
 
 /* ── Fields list (left panel) ── */
+function _fieldNames(){ return SA.excel.headers.concat(SA.project.serialEnabled&&!SA.excel.headers.includes(SERIAL_FIELD)?[SERIAL_FIELD]:[]); }
 function buildFieldsList(){
   const cont=document.getElementById('fieldsList');
   if(!SA.excel.headers.length){ cont.innerHTML='<div style="color:var(--gm);font-size:.72rem;">No Excel loaded</div>'; return; }
-  cont.innerHTML=SA.excel.headers.map(h=>
-    `<div class="field-item" draggable="true" ondragstart="fieldDragStart(event,'${h.replace(/'/g,"\\'")}',)" onclick="addFieldEl('${h.replace(/'/g,"\\'")}');mobCloseLeftAfterAdd()">
+  cont.innerHTML=_fieldNames().map((h,i)=>
+    `<div class="field-item" draggable="true" ondragstart="fieldDragStart(event,${i})" onclick="addFieldEl(_fieldNames()[${i}]);mobCloseLeftAfterAdd()" title="Click to add · or drag onto the card">
       <i class="bi bi-grip-vertical" style="color:#9ca3af;font-size:.65rem;"></i>
       <i class="bi bi-braces" style="font-size:.72rem;"></i>
-      <span style="font-size:.73rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">[${h}]</span>
+      <span style="font-size:.73rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">[${esc(h)}]</span>
     </div>`
   ).join('');
 }
 /* One-click: auto-place all Excel columns as field text elements */
 function addAllFields(){
-  if(!SA.canvas||!SA.excel.headers.length) return;
+  if(!SA.canvas) return;
+  if(!SA.excel.headers.length){ toast('Load an Excel file first (Step 1)','warn'); return; }
   // Remove any existing field elements first to avoid duplicates
   const existing=SA.canvas.getObjects().filter(o=>o.eleType==='field').map(o=>o.fieldName);
-  const toAdd=SA.excel.headers.filter(h=>!existing.includes(h));
+  const toAdd=_fieldNames().filter(h=>!existing.includes(h));
   if(!toAdd.length){ toast('All fields already on canvas','info'); return; }
   const cW=SA.dispW||600, cH=SA.dispH||840;
   const startY=Math.round(cH*0.12), lineH=Math.round(cH*0.07);
@@ -2713,7 +2955,7 @@ function addAllFields(){
       left:Math.round(cW*0.06), top:y,
       width:Math.round(cW*0.88),
       fontFamily:'Arial', fontSize:Math.round(cH*0.028),
-      fill:'#1a56db', eleType:'field', fieldName:h, editable:false,
+      fill:'#1a56db', eleType:'field', fieldName:h, fitMode:'shrink', editable:false,
     });
     SA.canvas.add(obj);
     y+=lineH;
@@ -2722,7 +2964,7 @@ function addAllFields(){
   toast(`${toAdd.length} fields added — drag to position them`,'ok');
 }
 
-function fieldDragStart(ev,name){ ev.dataTransfer.setData('fieldName',name); ev.dataTransfer.effectAllowed='copy'; }
+function fieldDragStart(ev,i){ ev.dataTransfer.setData('fieldName',_fieldNames()[i]); ev.dataTransfer.effectAllowed='copy'; }
 function canvasDrop(ev){
   ev.preventDefault();
   const name=ev.dataTransfer.getData('fieldName');
@@ -2744,7 +2986,7 @@ function buildLayerList(){
   cont.innerHTML=objs.map((obj,i)=>{
     const et=obj.eleType||'label';
     const ico=ELTYPE_ICON[et]||'bi-square';
-    const lbl=obj.fieldName?'['+obj.fieldName+']':(obj.text||et);
+    const lbl=esc(obj.fieldName?'['+obj.fieldName+']':(obj.text||et));
     const isSel=(obj===active);
     return `<div class="layer-item ${isSel?'sel':''}" onclick="selectLayer(${objs.length-1-i})">
       <i class="bi ${ico}"></i>
@@ -2762,7 +3004,7 @@ function showProp(which){
   document.getElementById('propEmpty').classList.remove('hidden');
   if(which==='empty') return;
   document.getElementById('propEmpty').classList.add('hidden');
-  if(which==='text'||which==='field'){ document.getElementById('propText').classList.remove('hidden'); document.getElementById('staticTextRow').style.display=which==='text'?'':'none'; }
+  if(which==='text'||which==='field'){ document.getElementById('propText').classList.remove('hidden'); document.getElementById('staticTextRow').style.display=which==='text'?'':'none'; document.getElementById('fitModeRow').style.display=which==='field'?'':'none'; }
   if(which==='img'||which==='photo') document.getElementById('propImg').classList.remove('hidden');
   if(which==='photo') document.getElementById('propPhoto').classList.remove('hidden');
   document.getElementById('propAlign').classList.remove('hidden');
@@ -2784,28 +3026,47 @@ function alignObj(dir){
   obj.set({left:obj.left+dx, top:obj.top+dy});
   obj.setCoords(); SA.canvas.renderAll(); saveHist(); updateProp(obj);
 }
+function _hex(c,def){ return /^#[0-9a-f]{6}$/i.test(c||'')?c:def; }
 function updateProp(obj){
   if(!obj){ showProp('empty'); buildLayerList(); return; }
   const et=obj.eleType;
-  if(et==='field'){ showProp('field'); document.getElementById('pFont').value=obj.fontFamily||'Arial'; document.getElementById('pSize').value=obj.fontSize||20; document.getElementById('pFill').value=obj.fill||'#000000'; document.getElementById('pFillH').value=obj.fill||'#000000'; }
-  else if(et==='label'||obj.type==='textbox'||obj.type==='text'){ showProp('text'); document.getElementById('pFont').value=obj.fontFamily||'Arial'; document.getElementById('pSize').value=obj.fontSize||16; document.getElementById('pFill').value=obj.fill||'#000000'; document.getElementById('pFillH').value=obj.fill||'#000000'; document.getElementById('pText').value=obj.text||''; document.getElementById('pBold').classList.toggle('on',obj.fontWeight==='bold'); document.getElementById('pItal').classList.toggle('on',obj.fontStyle==='italic'); document.getElementById('pUndr').classList.toggle('on',!!obj.underline); }
-  else if(et==='photo'){ showProp('photo'); document.getElementById('pW').value=Math.round(obj.getScaledWidth()); document.getElementById('pH').value=Math.round(obj.getScaledHeight()); document.getElementById('pBorderW').value=obj.photoBorderW||0; document.getElementById('pBorderC').value=obj.photoBorderColor||'#000000'; ['rect','round','circle','ellipse'].forEach(s=>document.getElementById('psh'+s[0].toUpperCase()+s.slice(1))?.classList.toggle('on',obj.photoShape===s)); }
-  else{ showProp('img'); if(document.getElementById('pW')) document.getElementById('pW').value=Math.round(obj.getScaledWidth()||obj.width||0); if(document.getElementById('pH')) document.getElementById('pH').value=Math.round(obj.getScaledHeight()||obj.height||0); }
-  document.getElementById('pX').value=Math.round(obj.left||0);
-  document.getElementById('pY').value=Math.round(obj.top||0);
-  document.getElementById('pRot').value=obj.angle||0;
-  document.getElementById('pRotV').textContent=(obj.angle||0)+'°';
-  document.getElementById('pOpa').value=Math.round((obj.opacity||1)*100);
-  document.getElementById('pOpaV').textContent=Math.round((obj.opacity||1)*100)+'%';
+  const $=id=>document.getElementById(id);
+  const isText=obj.type==='textbox'||obj.type==='text'||obj.type==='i-text';
+  if(et==='field'||((et==='label'||!et)&&isText)){
+    showProp(et==='field'?'field':'text');
+    $('pFont').value=obj.fontFamily||'Arial';
+    $('pSize').value=Math.round(obj.fontSize||16);
+    $('pFill').value=_hex(obj.fill,'#000000'); $('pFillH').value=_hex(obj.fill,'#000000');
+    $('pBold').classList.toggle('on',obj.fontWeight==='bold');
+    $('pItal').classList.toggle('on',obj.fontStyle==='italic');
+    $('pUndr').classList.toggle('on',!!obj.underline);
+    ['L','C','R'].forEach(k=>$('pa'+k).classList.toggle('on',(obj.textAlign||'left')==={L:'left',C:'center',R:'right'}[k]));
+    if(et==='field'){ const fm=obj.fitMode||'shrink'; $('pFitShrink').classList.toggle('on',fm==='shrink'); $('pFitWrap').classList.toggle('on',fm==='wrap'); }
+    else $('pText').value=obj.text||'';
+  }
+  else if(et==='photo'){ showProp('photo'); $('pW').value=Math.round(obj.getScaledWidth()); $('pH').value=Math.round(obj.getScaledHeight()); $('pBorderW').value=obj.photoBorderW||0; $('pBorderC').value=_hex(obj.photoBorderColor,'#000000'); ['rect','round','circle','ellipse'].forEach(s=>$('psh'+s[0].toUpperCase()+s.slice(1))?.classList.toggle('on',(obj.photoShape||'rect')===s)); }
+  else{ showProp('img'); $('pW').value=Math.round(obj.getScaledWidth()||obj.width||0); $('pH').value=Math.round(obj.getScaledHeight()||obj.height||0); }
+  $('pX').value=Math.round(obj.left||0);
+  $('pY').value=Math.round(obj.top||0);
+  $('pRot').value=Math.round(obj.angle||0);
+  $('pRotV').textContent=Math.round(obj.angle||0)+'°';
+  const op=obj.opacity??1;
+  $('pOpa').value=Math.round(op*100);
+  $('pOpaV').textContent=Math.round(op*100)+'%';
   buildLayerList();
 }
-function ap(key,val){ const obj=SA.canvas.getActiveObject(); if(!obj) return; obj.set(key,val); SA.canvas.renderAll(); }
+/* Property edits save one undo step after the user pauses (sliders fire
+   dozens of input events — one step per drag, not per pixel). */
+let _histTid=null;
+function saveHistSoon(){ clearTimeout(_histTid); _histTid=setTimeout(()=>saveHist(),450); }
+function ap(key,val){ const obj=SA.canvas?.getActiveObject(); if(!obj) return; obj.set(key,val); obj.setCoords(); SA.canvas.requestRenderAll(); saveHistSoon(); if(key==='textAlign') updateProp(obj); }
+function setFitMode(m){ const o=SA.canvas?.getActiveObject(); if(!o||o.eleType!=='field') return; o.fitMode=m; updateProp(o); saveHist(); toast(m==='shrink'?'Long values will shrink to fit this box':'Long values will wrap to next lines','info'); }
 function syncFillHex(){ const v=document.getElementById('pFillH').value; if(/^#[0-9a-fA-F]{6}$/.test(v)){document.getElementById('pFill').value=v;ap('fill',v);} }
-function toggleBold(){ const o=SA.canvas.getActiveObject(); if(!o) return; o.set('fontWeight',o.fontWeight==='bold'?'normal':'bold'); SA.canvas.renderAll(); document.getElementById('pBold').classList.toggle('on',o.fontWeight==='bold'); }
-function toggleItal(){ const o=SA.canvas.getActiveObject(); if(!o) return; o.set('fontStyle',o.fontStyle==='italic'?'normal':'italic'); SA.canvas.renderAll(); document.getElementById('pItal').classList.toggle('on',o.fontStyle==='italic'); }
-function toggleUndr(){ const o=SA.canvas.getActiveObject(); if(!o) return; o.set('underline',!o.underline); SA.canvas.renderAll(); document.getElementById('pUndr').classList.toggle('on',o.underline); }
-function apXY(){ const o=SA.canvas.getActiveObject(); if(!o) return; o.set({left:+document.getElementById('pX').value,top:+document.getElementById('pY').value}); o.setCoords(); SA.canvas.renderAll(); }
-function apSize(){ const o=SA.canvas.getActiveObject(); if(!o) return; const tw=+document.getElementById('pW').value,th=+document.getElementById('pH').value; if(tw>0) o.set('scaleX',tw/o.width); if(th>0) o.set('scaleY',th/o.height); o.setCoords(); SA.canvas.renderAll(); }
+function toggleBold(){ const o=SA.canvas.getActiveObject(); if(!o) return; o.set('fontWeight',o.fontWeight==='bold'?'normal':'bold'); SA.canvas.renderAll(); document.getElementById('pBold').classList.toggle('on',o.fontWeight==='bold'); saveHist(); }
+function toggleItal(){ const o=SA.canvas.getActiveObject(); if(!o) return; o.set('fontStyle',o.fontStyle==='italic'?'normal':'italic'); SA.canvas.renderAll(); document.getElementById('pItal').classList.toggle('on',o.fontStyle==='italic'); saveHist(); }
+function toggleUndr(){ const o=SA.canvas.getActiveObject(); if(!o) return; o.set('underline',!o.underline); SA.canvas.renderAll(); document.getElementById('pUndr').classList.toggle('on',o.underline); saveHist(); }
+function apXY(){ const o=SA.canvas.getActiveObject(); if(!o) return; o.set({left:+document.getElementById('pX').value,top:+document.getElementById('pY').value}); o.setCoords(); SA.canvas.renderAll(); saveHist(); }
+function apSize(){ const o=SA.canvas.getActiveObject(); if(!o) return; const tw=+document.getElementById('pW').value,th=+document.getElementById('pH').value; if(o.type==='textbox'){ if(tw>0) o.set('width',tw); } else { if(tw>0) o.set('scaleX',tw/o.width); if(th>0) o.set('scaleY',th/o.height); } o.setCoords(); SA.canvas.renderAll(); saveHist(); }
 function deleteSelected(){ const o=SA.canvas.getActiveObject(); if(!o) return; SA.canvas.remove(o); SA.canvas.renderAll(); saveHist(); buildLayerList(); showProp('empty'); }
 
 /* ── Photo shape ── */
@@ -2821,9 +3082,27 @@ function applyPhotoShapeVisual(obj,shape){
   } else if(shape==='ellipse'){
     obj.clipPath=new fabric.Ellipse({rx:w/2,ry:h/2,originX:'center',originY:'center'});
   }
-  // Border via stroke
-  const bw=obj.photoBorderW||0, bc=obj.photoBorderColor||'#000000';
-  obj.set({stroke:bw>0?bc:null,strokeWidth:bw,paintFirst:'stroke'});
+  // Rect border = Fabric stroke; strokeUniform keeps it the SAME thickness
+  // whatever the photo's own pixel size (a 1200px real photo scaled to 0.07
+  // used to print a border 10× thinner than the one designed). Other shapes
+  // get their border from the fabric.Image render patch at the top.
+  const bw=+obj.photoBorderW||0, bc=obj.photoBorderColor||'#000000';
+  const rect=(shape||'rect')==='rect';
+  obj.set({stroke:(rect&&bw>0)?bc:null,strokeWidth:rect?bw:0,strokeUniform:true,paintFirst:'fill'});
+  obj.dirty=true;
+}
+/* Put a real photo into a photo box with "cover" fit (like CSS object-fit:
+   cover) using Fabric's crop — no stretching, centred, and the shape clip /
+   border work exactly as designed. Same code for live preview & final cards. */
+function _coverPhoto(obj,el,bw,bh){
+  const nw=el.naturalWidth||el.width, nh=el.naturalHeight||el.height;
+  if(!nw||!nh||!bw||!bh) return false;
+  const sc=Math.max(bw/nw,bh/nh), cw=bw/sc, ch=bh/sc;
+  obj.setElement(el);
+  obj.set({cropX:(nw-cw)/2,cropY:(nh-ch)/2,width:cw,height:ch,scaleX:sc,scaleY:sc});
+  applyPhotoShapeVisual(obj,obj.photoShape||'rect');
+  obj.setCoords();
+  return true;
 }
 function setPhotoShape(shape){
   const obj=SA.canvas.getActiveObject(); if(!obj) return;
@@ -2841,100 +3120,115 @@ function setPhotoBorder(){
 }
 
 /* ── Live data preview (non-destructive) ── */
+function _updateRowLabel(){
+  const max=SA.excel.rows.length;
+  if(SA.previewRow>=max) SA.previewRow=Math.max(0,max-1);
+  const el=document.getElementById('prevRowLabel');
+  if(el) el.textContent=max?`Row ${SA.previewRow+1} / ${max}`:'No data';
+}
 function prevRow(dir){
   const max=SA.excel.rows.length;
+  if(!max){ toast('Load an Excel file to preview real data','warn'); return; }
   SA.previewRow=Math.max(0,Math.min(max-1,SA.previewRow+dir));
-  document.getElementById('prevRowLabel').textContent=`Row ${SA.previewRow+1}${max>0?' / '+max:''}`;
+  _updateRowLabel();
   if(SA.previewMode){ clearPreviewData(); applyPreviewData(); }
+  else togglePreviewMode();
 }
 function togglePreviewMode(){
+  if(!SA.canvas) return;
+  if(!SA.previewMode&&!SA.excel.rows.length){ toast('Load an Excel file to preview real data','warn'); return; }
   SA.previewMode=!SA.previewMode;
   document.getElementById('prevModeBtn').classList.toggle('on',SA.previewMode);
   SA.previewMode?applyPreviewData():clearPreviewData();
 }
+let _pvToken=0;
+function _keepOrig(obj){
+  if(!obj._orig) obj._orig={el:obj._element,scaleX:obj.scaleX,scaleY:obj.scaleY,width:obj.width,height:obj.height,cropX:obj.cropX||0,cropY:obj.cropY||0};
+}
 function applyPreviewData(){
+  const tok=++_pvToken;
   const row=SA.excel.rows[SA.previewRow]||{};
-  // Pass 1: text fields
+  const autoFit=document.getElementById('optAutoFit')?.checked!==false;
+  // Pass 1: text fields (same fit logic as the final cards)
   SA.canvas.getObjects().forEach(obj=>{
     if(obj.eleType==='field'&&obj.fieldName){
-      if(obj._origText===undefined) obj._origText=obj.text;
-      obj.set('text',String(row[obj.fieldName]??''));
+      if(obj._origText===undefined){ obj._origText=obj.text; obj._origFs=obj.fontSize; obj._origW=obj.width; }
+      _setFieldText(obj,String(rowVal(row,obj.fieldName,SA.previewRow)),autoFit);
     }
   });
-  // Pass 2: photo — swap the HTML element in-place (no overlay, no visibility tricks)
-  SA.canvas.getObjects().filter(o=>o.eleType==='photo').forEach(obj=>{
-    const url=resolveRowPhoto(row);
-    if(!url) return;
+  // Pass 2: photo — cover-fit into the same box
+  const pUrl=resolveRowPhoto(row,SA.previewRow);
+  SA.canvas.getObjects().filter(o=>o.eleType==='photo'&&o.type==='image').forEach(obj=>{
+    if(!pUrl) return;
     const bw=obj.getScaledWidth(), bh=obj.getScaledHeight();
-    // Save original element once
-    if(!obj._origEl){ obj._origEl=obj._element; obj._origScX=obj.scaleX; obj._origScY=obj.scaleY; }
-    const htmlImg=new Image();
-    htmlImg.onload=()=>{
-      obj.setElement(htmlImg);
-      obj.set({scaleX:bw/htmlImg.naturalWidth, scaleY:bh/htmlImg.naturalHeight});
-      applyPhotoShapeVisual(obj, obj.photoShape||'rect');
-      obj.dirty=true; obj.setCoords(); SA.canvas.requestRenderAll();
-    };
-    htmlImg.src=url;
-  });
-  // Pass 3: QR — swap element in-place
-  SA.canvas.getObjects().filter(o=>o.eleType==='qr'&&o.type==='image').forEach(obj=>{
-    const qv=SA.project.qrFields.length?SA.project.qrFields.map(f=>String(row[f]||'')).join('\n').trim()||'QR':String(Object.values(row)[0]||'QR');
-    const bw=obj.getScaledWidth(), bh=obj.getScaledHeight();
-    if(!obj._origEl){ obj._origEl=obj._element; obj._origScX=obj.scaleX; obj._origScY=obj.scaleY; }
-    const sz=Math.round(Math.max(bw,bh,40));
-    _makeQRImg(qv,sz,newQR=>{
-      const el=newQR&&newQR._element?newQR._element:null;
-      if(!el) return;
-      obj.setElement(el);
-      obj.set({scaleX:bw/el.width, scaleY:bh/el.height});
-      obj.setCoords(); SA.canvas.renderAll();
+    _loadImg(pUrl).then(el=>{
+      if(!el||tok!==_pvToken||!SA.previewMode) return; // preview turned off / row changed meanwhile
+      _keepOrig(obj); _coverPhoto(obj,el,bw,bh); SA.canvas.requestRenderAll();
     });
   });
-  SA.canvas.renderAll();
+  // Pass 3: QR — swap element in-place
+  const qv=qrValue(row);
+  SA.canvas.getObjects().filter(o=>o.eleType==='qr'&&o.type==='image').forEach(obj=>{
+    const src=_qrDataURL(qv,512); if(!src) return;
+    const bw=obj.getScaledWidth(), bh=obj.getScaledHeight();
+    _loadImg(src).then(el=>{
+      if(!el||tok!==_pvToken||!SA.previewMode) return;
+      _keepOrig(obj);
+      obj.setElement(el); obj.set({cropX:0,cropY:0,scaleX:bw/el.naturalWidth,scaleY:bh/el.naturalHeight});
+      obj.setCoords(); SA.canvas.requestRenderAll();
+    });
+  });
+  SA.canvas.requestRenderAll();
 }
 function clearPreviewData(){
-  // Restore photo elements to placeholder
-  SA.canvas.getObjects().filter(o=>o.eleType==='photo'&&o._origEl).forEach(obj=>{
-    obj.setElement(obj._origEl);
-    obj.set({scaleX:obj._origScX, scaleY:obj._origScY});
-    applyPhotoShapeVisual(obj, obj.photoShape||'rect');
+  _pvToken++;
+  SA.canvas.getObjects().filter(o=>o._orig).forEach(obj=>{
+    const o=obj._orig;
+    obj.setElement(o.el);
+    obj.set({width:o.width,height:o.height,cropX:o.cropX,cropY:o.cropY,scaleX:o.scaleX,scaleY:o.scaleY});
+    if(obj.eleType==='photo') applyPhotoShapeVisual(obj,obj.photoShape||'rect');
     obj.setCoords();
-    delete obj._origEl; delete obj._origScX; delete obj._origScY;
+    delete obj._orig;
   });
-  // Restore QR elements
-  SA.canvas.getObjects().filter(o=>o.eleType==='qr'&&o._origEl).forEach(obj=>{
-    obj.setElement(obj._origEl);
-    obj.set({scaleX:obj._origScX, scaleY:obj._origScY});
-    obj.setCoords();
-    delete obj._origEl; delete obj._origScX; delete obj._origScY;
-  });
-  // Restore text fields
   SA.canvas.getObjects().forEach(obj=>{
     if(obj.eleType==='field'&&obj._origText!==undefined){
-      obj.set('text',obj._origText); delete obj._origText;
+      obj.set({text:obj._origText,fontSize:obj._origFs??obj.fontSize,width:obj._origW??obj.width});
+      delete obj._origText; delete obj._origFs; delete obj._origW;
     }
   });
-  SA.canvas.renderAll();
+  SA.canvas.requestRenderAll();
+}
+/* Put a value into a field textbox. With "Shrink to fit" (default) a long
+   name reduces its font until it fits the designed width and line count —
+   before, it wrapped onto the next field or pushed the box wider than the card. */
+function _setFieldText(obj,val,autoFit){
+  const w0=obj.width, lines0=Math.max(1,(obj.textLines||[]).length), fs0=obj.fontSize;
+  obj.set('text',val);
+  if(!autoFit||(obj.fitMode||'shrink')!=='shrink'||!val) return;
+  const minFs=Math.max(5,fs0*0.45);
+  let fs=fs0, guard=0;
+  while((obj.width>w0+0.5||(obj.textLines||[]).length>lines0)&&fs>minFs&&guard++<40){
+    fs=Math.max(minFs,fs*0.93);
+    obj.set({fontSize:fs,width:w0});
+  }
+  if(obj.width>w0+0.5) obj.set({width:w0});
 }
 
 /* ── Side switch ── */
 function switchSide(side){
-  if(SA.previewMode){togglePreviewMode();}
-  if(SA.canvas) SA.project[SA.curSide==='front'?'frontJSON':'backJSON']=SA.canvas.toJSON(['eleType','fieldName','photoShape','photoBorderW','photoBorderColor']);
+  if(!SA.canvas||side===SA.curSide) return;
+  snapCurrentSide();
   SA.curSide=side;
   const tf=document.getElementById('tabFront'), tb=document.getElementById('tabBack');
   if(tf&&tb){
     tf.style.background=side==='front'?'var(--p)':'#fff'; tf.style.color=side==='front'?'#fff':'#94a3b8'; tf.style.borderColor=side==='front'?'var(--p)':'#e2e8f0';
     tb.style.background=side==='back'?'var(--p)':'#fff';  tb.style.color=side==='back'?'#fff':'#94a3b8';  tb.style.borderColor=side==='back'?'var(--p)':'#e2e8f0';
   }
-  const json=SA.project[side+'JSON'];
-  const bgURL=SA.project[side+'BgURL']||null;
-  SA.canvas.clear();
-  SA.canvas.setBackgroundColor(SA.project.bgColor,()=>{});
-  if(bgURL) fabric.Image.fromURL(bgURL,img=>{SA.canvas.setBackgroundImage(img,SA.canvas.renderAll.bind(SA.canvas),{scaleX:SA.dispW/img.width,scaleY:SA.dispH/img.height});});
-  if(json) SA.canvas.loadFromJSON(json,()=>SA.canvas.renderAll(),(o,obj)=>{obj.eleType=o.eleType;obj.fieldName=o.fieldName;if(o.photoShape){obj.photoShape=o.photoShape;obj.photoBorderW=o.photoBorderW;obj.photoBorderColor=o.photoBorderColor;}});
-  buildLayerList();
+  showProp('empty');
+  // Each side has its own undo history — undo on the Back used to restore a
+  // Front state onto the Back card.
+  SA.history=[]; SA.histIdx=-1;
+  loadCanvasState(SA.project[side+'JSON'],side,()=>saveHist(true));
 }
 
 /* ── Snap grid ── */
@@ -2945,20 +3239,21 @@ function toggleGrid(){
 }
 
 /* ── Undo / Redo ── */
-function saveHist(){
+function saveHist(initial){
   if(!SA.canvas) return;
   if(SA.previewMode) return; // don't save history during preview
-  const json=SA.canvas.toJSON(['eleType','fieldName','photoShape','photoBorderW','photoBorderColor']);
+  clearTimeout(_histTid);
+  const json=snapCanvas();
   SA.history.splice(SA.histIdx+1);
   SA.history.push(json);
-  if(SA.history.length>50) SA.history.shift();
+  if(SA.history.length>60) SA.history.shift();
   SA.histIdx=SA.history.length-1;
+  if(!initial) markDirty();
 }
-function undoC(){ if(SA.histIdx<=0) return; SA.histIdx--; loadHist(); }
-function redoC(){ if(SA.histIdx>=SA.history.length-1) return; SA.histIdx++; loadHist(); }
+function undoC(){ if(SA.previewMode) togglePreviewMode(); if(SA.histIdx<=0){ toast('Nothing to undo','info'); return; } SA.histIdx--; loadHist(); }
+function redoC(){ if(SA.previewMode) togglePreviewMode(); if(SA.histIdx>=SA.history.length-1){ toast('Nothing to redo','info'); return; } SA.histIdx++; loadHist(); }
 function loadHist(){
-  const json=SA.history[SA.histIdx];
-  SA.canvas.loadFromJSON(json,()=>{ SA.canvas.renderAll(); buildLayerList(); showProp('empty'); },(o,obj)=>{obj.eleType=o.eleType;obj.fieldName=o.fieldName;if(o.photoShape){obj.photoShape=o.photoShape;obj.photoBorderW=o.photoBorderW;obj.photoBorderColor=o.photoBorderColor;}});
+  loadCanvasState(SA.history[SA.histIdx],SA.curSide,()=>{ showProp('empty'); markDirty(); });
 }
 
 /* ══════════════════════════════════════
@@ -2987,7 +3282,7 @@ function setFmt(fmt,el){
   if(el) el.classList.add('on');
   // Show quality slider for image-based formats
   const qRow=document.getElementById('qualityRow');
-  if(qRow) qRow.style.display=(fmt==='png'||fmt==='zip')?'':'none';
+  if(qRow) qRow.style.display=''; // card JPEG quality applies to every format
 }
 function syncMargins(v){
   const val=parseFloat(v)||0;
@@ -3111,9 +3406,10 @@ function autoLayout(){
   const ecH = (SA.project.cardH || 2.125) * (SA.gen.cardScale || 1.0);
 
   // Step 2: Layout params
-  const cutMM = parseFloat(document.getElementById('cutZoneMM')?.value) || 3;
+  // _num(): a value of 0 is valid (0 mm cut zone / 0 margin) — "|| 3" turned it back into 3
+  const cutMM = Math.max(0,_num('cutZoneMM',3));
   const cutIn = cutMM / 25.4;
-  const margin = parseFloat(document.getElementById('mAll')?.value) || 0.2;
+  const margin = Math.max(0,_num('mAll',0.2));
 
   // Step 3: Use SELECTED paper — do NOT switch papers
   const selectedPaper = document.getElementById('genPaper')?.value || 'A4';
@@ -3182,22 +3478,25 @@ function _getLayoutParams(){
   const pBase=PAPER_SZ[pKey]||PAPER_SZ.A4;
   let pw=pBase.w, ph=pBase.h;
   if(or==='landscape'){[pw,ph]=[ph,pw];}
-  const sc=parseFloat(document.getElementById('cardScale')?.value)||100;
+  const sc=_num('cardScale',100)||100;
   SA.gen.cardScale=sc/100;
-  const mAll=parseFloat(document.getElementById('mAll')?.value)||0.2;
-  const mT=parseFloat(document.getElementById('mTop')?.value)||mAll;
-  const mB=parseFloat(document.getElementById('mBot')?.value)||mAll;
-  const mL=parseFloat(document.getElementById('mLeft')?.value)||mAll;
-  const mR=parseFloat(document.getElementById('mRight')?.value)||mAll;
-  const gX=parseFloat(document.getElementById('gapX')?.value)||0;
-  const gY=parseFloat(document.getElementById('gapY')?.value)||0;
-  const cutMM=parseFloat(document.getElementById('cutZoneMM')?.value)||0;
+  // 0 is a valid margin — "parseFloat(..)||0.2" silently turned a 0 margin
+  // (Individual preset) back into 0.2".
+  const mAll=Math.max(0,_num('mAll',0.2));
+  const mT=Math.max(0,_num('mTop',mAll));
+  const mB=Math.max(0,_num('mBot',mAll));
+  const mL=Math.max(0,_num('mLeft',mAll));
+  const mR=Math.max(0,_num('mRight',mAll));
+  const gX=Math.max(0,_num('gapX',0));
+  const gY=Math.max(0,_num('gapY',0));
+  const cutMM=Math.max(0,_num('cutZoneMM',0));
   const cutIn=+(cutMM/25.4).toFixed(4);
   // effective gap = max(user gap, cut zone)
   const egX=Math.max(gX,cutIn), egY=Math.max(gY,cutIn);
   const center=document.getElementById('optCenter')?.checked!==false;
   const cutLines=document.getElementById('optCutLines')?.checked!==false;
-  return{pKey,or,pw,ph,mT,mB,mL,mR,gX:egX,gY:egY,sc:SA.gen.cardScale,cutMM,cutIn,center,cutLines};
+  const mirrorBack=document.getElementById('optMirrorBack')?.checked!==false;
+  return{pKey,or,pw,ph,mT,mB,mL,mR,gX:egX,gY:egY,sc:SA.gen.cardScale,cutMM,cutIn,center,cutLines,mirrorBack};
 }
 function updateGenLayout(){
   const p=_getLayoutParams();
@@ -3220,7 +3519,8 @@ function updateGenLayout(){
   // Smart card size label in layout info
   const sLabel=_cardSizeLabel(cW,cH);
   const li=document.getElementById('layoutInfo');
-  if(li) li.textContent=`${cols}×${rows} = ${perSheet}/sheet · ${sheets} sheet(s) · cut zone ${cutMM}mm`;
+  const tooBig=cW>pw-mL-mR+0.005||cH>ph-mT-mB+0.005;
+  if(li){ li.textContent=`${cols}×${rows} = ${perSheet}/sheet · ${sheets} sheet(s) · cut zone ${cutMM}mm`+(tooBig?' · ⚠ card larger than printable area':''); li.style.color=tooBig?'#dc2626':''; }
   const sc2=document.getElementById('sheetCount');
   if(sc2) sc2.textContent=totalCards>0?`${totalCards} cards · ${sLabel}`:'No data';
   drawLayoutPreview(pw,ph,startX,startY,mL,mT,gX,gY,cW,cH,cols,rows,cutMM,cutIn,cutLines);
@@ -3320,150 +3620,121 @@ function drawLayoutPreview(pw,ph,startX,startY,mL,mT,gX,gY,cW,cH,cols,rows,cutMM
 }
 
 /* ── Per-card renderer ──
-   side: 'front' (default) or 'back' — previously hardcoded to frontJSON/
-   frontBgURL, so a double-sided card's Back design (fully saved, per-side
-   background and all) was silently unreachable at generation time: no
-   caller ever passed anything else in, and there was no parameter to pass.
-   The actual output always contained the front side only, regardless of
-   how the card was designed, on every device. */
+   side: 'front' (default) or 'back'. Fully promise-based: the old callback
+   counter could call "done" early (e.g. when an invalid barcode failed
+   synchronously), so a card was exported before its photo/QR was placed and
+   late callbacks then drew onto an already-disposed canvas. */
+const _genWarn={bar:0,photo:0,qr:0};
 async function renderCardSM(rowIdx,side){
   side=side||'front';
-  return new Promise(resolve=>{
-    const row=SA.excel.rows[rowIdx]||{};
-    const sc=SA.gen.cardScale||1.0;
-    const dpi=SA.project.dpi||300;
-    const cW=SA.project.cardW||3.375, cH=SA.project.cardH||2.125;
-    const expW=Math.round(cW*dpi*sc);
-    const offCvs=new fabric.StaticCanvas(null,{width:SA.dispW,height:SA.dispH,enableRetinaScaling:false});
-    const mult=expW/SA.dispW;
-    const json=SA.project[side+'JSON'];
-    const bgURL=SA.project[side+'BgURL'];
-    const doRender=()=>{
-      if(json){
-        offCvs.loadFromJSON(json,()=>{
-          offCvs.getObjects().forEach(obj=>{
-            if(obj.eleType==='field'&&obj.fieldName) obj.set('text',String(row[obj.fieldName]??''));
-          });
-          renderSpecialEls(offCvs,row,()=>{
-            offCvs.renderAll();
-            resolve(offCvs.toDataURL({format:'jpeg',quality:SA.gen.quality||0.92,multiplier:mult}));
-            offCvs.dispose();
-          },rowIdx);
-        },(o,obj)=>{obj.eleType=o.eleType;obj.fieldName=o.fieldName;obj.photoShape=o.photoShape;obj.photoBorderW=o.photoBorderW;obj.photoBorderColor=o.photoBorderColor;});
-      } else { resolve(offCvs.toDataURL({format:'jpeg',quality:.92,multiplier:mult})); offCvs.dispose(); }
-    };
-    if(bgURL){
-      fabric.Image.fromURL(bgURL,bgImg=>{
-        offCvs.setBackgroundImage(bgImg,doRender,{scaleX:SA.dispW/bgImg.width,scaleY:SA.dispH/bgImg.height});
-      },{crossOrigin:'anonymous'});
-    } else {
-      offCvs.setBackgroundColor(SA.project.bgColor||'#ffffff',doRender);
+  const row=SA.excel.rows[rowIdx]||{};
+  const sc=SA.gen.cardScale||1.0;
+  const dpi=SA.project.dpi||300;
+  const cW=SA.project.cardW||3.375;
+  const expW=Math.round(cW*dpi*sc);
+  const mult=expW/SA.dispW;
+  const json=SA.project[side+'JSON'];
+  const autoFit=document.getElementById('optAutoFit')?.checked!==false;
+  const off=new fabric.StaticCanvas(null,{width:SA.dispW,height:SA.dispH,enableRetinaScaling:false,renderOnAddRemove:false});
+  try{
+    if(json) await new Promise(res=>off.loadFromJSON(json,res));
+    off.setBackgroundColor(SA.project.bgColor||'#ffffff');
+    const bgEl=await _loadImg(SA.project[side+'BgURL'],true);   // decoded once, reused for every card
+    if(bgEl) off.setBackgroundImage(new fabric.Image(bgEl),null,{left:0,top:0,originX:'left',originY:'top',scaleX:SA.dispW/bgEl.naturalWidth,scaleY:SA.dispH/bgEl.naturalHeight});
+    off.getObjects().forEach(obj=>{
+      if(obj.eleType==='field'&&obj.fieldName) _setFieldText(obj,String(rowVal(row,obj.fieldName,rowIdx)),autoFit);
+    });
+    await renderSpecialEls(off,row,rowIdx);
+    if(SA.project.watermark){
+      const W=SA.dispW,H=SA.dispH;
+      off.add(new fabric.Text(SA.project.watermark,{fontFamily:'Arial',fontWeight:'bold',fontSize:Math.round(Math.min(W,H)*0.13),fill:'rgba(0,0,0,0.13)',originX:'center',originY:'center',left:W/2,top:H/2,angle:-Math.atan2(H,W)*180/Math.PI}));
     }
-  });
+    off.renderAll();
+    return off.toDataURL({format:'jpeg',quality:SA.gen.quality||0.92,multiplier:mult});
+  } finally { try{ off.dispose(); }catch(e){} }
 }
-function renderSpecialEls(canvas,row,done,rowIdx){
+/* Swap a placeholder for the real image at the SAME layer position (remove +
+   add used to move it to the top — e.g. a photo then covered its own frame). */
+function _swapIn(canvas,obj,img){
+  const idx=canvas.getObjects().indexOf(obj);
+  canvas.remove(obj);
+  canvas.insertAt(img,Math.max(0,idx));
+}
+/* Fit an image inside the placeholder box keeping its aspect ratio, centred
+   ("contain") — signatures/barcodes are never squashed. */
+function _containIn(obj,img){
+  const bw=obj.getScaledWidth(), bh=obj.getScaledHeight();
+  const iw=img.width, ih=img.height;
+  if(obj.angle){ img.set({left:obj.left,top:obj.top,angle:obj.angle,scaleX:bw/iw,scaleY:bh/ih,opacity:obj.opacity}); return; }
+  const s=Math.min(bw/iw,bh/ih);
+  img.set({left:obj.left+(bw-iw*s)/2,top:obj.top+(bh-ih*s)/2,scaleX:s,scaleY:s,opacity:obj.opacity});
+}
+async function renderSpecialEls(canvas,row,rowIdx){
   const objs=[...canvas.getObjects()];
-  let pending=0;
-  const check=()=>{if(--pending<=0)done();};
-  objs.forEach(obj=>{
+  await Promise.all(objs.map(async obj=>{
     if(obj.eleType==='photo'){
-      const u=resolveRowPhoto(row,rowIdx);
-      if(u){pending++;fabric.Image.fromURL(u,img=>{
-        const bw=obj.getScaledWidth(),bh=obj.getScaledHeight();
-        // "Cover" fit (like CSS object-fit:cover) instead of stretching the
-        // photo to exactly bw×bh: a real photo's aspect ratio almost never
-        // matches the box's, so forcing scaleX≠scaleY squashed/stretched
-        // every photo, and on top of that the shape clip (esp. circle,
-        // whose diameter = the box's SMALLER side) then cut into that
-        // already-distorted image. Scaling uniformly to fully cover the box
-        // and centering the overflow removes the stretch — the circle/round
-        // clip still has to crop *something* off a non-square box (that's
-        // unavoidable; make the Photo box closer to square for less of it),
-        // but what's left on screen is a true, undistorted crop of the
-        // original photo instead of a squashed one.
-        const cover=Math.max(bw/img.width,bh/img.height);
-        const cw=img.width*cover, ch=img.height*cover;
-        img.set({left:obj.left+(bw-cw)/2,top:obj.top+(bh-ch)/2,scaleX:cover,scaleY:cover});
-        applyPhotoClip(img,obj.photoShape||'rect',obj.left,obj.top,bw,bh,obj.photoBorderW||0,obj.photoBorderColor||'#000');
-        canvas.remove(obj);canvas.add(img);check();
-      });}
+      const el=await _loadImg(resolveRowPhoto(row,rowIdx));
+      // No photo for this student → leave the box empty instead of printing
+      // the purple "Photo" placeholder on the card.
+      if(!el||obj.type!=='image'||!_coverPhoto(obj,el,obj.getScaledWidth(),obj.getScaledHeight())){ canvas.remove(obj); _genWarn.photo++; }
     } else if(obj.eleType==='sign'){
-      const v=SA.project.signCol?row[SA.project.signCol]:null;
-      const u=getSignURL(v);
-      if(u){pending++;fabric.Image.fromURL(u,img=>{img.scaleToWidth(obj.getScaledWidth());img.set({left:obj.left,top:obj.top});canvas.remove(obj);canvas.add(img);check();},{crossOrigin:'anonymous'});}
+      const el=await _loadImg(resolveRowSign(row),true);
+      if(!el){ canvas.remove(obj); return; }       // no sign → no purple placeholder box
+      const img=new fabric.Image(el); _containIn(obj,img); _swapIn(canvas,obj,img);
     } else if(obj.eleType==='qr'){
-      pending++;
-      const qv=SA.project.qrFields.length?SA.project.qrFields.map(f=>String(row[f]||'')).join('\n').trim()||'QR':String(Object.values(row)[0]||'QR');
-      const qsz=Math.round(Math.min(obj.getScaledWidth(),obj.getScaledHeight()));
-      _makeQRImg(qv,qsz,qi=>{qi.set({left:obj.left,top:obj.top,scaleX:obj.getScaledWidth()/qi.width,scaleY:obj.getScaledHeight()/qi.height});canvas.remove(obj);canvas.add(qi);check();});
+      const src=_qrDataURL(qrValue(row),Math.min(1024,Math.max(256,Math.round(Math.min(obj.getScaledWidth(),obj.getScaledHeight())*(SA.project.dpi||300)/96))));
+      const el=src?await _loadImg(src):null;
+      if(!el){ canvas.remove(obj); _genWarn.qr++; return; }
+      const img=new fabric.Image(el); _containIn(obj,img); _swapIn(canvas,obj,img);
     } else if(obj.eleType==='barcode'){
-      pending++;
       const bf=SA.project.barcodeField;
-      const bv=bf?String(row[bf]||'123456'):String(Object.values(row)[0]||'123456');
-      renderBarFabric(canvas,bv,obj,SA.project.barcodeType||'CODE128',check);
+      const bv=String(bf?rowVal(row,bf):(Object.values(row)[0]??'')).trim();
+      const src=bv?_barDataURL(bv,SA.project.barcodeType||'CODE128',obj.getScaledHeight(),obj.getScaledWidth()):null;
+      const el=src?await _loadImg(src):null;
+      if(!el){ canvas.remove(obj); _genWarn.bar++; return; }
+      const img=new fabric.Image(el); _containIn(obj,img); _swapIn(canvas,obj,img);
     }
-  });
-  if(!pending)done();
+  }));
 }
-function applyPhotoClip(img,shape,boxLeft,boxTop,bw,bh,bW,bC){
-  // Clip is centered on the BOX's own position, not the (now cover-fit,
-  // possibly larger/offset) image's position — those only coincided before
-  // when the photo was stretched to exactly bw×bh.
-  const cx=boxLeft+bw/2, cy=boxTop+bh/2;
-  if(shape==='circle'){
-    img.clipPath=new fabric.Circle({radius:Math.min(bw,bh)/2,originX:'center',originY:'center',left:cx,top:cy,absolutePositioned:true});
-  } else if(shape==='round'){
-    const r=Math.min(bw,bh)*0.12;
-    img.clipPath=new fabric.Rect({width:bw,height:bh,rx:r,ry:r,originX:'center',originY:'center',left:cx,top:cy,absolutePositioned:true});
-  } else if(shape==='ellipse'){
-    img.clipPath=new fabric.Ellipse({rx:bw/2,ry:bh/2,originX:'center',originY:'center',left:cx,top:cy,absolutePositioned:true});
-  }
-  if(bW>0) img.set({stroke:bC,strokeWidth:bW});
-}
-function renderQRFabric(canvas,val,refObj,cb){
+/* Barcode rendered at 4× the box resolution with a WHOLE-pixel bar width
+   chosen so the code fills the box width (short codes like "2" used to come
+   out as a tiny strip in the middle of the box). */
+function _barDataURL(val,fmt,boxH,boxW){
   try{
-    const tmp=document.createElement('div'); tmp.style.display='none'; document.body.appendChild(tmp);
-    const sz=Math.round(Math.min(refObj.getScaledWidth(),refObj.getScaledHeight()));
-    new QRCode(tmp,{text:val,width:sz,height:sz,correctLevel:QRCode.CorrectLevel.M});
-    setTimeout(()=>{
-      const el=tmp.querySelector('canvas')||tmp.querySelector('img');
-      const src=el?(el.src||el.toDataURL()):null;
-      document.body.removeChild(tmp);
-      if(!src){cb();return;}
-      fabric.Image.fromURL(src,qi=>{qi.set({left:refObj.left,top:refObj.top});qi.scaleToWidth(refObj.getScaledWidth());canvas.remove(refObj);canvas.add(qi);cb();});
-    },120);
-  }catch(e){cb();}
+    const H=Math.max(40,Math.round(boxH*4*0.72)), W=Math.max(80,Math.round((boxW||boxH*3)*4));
+    const opt={format:fmt,height:H,fontSize:Math.round(H*0.32),textMargin:Math.round(H*0.04),margin:Math.round(H*0.06),lineColor:'#000',background:'rgba(0,0,0,0)',displayValue:true};
+    const probe=document.createElement('canvas');
+    JsBarcode(probe,val,{...opt,width:1,margin:0,displayValue:false});
+    const modules=Math.max(1,probe.width);
+    const bar=Math.max(1,Math.min(12,Math.floor((W-2*opt.margin)/modules)));
+    const c=document.createElement('canvas');
+    JsBarcode(c,val,{...opt,width:bar});
+    return c.toDataURL('image/png');
+  }catch(e){ return null; }
 }
-function renderBarFabric(canvas,val,refObj,fmt,cb){
-  try{
-    const tmp=document.createElement('canvas');
-    JsBarcode(tmp,val,{format:fmt,width:2,height:Math.round(refObj.getScaledHeight()*.7),fontSize:9,lineColor:'#000',background:'rgba(0,0,0,0)',margin:2,displayValue:true});
-    fabric.Image.fromURL(tmp.toDataURL(),bi=>{bi.set({left:refObj.left,top:refObj.top});bi.scaleToWidth(refObj.getScaledWidth());canvas.remove(refObj);canvas.add(bi);cb();});
-  }catch(e){cb();}
-}
-function _stripExt(s){ return String(s).trim().replace(/\.[^.]+$/,'').toLowerCase(); }
 function getPhotoURL(val){
-  if(!val&&val!==0) return null;
-  const v=String(val).trim();
-  if(SA.photos.has(v)) return SA.photos.get(v);
-  const vn=_stripExt(v);
-  for(const [k,u] of SA.photos){ if(_stripExt(k)===vn) return u; }
+  if(val===null||val===undefined||String(val).trim()==='') return null;
+  const k=_fileKey(val);
+  if(SA.photos.has(k)) return SA.photos.get(k);
   // Numbers: sheet says 1 but the file is 01.jpg (or the reverse) — compare them as numbers.
-  if(/^\d+$/.test(vn)){
-    const n=parseInt(vn,10);
-    for(const [k,u] of SA.photos){ const kb=_stripExt(k); if(/^\d+$/.test(kb)&&parseInt(kb,10)===n) return u; }
-  }
+  if(/^\d+$/.test(k)) return SA.photoNum.get('#'+parseInt(k,10))||null;
   return null;
 }
 function getSignURL(val){
-  if(!val&&val!==0) return null;
-  const v=String(val).trim();
-  if(SA.signs.has(v)) return SA.signs.get(v);
-  const vn=_stripExt(v);
-  for(const [k,u] of SA.signs){ if(_stripExt(k)===vn) return u; }
-  return null;
+  if(val===null||val===undefined||String(val).trim()==='') return null;
+  return SA.signs.get(_fileKey(val))||null;
 }
-/* Resolve photo for a row — tries photoCol, first column, any column, then index fallback */
+/* Signature for a row: Sign column value → else the first column (same rule
+   as photos) → else the common signature (one file uploaded, or saved in the
+   School Profile). The common signature was never used before. */
+function resolveRowSign(row){
+  if(SA.signs.size>1){
+    const u=(SA.project.signCol&&getSignURL(rowVal(row,SA.project.signCol)))||getSignURL(rowVal(row,SA.excel.headers[0]));
+    if(u) return u;
+  }
+  return SA.singleSign||(SA.signs.size===1?[...SA.signs.values()][0]:null);
+}
+/* Resolve photo for a row — tries photoCol, then the first column */
 function resolveRowPhoto(row,rowIdx){
   // Rows from Data Collection carry their own record id (__rid): the photo belongs to THAT record,
   // never to a name (many students share one) and never to a "cycled" fallback photo. A record with
@@ -3471,10 +3742,9 @@ function resolveRowPhoto(row,rowIdx){
   if(row && row.__rid!==undefined && SA.dcPhotos) return SA.dcPhotos.get(String(row.__rid))||null;
   // The rule: the sheet's FIRST column (e.g. "No" / "Roll No") is matched with the photo FILE NAME
   // (No 5 → 5.jpg). If the user marked a specific Photo/Image column, that one is tried first.
-  // Nothing else is guessed: no scanning of other columns and no "cycling" through the photos —
-  // a row with no matching photo gets NO photo instead of somebody else's.
+  // Nothing else is guessed — a row with no matching photo gets NO photo instead of somebody else's.
   if(SA.project.photoCol){
-    const u=getPhotoURL(row[SA.project.photoCol]);
+    const u=getPhotoURL(rowVal(row,SA.project.photoCol));
     if(u) return u;
   }
   const firstKey=SA.excel.headers[0];
@@ -3487,7 +3757,9 @@ function resolveRowPhoto(row,rowIdx){
 
 /* ── Main generation trigger ── */
 async function startGeneration(){
+  if(SA.generating) return;
   if(!SA.project.frontJSON&&!SA.project.backJSON&&!SA.canvas){ toast('Please complete the designer step first','warn'); return; }
+  if(!SA.excel.rows.length){ toast('Please upload the Excel data first (Step 1)','warn'); return; }
   // Clear Preview BEFORE snapshotting the canvas, not after — Preview
   // substitutes one specific row's real text into each field (so its
   // Textbox re-wraps/re-sizes against THAT row's content), and the snapshot
@@ -3496,8 +3768,9 @@ async function startGeneration(){
   // baked that one row's field state into the template for every card;
   // clearing first guarantees the snapshot always reflects the actual
   // placeholder design, not whatever happened to be on screen last.
-  if(SA.previewMode) clearPreviewData();
-  if(SA.canvas) SA.project[SA.curSide+'JSON']=SA.canvas.toJSON(['eleType','fieldName','photoShape','photoBorderW','photoBorderColor']);
+  snapCurrentSide();
+  updateGenLayout();
+  _genWarn.bar=_genWarn.photo=_genWarn.qr=0;
   // Print-ready formats (PDF Sheets / PDF per Card) must never go out below
   // 300 DPI — "150 Draft" in the Card Size step is explicitly meant for a
   // fast on-screen check, not for something that ends up printed, so a PDF
@@ -3513,6 +3786,7 @@ async function startGeneration(){
   const firstOnly=document.getElementById('firstOnly')?.checked;
   const totalCards=firstOnly?Math.min(1,SA.excel.rows.length||1):Math.max(SA.excel.rows.length,1);
   const btn=document.getElementById('genBtn');
+  SA.generating=true;
   btn.disabled=true; btn.innerHTML='<i class="bi bi-hourglass-split"></i> Generating…';
   // HTML uses id="genProgressArea" and id="genProgressTxt"
   const prog=document.getElementById('genProgressArea');
@@ -3555,21 +3829,27 @@ async function startGeneration(){
     setProgress(100);
     if(ptxt) ptxt.textContent='Done!';
     showDownload(outURL,outName,fmt,cardURLs);
+    const w=[];
+    if(_genWarn.photo) w.push(`${_genWarn.photo} card(s) without photo`);
+    if(_genWarn.bar) w.push(`${_genWarn.bar} barcode(s) invalid for ${SA.project.barcodeType}`);
+    if(_genWarn.qr) w.push(`${_genWarn.qr} QR(s) too long`);
+    toast(w.length?`Done — note: ${w.join(' · ')}`:`Done — ${cardURLs.length} card(s) ready`,w.length?'warn':'ok');
     // Track smart generation
-    try{const _fd=new FormData();_fd.append('action','record');_fd.append('csrf_token','<?= $_sc ?>');_fd.append('action_type','smart_generate');_fd.append('panel','icard');_fd.append('count',cardURLs.length);
-      (window.smartFetch?window.smartFetch('<?= $_sa ?>',_fd,{label:'Usage stats: '+cardURLs.length+' cards generated',panel:'smart_generate'}):fetch('<?= $_sa ?>',{method:'POST',body:_fd})).catch(()=>{});}catch(e){}
+    try{const _fd=new FormData();_fd.append('action','record');_fd.append('csrf_token',<?= json_encode($_sc) ?>);_fd.append('action_type','smart_generate');_fd.append('panel','icard');_fd.append('count',cardURLs.length);
+      (window.smartFetch?window.smartFetch(<?= json_encode($_sa) ?>,_fd,{label:'Usage stats: '+cardURLs.length+' cards generated',panel:'smart_generate'}):fetch(<?= json_encode($_sa) ?>,{method:'POST',body:_fd})).catch(()=>{});}catch(e){}
   }catch(err){
     toast('Generation error: '+err.message,'error');
     console.error(err);
   }finally{
-    btn.disabled=false; btn.innerHTML='<i class="bi bi-lightning-charge-fill"></i> Generate All Cards';
+    SA.generating=false;
+    btn.disabled=false; btn.innerHTML='<i class="bi bi-lightning-charge-fill"></i> Generate &amp; Download';
     setTimeout(()=>prog?.classList.add('hidden'),3500);
   }
 }
 async function buildPDFSheets(cardURLs,backURLs){
   const {jsPDF}=window.jspdf;
   const p=_getLayoutParams();
-  const {pKey,or,pw,ph,mT,mB,mL,mR,gX,gY,sc,cutMM,center,cutLines}=p;
+  const {pKey,or,pw,ph,mT,mB,mL,mR,gX,gY,sc,cutMM,center,cutLines,mirrorBack}=p;
   const IN2MM=25.4;
   const pdf=new jsPDF({orientation:or,unit:'mm',format:[pw*IN2MM,ph*IN2MM]});
   const cW=(SA.project.cardW||3.375)*sc, cH=(SA.project.cardH||2.125)*sc;
@@ -3594,32 +3874,43 @@ async function buildPDFSheets(cardURLs,backURLs){
   // Draws ONE sheet's worth of cards (starting at urls[startIdx]) onto
   // whatever page is currently active in pdf, returns the next startIdx.
   const cardsPerSheet=cols*rows;
-  const drawSheet=(urls,startIdx)=>{
+  // Inner crop marks must stay INSIDE the gap — a 3.5 mm mark in a 3 mm gap
+  // was drawn 1.3 mm onto the neighbouring card's edge.
+  const gxMM=gX*IN2MM, gyMM=gY*IN2MM;
+  const lenX=hasN=>hasN?Math.max(0,gxMM-2*CMg):CM;
+  const lenY=hasN=>hasN?Math.max(0,gyMM-2*CMg):CM;
+  const mark=(x1,y1,x2,y2)=>{ if(Math.hypot(x2-x1,y2-y1)>=0.3) safeLine(x1,y1,x2,y2); };
+  // mirror: back sheet columns reversed so that after a duplex flip (long
+  // edge) every back lands exactly behind ITS OWN front — before, column 1's
+  // back printed behind column N's front (wrong student's back side).
+  const drawSheet=(urls,startIdx,mirror)=>{
     let i=startIdx;
     const pageCards=[];
     for(let r=0;r<rows&&i<urls.length;r++){
       for(let c=0;c<cols&&i<urls.length;c++){
-        const x=(startX+c*(cW+gX))*IN2MM;
+        const cc=mirror?cols-1-c:c;
+        const x=(startX+cc*(cW+gX))*IN2MM;
         const y=(startY+r*(cH+gY))*IN2MM;
         const W=cW*IN2MM, H=cH*IN2MM;
         pdf.addImage(urls[i],'JPEG',x,y,W,H,undefined,'FAST');
-        pageCards.push({x,y,W,H});
+        pageCards.push({x,y,W,H,r,c:cc});
         i++;
       }
     }
     if(doCropMarks){
       pdf.setDrawColor(120,120,120); pdf.setLineWidth(0.15);
       pdf.setLineDashPattern([],0);
-      for(const {x,y,W,H} of pageCards){
+      for(const {x,y,W,H,r,c} of pageCards){
         const ex=x+W, ey=y+H;
-        safeLine(x-CMg-CM,y,  x-CMg,y);
-        safeLine(x,y-CMg-CM,  x,y-CMg);
-        safeLine(ex+CMg,y,    ex+CMg+CM,y);
-        safeLine(ex,y-CMg-CM, ex,y-CMg);
-        safeLine(x-CMg-CM,ey, x-CMg,ey);
-        safeLine(x,ey+CMg,    x,ey+CMg+CM);
-        safeLine(ex+CMg,ey,   ex+CMg+CM,ey);
-        safeLine(ex,ey+CMg,   ex,ey+CMg+CM);
+        const L=lenX(c>0), R=lenX(c<cols-1), T=lenY(r>0), B=lenY(r<rows-1);
+        mark(x-CMg-L,y,  x-CMg,y);
+        mark(x,y-CMg-T,  x,y-CMg);
+        mark(ex+CMg,y,   ex+CMg+R,y);
+        mark(ex,y-CMg-T, ex,y-CMg);
+        mark(x-CMg-L,ey, x-CMg,ey);
+        mark(x,ey+CMg,   x,ey+CMg+B);
+        mark(ex+CMg,ey,  ex+CMg+R,ey);
+        mark(ex,ey+CMg,  ex,ey+CMg+B);
       }
     }
     if(doGuideLines){
@@ -3651,10 +3942,16 @@ async function buildPDFSheets(cardURLs,backURLs){
     drawSheet(cardURLs,s*cardsPerSheet);
     if(hasBack){
       pdf.addPage([PW,PH],or);
-      drawSheet(backURLs,s*cardsPerSheet);
+      drawSheet(backURLs,s*cardsPerSheet,mirrorBack);
     }
   }
   return pdf.output('bloburi');
+}
+/* File-name safe text that keeps Hindi/Unicode letters (the old /[^a-z0-9]/
+   rule turned "राम कुमार" into "_________"). */
+function _safeName(v,def){
+  const s=String(v??'').trim().replace(/[\\/:*?"<>|\u0000-\u001f]+/g,'').replace(/\s+/g,'_').replace(/_+/g,'_');
+  return s||def;
 }
 async function buildZIPOutput(cardURLs,backURLs){
   const zip=new JSZip();
@@ -3662,9 +3959,7 @@ async function buildZIPOutput(cardURLs,backURLs){
   const hasBack=backURLs&&backURLs.length>0;
   cardURLs.forEach((url,i)=>{
     const row=SA.excel.rows[i]||{};
-    const nk=SA.project.nameCol||SA.excel.headers[0];
-    const rawName=nk?String(row[nk]||''):('card_'+(i+1));
-    const name=rawName.replace(/[^a-z0-9_\-]/gi,'_').substring(0,40);
+    const name=_safeName(row[_nameKey()],'card_'+(i+1)).substring(0,40);
     const b64=url.includes(',')? url.split(',')[1] : url;
     // Suffix "_front" only when a back side actually exists — a single-sided
     // card's files keep their plain original name.
@@ -3679,16 +3974,20 @@ async function buildZIPOutput(cardURLs,backURLs){
 }
 async function buildImageSheets(cardURLs,backURLs){
   // Render multi-card sheets as PNG images, zipped
-  const {pKey,or,pw,ph,mT,mB,mL,mR,gX,gY,sc}=_getLayoutParams();
-  const IN2PX=96; // 96 dpi for screen-quality PNG sheets
+  const {pKey,or,pw,ph,mT,mB,mL,mR,gX,gY,sc,center,mirrorBack}=_getLayoutParams();
+  const IN2PX=Math.min(300,SA.project.dpi||300); // was 96 dpi → blurry when printed
   const cW=(SA.project.cardW||3.375)*sc, cH=(SA.project.cardH||2.125)*sc;
   const cols=SA.gen.cols||Math.max(1,Math.floor((pw-mL-mR+gX)/(cW+gX)));
   const rows=SA.gen.rows||Math.max(1,Math.floor((ph-mT-mB+gY)/(cH+gY)));
   const cardsPerSheet=cols*rows;
   const zip=new JSZip();
+  // Same centred placement as the PDF / layout preview (PNG used to ignore "Center on page")
+  const totalW=cols*cW+(cols-1)*gX, totalH=rows*cH+(rows-1)*gY;
+  const startX=center?Math.max(mL,(pw-totalW)/2):mL;
+  const startY=center?Math.max(mT,(ph-totalH)/2):mT;
 
   // Renders ONE sheet PNG starting at urls[startIdx], returns its base64.
-  const renderSheet=async(urls,startIdx)=>{
+  const renderSheet=async(urls,startIdx,mirror)=>{
     const cvs=document.createElement('canvas');
     cvs.width=Math.round(pw*IN2PX); cvs.height=Math.round(ph*IN2PX);
     const ctx=cvs.getContext('2d');
@@ -3696,11 +3995,11 @@ async function buildImageSheets(cardURLs,backURLs){
     const loads=[]; let i=startIdx;
     for(let r=0;r<rows&&i<urls.length;r++){
       for(let c=0;c<cols&&i<urls.length;c++){
-        const idx=i, row=r, col=c;
+        const idx=i, row=r, col=mirror?cols-1-c:c;
         loads.push(new Promise(res=>{
           const im=new Image();
           im.onload=()=>{
-            const x=(mL+col*(cW+gX))*IN2PX, y=(mT+row*(cH+gY))*IN2PX;
+            const x=(startX+col*(cW+gX))*IN2PX, y=(startY+row*(cH+gY))*IN2PX;
             ctx.drawImage(im,Math.round(x),Math.round(y),Math.round(cW*IN2PX),Math.round(cH*IN2PX));
             res();
           };
@@ -3722,7 +4021,7 @@ async function buildImageSheets(cardURLs,backURLs){
   for(let s=0;s<totalSheets;s++){
     const num=String(s+1).padStart(3,'0');
     zip.file(`sheet_${num}${hasBack?'_front':''}.png`,await renderSheet(cardURLs,s*cardsPerSheet),{base64:true});
-    if(hasBack) zip.file(`sheet_${num}_back.png`,await renderSheet(backURLs,s*cardsPerSheet),{base64:true});
+    if(hasBack) zip.file(`sheet_${num}_back.png`,await renderSheet(backURLs,s*cardsPerSheet,mirrorBack),{base64:true});
   }
   const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
   return URL.createObjectURL(blob);
@@ -3741,9 +4040,7 @@ async function buildPDFZip(cardURLs,backURLs){
   const hasBack=backURLs&&backURLs.length>0;
   for(let i=0;i<cardURLs.length;i++){
     const row=SA.excel.rows[i]||{};
-    const nk=SA.project.nameCol||SA.excel.headers[0];
-    const rawName=nk?String(row[nk]||''):('card_'+(i+1));
-    const name=rawName.replace(/[^a-z0-9_\-]/gi,'_').substring(0,40);
+    const name=_safeName(row[_nameKey()],'card_'+(i+1)).substring(0,40);
     const pdf=new jsPDF({orientation:or,unit:'mm',format:[eW*IN2MM,eH*IN2MM]});
     pdf.addImage(cardURLs[i],'JPEG',0,0,eW*IN2MM,eH*IN2MM,undefined,'FAST');
     if(hasBack&&backURLs[i]){
@@ -3759,29 +4056,32 @@ async function buildPDFZip(cardURLs,backURLs){
 function showDownload(url,name,fmt,cardURLs){
   const area=document.getElementById('outputArea');
   const fLabel={pdf:'PDF Sheets',png:'PNG Sheets (ZIP)',zip:'Card Images (ZIP)',pdfzip:'Individual PDFs (ZIP)'}[fmt]||fmt.toUpperCase();
-  const isPDF=fmt==='pdf'||fmt==='pdfzip';
+  const isPDF=fmt==='pdf';
+  const n=cardURLs?.length||0;
   area.innerHTML=`
     <div style="background:#f0fdf4;border:1.5px solid #22c55e;border-radius:10px;padding:1rem 1.2rem;margin-bottom:.6rem;">
       <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
         <div style="width:40px;height:40px;border-radius:50%;background:#dcfce7;display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0;">✅</div>
         <div style="flex:1;min-width:140px;">
-          <div style="font-weight:700;font-size:.9rem;color:#166534;">Ready! ${SA.excel.rows.length||1} card${(SA.excel.rows.length||1)>1?'s':''} generated</div>
+          <div style="font-weight:700;font-size:.9rem;color:#166534;">Ready! ${n} card${n>1?'s':''} generated${document.getElementById('firstOnly')?.checked?' (test mode)':''}</div>
           <div style="font-size:.74rem;color:#15803d;margin-top:.1rem;">${fLabel} — click Download to save</div>
         </div>
         <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
           <a href="${url}" download="${name}" style="font-size:.82rem;padding:.45rem 1rem;border-radius:7px;text-decoration:none;background:#2563eb;color:#fff;display:inline-flex;align-items:center;gap:.4rem;font-weight:700;box-shadow:0 2px 8px rgba(37,99,235,.3);">
             <i class="bi bi-download"></i> Download
           </a>
-          ${isPDF?`<button onclick="doPrint('${url}')" style="font-size:.82rem;padding:.45rem 1rem;border-radius:7px;background:#fff;border:1.5px solid #22c55e;color:#166534;cursor:pointer;display:inline-flex;align-items:center;gap:.4rem;font-weight:600;">
+          ${isPDF?`<button onclick="doPrint(SA.gen.lastURL)" style="font-size:.82rem;padding:.45rem 1rem;border-radius:7px;background:#fff;border:1.5px solid #22c55e;color:#166534;cursor:pointer;display:inline-flex;align-items:center;gap:.4rem;font-weight:600;">
             <i class="bi bi-printer-fill"></i> Print Now
           </button>`:''}
         </div>
       </div>
       ${isPDF?`<div style="margin-top:.65rem;padding:.45rem .65rem;background:#fff;border-radius:7px;border:1px solid #bbf7d0;font-size:.74rem;color:#374151;line-height:1.7;">
         <b style="color:#166534;"><i class="bi bi-info-circle"></i> How to print:</b>
-        Download the PDF → Open it → Press <b>Ctrl+P</b> (or Cmd+P on Mac) → Set Paper to A4 → Scale: <b>100% (Actual Size)</b> → Print
-      </div>`:`<div style="margin-top:.5rem;font-size:.72rem;color:#6b7280;">Extract the ZIP file to find your card images.</div>`}
+        Download the PDF → Open it → Press <b>Ctrl+P</b> (or Cmd+P on Mac) → Set Paper to <b>${esc(document.getElementById('genPaper')?.selectedOptions[0]?.textContent||'A4')}</b> → Scale: <b>100% (Actual Size)</b>${(SA.gen.outBackURLs||[]).length?' → <b>Two-sided: flip on long edge</b>':''} → Print
+      </div>`:`<div style="margin-top:.5rem;font-size:.72rem;color:#6b7280;">Extract the ZIP file to find your ${fmt==='pdfzip'?'card PDFs':'card images'}.</div>`}
     </div>`;
+  if(SA.gen.lastURL&&SA.gen.lastURL!==url) setTimeout((u=>()=>URL.revokeObjectURL(u))(SA.gen.lastURL),1000);
+  SA.gen.lastURL=url;
   // Individual ZIP button (always available regardless of format)
   if(cardURLs&&cardURLs.length>1){
     const zipRow=document.createElement('div');
@@ -3803,8 +4103,8 @@ function showDownload(url,name,fmt,cardURLs){
     grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:.4rem;max-height:310px;overflow-y:auto;padding:.2rem;';
     cardURLs.forEach((u,i)=>{
       const row=SA.excel.rows[i]||{};
-      const nk=SA.excel.headers[0];
-      const nm=nk?String(row[nk]||'').slice(0,12):'';
+      const nk=_nameKey();
+      const nm=nk?String(row[nk]??'').slice(0,14):'';
       const cell=document.createElement('div');
       cell.style.cssText='cursor:pointer;border-radius:7px;overflow:hidden;border:2px solid #e5e7eb;background:#f8fafc;transition:all .15s;';
       cell.onmouseenter=()=>{cell.style.borderColor='#6366f1';cell.style.transform='translateY(-2px)';cell.style.boxShadow='0 4px 12px rgba(99,102,241,.18)';};
@@ -3812,7 +4112,8 @@ function showDownload(url,name,fmt,cardURLs){
       cell.onclick=()=>openCardLightbox(cardURLs,i);
       const img=document.createElement('img');
       img.src=u; img.alt='Card '+(i+1);
-      img.style.cssText='width:100%;height:76px;object-fit:cover;display:block;';
+      img.style.cssText=`width:100%;aspect-ratio:${SA.project.cardW}/${SA.project.cardH};max-height:110px;object-fit:contain;display:block;background:#f1f5f9;`;
+      img.loading='lazy';
       const lbl=document.createElement('div');
       lbl.style.cssText='font-size:.58rem;color:#6b7280;text-align:center;padding:.18rem .2rem .2rem;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
       lbl.textContent=nm||(i+1);
@@ -3823,9 +4124,24 @@ function showDownload(url,name,fmt,cardURLs){
   }
   area.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
+/* Print the generated PDF through a hidden iframe (window.open + print() on a
+   blob PDF was blocked / printed a blank page in most browsers). */
 function doPrint(url){
-  const w=window.open(url,'_blank');
-  if(w) setTimeout(()=>w.print(),800);
+  if(!url) return;
+  let fr=document.getElementById('pdfPrintFrame');
+  if(fr) fr.remove();
+  fr=document.createElement('iframe');
+  fr.id='pdfPrintFrame';
+  fr.style.cssText='position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;';
+  fr.onload=()=>{ setTimeout(()=>{ try{ fr.contentWindow.focus(); fr.contentWindow.print(); }catch(e){ window.open(url,'_blank'); } },400); };
+  fr.src=url;
+  document.body.appendChild(fr);
+}
+/* Column used for names in file names / thumbnails: the auto-detected "name"
+   column, else the first column. */
+function _nameKey(){
+  const h=SA.excel.headers;
+  return h.find(x=>SA.excel.colTypes[x]==='name')||h[0]||'';
 }
 
 /* ══════════════════════════════════════
@@ -3855,12 +4171,12 @@ function _lbRender(){
   const u=_lb.urls[i];
   const row=SA.excel.rows[i]||{};
   // Student name from first header
-  const nk=SA.excel.headers[0]||'';
-  const nm=nk?String(row[nk]||''):'';
+  const nk=_nameKey();
+  const nm=nk?String(row[nk]??''):'';
   document.getElementById('lbImg').src=u;
   document.getElementById('lbInfo').innerHTML=
     `<span style="color:#94a3b8;font-size:.72rem;">Card ${i+1} of ${n}</span>`+
-    (nm?`<br><span style="font-size:.88rem;font-weight:700;color:#f1f5f9;">${nm}</span>`:'');
+    (nm?`<br><span style="font-size:.88rem;font-weight:700;color:#f1f5f9;">${esc(nm)}</span>`:'');
   // Prev/Next button disabled state
   const prev=document.getElementById('lbPrev'), next=document.getElementById('lbNext');
   if(prev) prev.style.opacity=n>1?'1':'0.3';
@@ -3882,9 +4198,8 @@ function lbDownloadSingle(){
   const i=_lb.idx;
   const u=_lb.urls[i];
   const row=SA.excel.rows[i]||{};
-  const nk=SA.excel.headers[0]||'';
-  const rawName=nk?String(row[nk]||''):'card';
-  const safeName=rawName.replace(/[^a-z0-9_\-]/gi,'_').substring(0,30)||'card';
+  const nk=_nameKey();
+  const safeName=_safeName(nk?row[nk]:'','card').substring(0,30);
   const a=document.createElement('a');
   a.href=u; a.download=`card_${String(i+1).padStart(3,'0')}_${safeName}.jpg`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
@@ -3906,16 +4221,20 @@ function setProgress(pct){
    UTILITIES
 ══════════════════════════════════════ */
 function toast(msg,type='info'){
-  let t=document.getElementById('smToast');
-  if(!t){
-    t=document.createElement('div'); t.id='smToast';
-    t.style.cssText='position:fixed;bottom:1.5rem;right:1.5rem;padding:.65rem 1.15rem;border-radius:10px;font-size:.83rem;font-weight:500;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.18);transition:opacity .35s;max-width:360px;pointer-events:none;';
-    document.body.appendChild(t);
-  }
-  const C={ok:'background:#dcfce7;color:#166534;border:1px solid #86efac',error:'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5',warn:'background:#fef9c3;color:#854d0e;border:1px solid #fde047',info:'background:#eff6ff;color:#1e40af;border:1px solid #93c5fd'};
-  t.style.cssText+=';'+(C[type]||C.info);
-  t.textContent=msg; t.style.opacity='1';
-  clearTimeout(t._tid); t._tid=setTimeout(()=>t.style.opacity='0',3300);
+  // Stacked toasts (max 3). The old version appended to style.cssText on every
+  // call (string grew forever) and 'err' was not a known type.
+  const t=document.getElementById('smToast'); if(!t) return;
+  const cls={ok:'toast-ok',error:'toast-err',err:'toast-err',warn:'toast-warn',info:'toast-info'}[type]||'toast-info';
+  const ico={ok:'bi-check-circle-fill',error:'bi-x-octagon-fill',err:'bi-x-octagon-fill',warn:'bi-exclamation-triangle-fill',info:'bi-info-circle-fill'}[type]||'bi-info-circle-fill';
+  const it=document.createElement('div');
+  it.className='toast-item '+cls;
+  it.innerHTML=`<i class="bi ${ico}"></i><span></span>`;
+  it.querySelector('span').textContent=msg;
+  it.style.transition='opacity .3s';
+  it.onclick=()=>it.remove();
+  t.appendChild(it);
+  while(t.children.length>3) t.firstChild.remove();
+  setTimeout(()=>{ it.style.opacity='0'; setTimeout(()=>it.remove(),320); },type==='error'||type==='err'||type==='warn'?5200:3300);
 }
 
 /* ══════════════════════════════════════
@@ -3970,11 +4289,17 @@ document.addEventListener('DOMContentLoaded',()=>{
 
   // Keyboard shortcuts
   document.addEventListener('keydown',e=>{
-    if(!SA.canvas) return;
     const tag=document.activeElement?.tagName;
-    const typing=tag==='INPUT'||tag==='TEXTAREA';
-    if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!e.shiftKey){e.preventDefault();undoC();}
-    if((e.ctrlKey||e.metaKey)&&(e.key==='y'||(e.key==='z'&&e.shiftKey))){e.preventDefault();redoC();}
+    const typing=tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||document.activeElement?.isContentEditable;
+    // Ctrl+S → save School Profile (instead of the browser's "save page")
+    if((e.ctrlKey||e.metaKey)&&(e.key==='s'||e.key==='S')){ e.preventDefault(); saveProfile(false); return; }
+    // Designer shortcuts only while the Designer is open — Delete on Step 5
+    // used to silently delete the selected element from the design.
+    if(!SA.canvas||SA.step!==4) return;
+    if(SA.canvas.getActiveObject()?.isEditing) return;
+    const k=(e.key||'').toLowerCase();
+    if(!typing&&(e.ctrlKey||e.metaKey)&&k==='z'&&!e.shiftKey){e.preventDefault();undoC();}
+    if(!typing&&(e.ctrlKey||e.metaKey)&&(k==='y'||(k==='z'&&e.shiftKey))){e.preventDefault();redoC();}
     if(!typing&&(e.key==='Delete'||e.key==='Backspace')){
       const a=SA.canvas.getActiveObject();
       if(a){e.preventDefault();deleteSelected();}
@@ -3988,7 +4313,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         if(e.key==='ArrowRight')o.left+=d;
         if(e.key==='ArrowUp')o.top-=d;
         if(e.key==='ArrowDown')o.top+=d;
-        o.setCoords(); SA.canvas.renderAll();
+        o.setCoords(); SA.canvas.renderAll(); updateProp(o); saveHistSoon();
       }
     }
   });
@@ -4179,12 +4504,12 @@ function ptDoPrint(){
   const L = _ptLayout();
   const copies = PT.copies > 0 ? Math.min(PT.copies, L.perSheet) : L.perSheet;
   if(!PT.imgURL){
-    toast('Please upload a card image first','err');
+    toast('Please upload a card image first','warn');
     return;
   }
 
   // Build card cell HTML
-  const cardCell = `<div class="c"><img src="${PT.imgURL}"></div>`;
+  const cardCell = `<div class="c"><img src="${PT.imgURL.replace(/"/g,'%22')}"></div>`;
   const cells = Array(copies).fill(cardCell).join('');
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
@@ -4195,14 +4520,18 @@ function ptDoPrint(){
   .c { width:${L.cw}mm; height:${L.ch}mm; overflow:hidden; flex-shrink:0; }
   .c img { display:block; width:100%; height:100%; object-fit:fill; }
 </style>
-</head><body>${cells}</body></html>`;
+</head><body>${cells}<script>
+  // print only after every card image has really loaded (onload set from the
+  // opener after document.write() often never fired → nothing printed)
+  (function(){var im=[].slice.call(document.images),n=im.length;function go(){setTimeout(function(){window.focus();window.print();},150);}
+   if(!n)return go();im.forEach(function(i){if(i.complete)--n||go();else i.onload=i.onerror=function(){--n||go();};});})();
+<\/script></body></html>`;
 
   const w = window.open('','_blank','width=800,height=600');
   if(!w){ toast('Pop-up blocked — allow pop-ups and try again','err'); return; }
   w.document.open();
   w.document.write(html);
   w.document.close();
-  w.onload = () => { w.focus(); w.print(); };
 }
 
 /* ── Gallery Picker (for Card Template) ── */
@@ -4229,11 +4558,11 @@ async function _loadSgGalItems(){
     }
     d.items.forEach(it => _sgGalItems.set(it.id, it));
     grid.innerHTML = d.items.map(it=>`
-      <div onclick="_pickSgGalItem(${it.id})" style="cursor:pointer;border-radius:9px;overflow:hidden;border:2px solid #e5e7eb;background:#f8fafc;transition:border-color .15s;" onmouseenter="this.style.borderColor='#4f46e5'" onmouseleave="this.style.borderColor='#e5e7eb'">
+      <div onclick="_pickSgGalItem(${JSON.stringify(it.id).replace(/"/g,'&quot;')})" style="cursor:pointer;border-radius:9px;overflow:hidden;border:2px solid #e5e7eb;background:#f8fafc;transition:border-color .15s;" onmouseenter="this.style.borderColor='#4f46e5'" onmouseleave="this.style.borderColor='#e5e7eb'">
         <div style="aspect-ratio:${it.canvas_width||856}/${it.canvas_height||540};background:#f3f4f6;overflow:hidden;">
-          ${it.thumbnail?`<img src="${it.thumbnail}" style="width:100%;height:100%;object-fit:cover;">`:'<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;"><i class="bi bi-card-image" style="font-size:1.8rem;color:#d1d5db;"></i></div>'}
+          ${it.thumbnail?`<img src="${esc(it.thumbnail)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;">`:'<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;"><i class="bi bi-card-image" style="font-size:1.8rem;color:#d1d5db;"></i></div>'}
         </div>
-        <div style="padding:.35rem .45rem;font-size:.68rem;font-weight:700;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${it.name}">${it.name}</div>
+        <div style="padding:.35rem .45rem;font-size:.68rem;font-weight:700;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(it.name)}">${esc(it.name)}</div>
       </div>`).join('');
   }catch(e){
     grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:2rem;color:#dc2626;font-size:.8rem;">Failed to load gallery.</div>';
@@ -4353,11 +4682,347 @@ function loadTemplateFromURL(url, name){
     document.getElementById('dzTemplate').classList.add('filled');
     document.getElementById('templateOk').textContent = `✓ ${name}`;
     if(SA.canvas) resizeCanvas(finalW, finalH);
+    markDirty();
     toast(`Gallery: "${name}" loaded as template`, 'ok');
   };
   img.onerror = () => toast('Failed to load gallery image', 'error');
   img.src = url;
 }
+
+/* ══════════════════════════════════════
+   SCHOOL PROFILES — save once, select next time
+   Stored in this browser's IndexedDB (hundreds of MB available, unlike
+   localStorage's ~5 MB which a single template image can exceed).
+   Two stores: "meta" (id, name, dates — small, fills the dropdown fast)
+   and "profiles" (the full setup incl. template images & design).
+   Use ⬇ Export / ⬆ Import to move a profile to another computer.
+══════════════════════════════════════ */
+const PROFILE_VER=1;
+const ProfileDB={
+  _db:null,
+  open(){
+    if(this._db) return Promise.resolve(this._db);
+    return new Promise((res,rej)=>{
+      if(!window.indexedDB) return rej(new Error('this browser does not support saving (IndexedDB)'));
+      const r=indexedDB.open('smartIdMaker',1);
+      r.onupgradeneeded=()=>{
+        const db=r.result;
+        if(!db.objectStoreNames.contains('meta')) db.createObjectStore('meta',{keyPath:'id'});
+        if(!db.objectStoreNames.contains('profiles')) db.createObjectStore('profiles',{keyPath:'id'});
+      };
+      r.onsuccess=()=>{ this._db=r.result; this._db.onversionchange=()=>{ this._db.close(); this._db=null; }; res(this._db); };
+      r.onerror=()=>rej(r.error||new Error('could not open storage'));
+      r.onblocked=()=>rej(new Error('storage is busy — close other tabs of this page'));
+    });
+  },
+  async _run(stores,mode,fn){
+    const db=await this.open();
+    return new Promise((res,rej)=>{
+      const tx=db.transaction(stores,mode);
+      let out;
+      tx.oncomplete=()=>res(out);
+      tx.onerror=()=>rej(tx.error||new Error('storage error'));
+      tx.onabort=()=>rej(tx.error||new Error(mode==='readwrite'?'storage full / blocked':'storage error'));
+      const req=fn(tx);
+      if(req) req.onsuccess=()=>{ out=req.result; };
+    });
+  },
+  list(){ return this._run(['meta'],'readonly',tx=>tx.objectStore('meta').getAll()); },
+  get(id){ return this._run(['profiles'],'readonly',tx=>tx.objectStore('profiles').get(id)); },
+  put(p){ return this._run(['meta','profiles'],'readwrite',tx=>{ tx.objectStore('meta').put({id:p.id,name:p.name,createdAt:p.createdAt,updatedAt:p.updatedAt}); tx.objectStore('profiles').put(p); }); },
+  del(id){ return this._run(['meta','profiles'],'readwrite',tx=>{ tx.objectStore('meta').delete(id); tx.objectStore('profiles').delete(id); }); },
+};
+let _profMeta=[];
+function _profNew(){ return 'p_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function _timeAgo(t){
+  const s=Math.round((Date.now()-t)/1000);
+  if(s<60) return 'just now'; if(s<3600) return Math.round(s/60)+' min ago';
+  if(s<86400) return Math.round(s/3600)+' h ago';
+  return new Date(t).toLocaleDateString();
+}
+function _profStatus(msg){
+  const el=document.getElementById('profStatus'); if(!el) return;
+  if(msg){ el.textContent=msg; el.classList.remove('dirty'); return; }
+  const m=_profMeta.find(x=>x.id===SA.profileId);
+  el.classList.toggle('dirty',!!SA._dirty&&!!m);
+  if(!m){ el.textContent=_profMeta.length?`${_profMeta.length} saved school${_profMeta.length>1?'s':''} — select one to load`:'Save once — next time just select the school'; return; }
+  el.textContent=SA._dirty?'● Unsaved changes — click Save':`✓ Saved ${_timeAgo(m.updatedAt)}`;
+}
+async function refreshProfileList(selectId){
+  const sel=document.getElementById('profSel'); if(!sel) return;
+  try{ _profMeta=(await ProfileDB.list())||[]; }
+  catch(e){ _profMeta=[]; _profStatus('Saving unavailable: '+e.message); return; }
+  _profMeta.sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:'base',numeric:true}));
+  const cur=selectId!==undefined?selectId:SA.profileId;
+  sel.innerHTML='<option value="">— Select saved school —</option>'+
+    _profMeta.map(m=>`<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('');
+  sel.value=_profMeta.some(m=>m.id===cur)?cur:'';
+  _profStatus();
+}
+
+/* Everything that makes up one school's setup (not the per-batch data) */
+function collectProfile(){
+  snapCurrentSide();
+  const P=SA.project;
+  const strip=j=>{ if(!j) return null; const c=JSON.parse(JSON.stringify(j)); delete c.backgroundImage; return c; };
+  return {
+    ver:PROFILE_VER,
+    project:{
+      cardW:+P.cardW, cardH:+P.cardH, dpi:P.dpi, bgColor:P.bgColor, sides:P.sides,
+      photoCol:P.photoCol, signCol:P.signCol, qrFields:[...P.qrFields],
+      barcodeField:P.barcodeField, barcodeType:document.getElementById('barcodeType')?.value||P.barcodeType,
+      qrLevel:document.getElementById('qrLevel')?.value||P.qrLevel||'M',
+      watermark:(document.getElementById('watermarkText')?.value||'').trim(),
+      serialEnabled:!!document.getElementById('serialEnabled')?.checked,
+      frontJSON:strip(P.frontJSON), backJSON:strip(P.backJSON),
+      frontBgURL:P.frontBgURL||null, backBgURL:P.backBgURL||null,
+      dispW:SA.dispW, dispH:SA.dispH,
+    },
+    // a single uploaded (common) signature belongs to the school → saved too
+    commonSign:SA.singleSign||null,
+    gen:{
+      paper:document.getElementById('genPaper')?.value||'A4',
+      orientation:SA.gen.orientation||'portrait',
+      mAll:Math.max(0,_num('mAll',0.2)),
+      cutZoneMM:Math.max(0,_num('cutZoneMM',3)),
+      cardScale:_num('cardScale',100),
+      format:SA.gen.format||'pdf',
+      quality:_num('imgQuality',92),
+      center:document.getElementById('optCenter')?.checked!==false,
+      cutLines:document.getElementById('optCutLines')?.checked!==false,
+      mirrorBack:document.getElementById('optMirrorBack')?.checked!==false,
+      autoFit:document.getElementById('optAutoFit')?.checked!==false,
+    },
+  };
+}
+
+async function applyProfile(p){
+  if(!p||!p.project) throw new Error('profile is empty or damaged');
+  const pr=p.project, P=SA.project;
+  if(SA.previewMode) togglePreviewMode();
+  // ── project / step 2 ──
+  P.cardW=+pr.cardW||2.125; P.cardH=+pr.cardH||3.375; P.dpi=+pr.dpi||300;
+  P.bgColor=/^#[0-9a-f]{6}$/i.test(pr.bgColor||'')?pr.bgColor:'#ffffff';
+  P.sides=pr.sides==='double'?'double':'single';
+  P.photoCol=pr.photoCol||''; P.signCol=pr.signCol||'';
+  P.qrFields=Array.isArray(pr.qrFields)?[...pr.qrFields]:[];
+  P.barcodeField=pr.barcodeField||''; P.barcodeType=pr.barcodeType||'CODE128'; P.qrLevel=pr.qrLevel||'M';
+  P.watermark=pr.watermark||''; P.serialEnabled=!!pr.serialEnabled;
+  P.frontBgURL=pr.frontBgURL||null; P.backBgURL=pr.backBgURL||null; P.templateURL=P.frontBgURL;
+  // Design was made on a 600px-wide canvas; rescale if the stored display
+  // height differs from what this card size gives now.
+  const dW=600, dH=Math.round(600*P.cardH/P.cardW);
+  const sy=pr.dispH&&pr.dispW?dH/pr.dispH:1, sx=pr.dispW?dW/pr.dispW:1;
+  P.frontJSON=pr.frontJSON?_scaleJSON(pr.frontJSON,sx,sy):null;
+  P.backJSON=pr.backJSON?_scaleJSON(pr.backJSON,sx,sy):null;
+  if(p.commonSign&&SA.signs.size<=1) SA.singleSign=p.commonSign;
+  document.getElementById('qrLevel').value=P.qrLevel;
+  document.getElementById('barcodeType').value=P.barcodeType;
+  document.getElementById('watermarkText').value=P.watermark;
+  document.getElementById('serialEnabled').checked=P.serialEnabled;
+  if(SA.excel.rows.length){ sanitizeRoles(); buildColGrid(); }
+  else { refreshQRPreview(); refreshBarPreview(); }
+  // ── step 3 ──
+  document.querySelectorAll('[data-dpi]').forEach(x=>x.classList.toggle('on',+x.dataset.dpi===P.dpi));
+  document.getElementById('bgColor').value=P.bgColor; document.getElementById('bgHex').value=P.bgColor;
+  const [fImg,bImg]=await Promise.all([_loadImg(P.frontBgURL,true),_loadImg(P.backBgURL,true)]);
+  SA._frontTemplateImg=fImg; SA._backTemplateImg=bImg; SA._templateImg=fImg;
+  const info=(img,url)=>url?(img?`<b>From School Profile</b> · ${img.naturalWidth}×${img.naturalHeight}px<br>Card ${P.cardW.toFixed(3)}" × ${P.cardH.toFixed(3)}"`:'<span style="color:#dc2626;">Saved template could not be loaded — upload it again</span>'):'';
+  Object.assign(P,{
+    frontThumbSrc:P.frontBgURL||'', frontDetectHTML:info(fImg,P.frontBgURL), frontFileName:P.frontBgURL?'✓ Template from profile':'', frontHasFilled:!!P.frontBgURL, frontPreviewHidden:!P.frontBgURL,
+    backThumbSrc:P.backBgURL||'',   backDetectHTML:info(bImg,P.backBgURL),   backFileName:P.backBgURL?'✓ Back template from profile':'', backHasFilled:!!P.backBgURL, backPreviewHidden:!P.backBgURL,
+  });
+  // Reset side state FIRST so setSides() can't snapshot the old design / old
+  // template UI into the freshly restored back side.
+  P.activeSide3='front'; SA.curSide='front';
+  setSides(P.sides,document.getElementById(P.sides==='double'?'sdDouble':'sdSingle'));
+  _updateS3TabButtons('front');
+  const t3=document.getElementById('tplDzTitle'); if(t3) t3.textContent=P.sides==='double'?'Drop FRONT template image here':'Drop card template image here';
+  const thumb=document.getElementById('tplThumb'), area=document.getElementById('tplPreviewArea'), dz=document.getElementById('dzTemplate');
+  thumb.src=P.frontThumbSrc; document.getElementById('tplDetectInfo').innerHTML=P.frontDetectHTML;
+  document.getElementById('templateOk').textContent=P.frontFileName;
+  dz.classList.toggle('filled',P.frontHasFilled); area.classList.toggle('hidden',P.frontPreviewHidden);
+  document.querySelectorAll('.sz-card').forEach(c=>c.classList.remove('on'));
+  document.getElementById('customSzRow').classList.add('hidden');
+  highlightPreset(P.cardW,P.cardH);
+  _pvImgAR=fImg?fImg.naturalWidth/fImg.naturalHeight:1;
+  _pvTplURL=''; updateSzPreview(true); updateCardThumbs();
+  if(fImg) showDpiQuality(); else { const b=document.getElementById('dpiQualityBadge'); if(b) b.style.display='none'; }
+  // ── step 5 ──
+  const g=p.gen||{};
+  const gp=document.getElementById('genPaper'); gp.value=PAPER_SZ[g.paper]?g.paper:'A4';
+  SA.gen.orientation=g.orientation==='landscape'?'landscape':'portrait';
+  document.getElementById('goPort')?.classList.toggle('on',SA.gen.orientation==='portrait');
+  document.getElementById('goLand')?.classList.toggle('on',SA.gen.orientation==='landscape');
+  const mA=Number.isFinite(+g.mAll)?+g.mAll:0.2;
+  document.getElementById('mAll').value=mA; syncMargins(mA);
+  _setCutZone(Number.isFinite(+g.cutZoneMM)?+g.cutZoneMM:3);
+  const cs=+g.cardScale||100; document.getElementById('cardScale').value=cs; document.getElementById('cardScaleV').textContent=cs+'%'; SA.gen.cardScale=cs/100;
+  const q=+g.quality||92; document.getElementById('imgQuality').value=q; document.getElementById('qualityV').textContent=q+'%'; SA.gen.quality=q/100;
+  const fmt=['pdf','png','zip','pdfzip'].includes(g.format)?g.format:'pdf'; setFmt(fmt,document.getElementById('fmt-'+fmt));
+  document.getElementById('optCenter').checked=g.center!==false;
+  document.getElementById('optCutLines').checked=g.cutLines!==false;
+  document.getElementById('optMirrorBack').checked=g.mirrorBack!==false;
+  document.getElementById('optAutoFit').checked=g.autoFit!==false;
+  SA.gen._autoKey=_autoKey();   // keep the saved layout — don't auto-relayout over it
+  updateGenLayout();
+  // ── designer ──
+  SA.curSide='front';
+  if(SA.canvas){ initDesigner(); }
+  else { SA.dispW=dW; SA.dispH=dH; }
+  updateStep1Status();
+  SA._dirty=false;
+}
+
+async function onProfileSelect(id){
+  const sel=document.getElementById('profSel');
+  if(!id){ SA.profileId=''; _profStatus(); return; }
+  const hasDesign=(SA.canvas&&SA.canvas.getObjects().length)||SA.project.frontJSON;
+  if(SA._dirty&&hasDesign&&!confirm('You have unsaved changes. Load the selected school and discard them?')){ sel.value=SA.profileId||''; return; }
+  _profStatus('Loading…');
+  try{
+    const p=await ProfileDB.get(id);
+    if(!p) throw new Error('profile not found');
+    await applyProfile(p);
+    SA.profileId=id;
+    try{ localStorage.setItem('sim_last_profile',id); }catch(e){}
+    _profStatus();
+    toast(`"${p.name}" loaded — size, design & settings restored`,'ok');
+    if(SA.excel.rows.length) setTimeout(checkProfileFields,300);
+    else toast('Now upload this batch\'s Excel & photos, then go to Generate','info');
+  }catch(e){
+    sel.value=SA.profileId||''; _profStatus();
+    toast('Could not load profile: '+e.message,'error');
+  }
+}
+
+let _profNameRes=null;
+function askProfileName(def,title){
+  const ov=document.getElementById('profNameOv'), inp=document.getElementById('profNameInp');
+  document.getElementById('profNameTitle').textContent=title||'Save School Profile';
+  inp.value=def||'';
+  ov.classList.add('show');
+  setTimeout(()=>{ inp.focus(); inp.select(); },30);
+  return new Promise(res=>{ _profNameRes=res; });
+}
+function _profNameDone(v){
+  document.getElementById('profNameOv').classList.remove('show');
+  const r=_profNameRes; _profNameRes=null;
+  if(r) r(v===null?null:String(v).trim().replace(/\s+/g,' ').slice(0,80)||null);
+}
+
+let _profSaving=false;
+async function saveProfile(asNew){
+  if(_profSaving) return;
+  const cur=_profMeta.find(m=>m.id===SA.profileId);
+  let id=cur&&!asNew?cur.id:'', name=cur&&!asNew?cur.name:'';
+  if(!id){
+    const def=cur?cur.name+' (copy)':(document.getElementById('excelOk')?.textContent.match(/✓ (.+?) —/)?.[1]?.replace(/\.(xlsx?|csv)$/i,'')||'');
+    name=await askProfileName(def,asNew?'Save as New School Profile':'Save School Profile');
+    if(!name) return;
+    const same=_profMeta.find(m=>m.name.toLowerCase()===name.toLowerCase());
+    if(same){
+      if(!confirm(`A profile named "${same.name}" already exists. Replace it?`)) return;
+      id=same.id;
+    } else id=_profNew();
+  }
+  _profSaving=true;
+  try{
+    const p=collectProfile();
+    const old=_profMeta.find(m=>m.id===id);
+    Object.assign(p,{id,name,createdAt:old?.createdAt||Date.now(),updatedAt:Date.now()});
+    await ProfileDB.put(p);
+    SA.profileId=id; SA._dirty=false;
+    try{ localStorage.setItem('sim_last_profile',id); }catch(e){}
+    await refreshProfileList(id);
+    toast(old?`"${name}" updated`:`"${name}" saved — next time just select it`,'ok');
+  }catch(e){
+    toast('Could not save: '+e.message+' — try ⬇ Export as a backup','error');
+  }finally{ _profSaving=false; }
+}
+
+async function deleteProfile(){
+  const m=_profMeta.find(x=>x.id===document.getElementById('profSel').value);
+  if(!m){ toast('Select a profile to delete','warn'); return; }
+  if(!confirm(`Delete school profile "${m.name}"?\nThis cannot be undone (export a backup first if unsure).`)) return;
+  try{
+    await ProfileDB.del(m.id);
+    if(SA.profileId===m.id){ SA.profileId=''; }
+    await refreshProfileList('');
+    toast(`"${m.name}" deleted`,'info');
+  }catch(e){ toast('Could not delete: '+e.message,'error'); }
+}
+
+async function exportProfile(){
+  const id=document.getElementById('profSel').value;
+  let p;
+  try{
+    if(id) p=await ProfileDB.get(id);
+    if(!p){ p=collectProfile(); p.name=p.name||'Smart ID setup'; p.id=_profNew(); p.createdAt=p.updatedAt=Date.now(); }
+  }catch(e){ toast('Export failed: '+e.message,'error'); return; }
+  const blob=new Blob([JSON.stringify({type:'smart-id-profile',...p})],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=_safeName(p.name,'profile')+'.smartid.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+  toast(`Backup downloaded: ${a.download}`,'ok');
+}
+
+async function importProfile(inp){
+  const f=inp.files[0]; inp.value='';
+  if(!f) return;
+  try{
+    const p=JSON.parse(await f.text());
+    if(p.type!=='smart-id-profile'||!p.project) throw new Error('not a Smart ID profile file');
+    delete p.type;
+    p.name=String(p.name||f.name.replace(/\.smartid\.json$|\.json$/i,'')).slice(0,80);
+    const same=_profMeta.find(m=>m.id===p.id||m.name.toLowerCase()===p.name.toLowerCase());
+    if(same&&!confirm(`"${same.name}" already exists here. Replace it with the imported one?`)) return;
+    p.id=same?same.id:(p.id||_profNew());
+    p.updatedAt=Date.now(); p.createdAt=p.createdAt||Date.now();
+    await ProfileDB.put(p);
+    await refreshProfileList(p.id);
+    document.getElementById('profSel').value=p.id;
+    await onProfileSelect(p.id);
+  }catch(e){ toast('Import failed: '+e.message,'error'); }
+}
+
+/* Fields used in the saved design that the current Excel does not have */
+function checkProfileFields(){
+  if(!SA.excel.rows.length) return;
+  const names=new Set();
+  ['frontJSON','backJSON'].forEach(k=>(SA.project[k]?.objects||[]).forEach(o=>{ if(o.eleType==='field'&&o.fieldName) names.add(o.fieldName); }));
+  if(SA.canvas) SA.canvas.getObjects().forEach(o=>{ if(o.eleType==='field'&&o.fieldName) names.add(o.fieldName); });
+  const m=_hdrMap();
+  const miss=[...names].filter(n=>n!==SERIAL_FIELD&&!m.has(_normKey(n)));
+  if(miss.length) toast(`Design fields not found in this Excel: ${miss.slice(0,4).join(', ')}${miss.length>4?' …':''} — they will print empty`,'warn');
+}
+
+/* Data Collection: select the profile whose name matches the school */
+function autoPickProfileByName(school){
+  if(!school||SA.profileId) return;
+  const k=_normKey(school);
+  const m=_profMeta.find(x=>_normKey(x.name)===k)||_profMeta.find(x=>_normKey(x.name).startsWith(k));
+  if(m){ document.getElementById('profSel').value=m.id; onProfileSelect(m.id); }
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  refreshProfileList().then(()=>{
+    // Pre-select (not auto-load) the last used school as a one-click reminder
+    let last=''; try{ last=localStorage.getItem('sim_last_profile')||''; }catch(e){}
+    const m=_profMeta.find(x=>x.id===last);
+    if(m&&!SA.profileId) _profStatus(`Last used: ${m.name} — select it to load`);
+  });
+  document.getElementById('profNameInp')?.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){ e.preventDefault(); _profNameDone(e.target.value); }
+    else if(e.key==='Escape') _profNameDone(null);
+  });
+  setInterval(()=>{ if(SA.profileId&&!SA._dirty) _profStatus(); },60000);
+});
+window.addEventListener('beforeunload',e=>{
+  if(SA._dirty&&(SA.project.frontJSON||SA.canvas?.getObjects().length)){ e.preventDefault(); e.returnValue=''; }
+});
 
 /* ── Data Collection auto-load (runs on DOMContentLoaded) ── */
 document.addEventListener('DOMContentLoaded', function(){
@@ -4372,7 +5037,7 @@ document.addEventListener('DOMContentLoaded', function(){
       let data = {};
       try{ data = JSON.parse(rec.data_json)||{}; }catch{}
       const row = {};
-      cols.forEach(c=>{ row[c.label||c.key] = data[c.key]||''; });
+      cols.forEach(c=>{ row[c.label||c.key] = String(data[c.key]??'').trim(); });
       // Unique per record (DB id; row position as a last resort) — used to attach the right photo.
       Object.defineProperty(row, '__rid', { value: String(rec.id != null ? rec.id : 'i' + idx), enumerable: false, writable: true });
       return row;
@@ -4383,23 +5048,25 @@ document.addEventListener('DOMContentLoaded', function(){
     // Load DC photos (filenames in assets/uploads/dc_photos/), keyed by record id — NOT by name.
     let photoCount = 0;
     SA.dcPhotos = new Map();
-    SA.photos.clear();
+    SA.photos.clear(); SA.photoNum.clear();
     sc.records.forEach((rec, idx) => {
       if(!rec.photo) return;
       const pURL = '<?= BASE_URL ?>/assets/uploads/dc_photos/' + rec.photo;
       const rid = rows[idx].__rid;
       SA.dcPhotos.set(rid, pURL);
-      SA.photos.set('rid_' + rid, pURL);
-      SA.photos.set('rid_' + rid + '.jpg', pURL);
       photoCount++;
     });
+    SA.photoCount = photoCount;
+    sanitizeRoles();
     buildExcelPreview();
     updateStep1Status();
     document.getElementById('dzExcel').classList.add('filled');
     document.getElementById('excelOk').textContent = `✓ ${sc.school_name} — ${rows.length} rows · ${headers.length} columns${photoCount ? ' · ' + photoCount + ' photos' : ''}`;
     sessionStorage.removeItem('dc_gen_school');
     toast(`Loaded ${rows.length} records from "${sc.school_name}"${photoCount ? ' · ' + photoCount + ' photos' : ''}`, 'ok');
-  }catch(e){}
+    // Same school already has a saved profile? → select it automatically.
+    setTimeout(()=>autoPickProfileByName(sc.school_name),300);
+  }catch(e){ console.error(e); toast('Could not load Data Collection records','error'); }
 });
 </script>
 
